@@ -25,11 +25,12 @@ int main (int __argc, char **__argv) {
 	}
 
 
-	float* inp1_tmp = new float[1] ;
-	vector<vector<FPArray>> inp1 = make_vector_float_rand(ALICE, rows, sz) ;
-	vector<vector<FPArray>> out = make_vector_float(ALICE, rows, sz) ;
+	// float* inp1_tmp = new float[1] ;
+	// vector<vector<FPArray>> inp1 = make_vector_float_rand(ALICE, rows, sz) ;
+	// vector<vector<FPArray>> out = make_vector_float(ALICE, rows, sz) ;
 	
-	Softmax2(rows, sz, inp1, out) ;
+	// Softmax2(rows, sz, inp1, out) ;
+	Exp_test();
 	__end() ;
 	return 0;
 }

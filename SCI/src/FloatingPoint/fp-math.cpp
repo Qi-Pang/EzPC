@@ -36,6 +36,8 @@ using namespace sci;
   0.693147180559945309417232121458176568075500134360255254120680009493393621969694715605863326996418687
 #define TWO_INV_SQRT_PI                                                        \
   1.128379167095512573896158903121545171688101258657997713688171443421284936882
+#define NEG_LOGE2_INV                                                          \
+  1.442695040888963423535598661526235116567603930130965898132921686199121361438241594804331289503955470328942932380383923264
 
 FixArray get_idx_from_input(FixOp *fix, const FixArray &delta_m,
                             const FixArray &delta_e, int idx_m_bits,
@@ -628,14 +630,131 @@ FPArray FPMath::cospi(const FPArray &x) {
   return ret;
 }
 
+void FPMath::exp4(){
+  std::cout << "exp 4 function" << std::endl;
+  uint8_t m_bits = 23;
+  uint8_t e_bits = 8;
+  float v = -2.75;
+  // FPArray input_xs = fp_op->input<float>(ALICE, 1, v, m_bits, e_bits);
+  // this->exp3(input_xs);
+
+  /*
+  l = np.floor((x / -math.log(2)))
+  p = x + l*math.log(2)
+  fp = poly(p)
+  return fp / (2**l)
+  */
+
+  // All 0 and all 1 array for msb arg
+  BoolArray all_1 = bool_op->input(ALICE, 1, 1);
+  BoolArray all_0 = bool_op->input(ALICE, 1, uint8_t(0));
+
+  FixArray input_xs = fix->input(ALICE, 1, uint64_t(-11264), true, 16, 12);
+  print_fix(input_xs);
+
+  // ln2
+  FixArray ln2 = fix->input(ALICE, 1, uint64_t(2839), true, 16, 12);
+  print_fix(ln2);
+
+  // inverse of negative ln2
+  FixArray inl = fix->input(ALICE, 1, uint64_t(-5909), true, 16, 12);
+  print_fix(inl);
+
+  // x / -math.log(2)
+  // Truncate to original scale and bitlength
+  FixArray x_inl = fix->mul(input_xs, inl, 32, all_1.data, all_0.data);
+  x_inl =  fix->truncate_reduce(x_inl, 12);
+  x_inl =  fix->reduce(x_inl, 16);
+  print_fix(x_inl);
+
+  // Get the integer part and scale back
+  FixArray l_short = fix->truncate_reduce(x_inl, 12);
+  FixArray l = fix->scale_up(l_short, 16, 12);
+  print_fix(l);
+
+  // l*math.log(2)
+  FixArray l_ln2 = fix->mul(l, ln2, 32, all_0.data, all_0.data);
+  l_ln2 =  fix->truncate_reduce(l_ln2, 12);
+  l_ln2 =  fix->reduce(l_ln2, 16);
+  print_fix(l_ln2);
+
+  // Get the decimal part
+  FixArray p = fix->add(input_xs, l_ln2);
+  print_fix(p);
+
+  // Polynomial fit
+  FixArray poly_p = fix->poly1(p);
+  print_fix(poly_p);
+
+  // 
+  l_short.signed_ = false;
+  FixArray ret = fix->right_shift(poly_p, l_short, 16, all_0.data);
+  print_fix(ret);
+
+  // x_nli_int = fix->reduce(x_nli_int, 16);
+
+  // FixArray x_nli_int = fix->truncate_reduce(x_nli, 24);
+
+  // FixArray x_nli_int = fix->truncate_reduce(x_nli, 24);
+}
+
+FPArray FPMath::exp3(const FPArray &x) {
+  assert(x.party != PUBLIC);
+  assert(x.m_bits == 23);
+  assert(x.e_bits == 8);
+  assert(FP_INTMD_E_BITS == x.e_bits);
+
+  BoolArray all_1 = bool_op->input(ALICE, x.size, 1);
+
+  BoolArray all_0 = bool_op->input(ALICE, x.size, uint8_t(0));
+
+  BoolArray x_s, x_z;
+
+  FixArray x_m, x_e;
+
+  tie(x_s, x_z, x_m, x_e) = fp_op->get_components(x);
+
+  FPArray x_copy = fp_op->input(x.party, x.size, x.s, x.z, x.m, x.e, x.m_bits, x.e_bits);
+
+  FPArray nli = fp_op->input<float>(PUBLIC, x.size, NEG_LOGE2_INV, x.m_bits, x.e_bits);
+
+  FPArray x_nli = fp_op->mul(x_copy, nli);
+
+  FixArray shift_amt = fix->sub(x_m.ell + x.e_bias() - 1, x_e);
+
+  shift_amt.signed_ = false;
+
+  FixArray x_m_int_ws = fix->right_shift(x_m, shift_amt, x_m.ell, all_1.data);
+  FixArray x_m_int = fix->left_shift(x_m_int_ws, shift_amt, x_m.ell, x_m.ell, all_0.data);
+
+  print_fix(shift_amt);
+
+  print_fix(x_e);
+
+  print_fix(x_m);
+
+  print_fix(x_m_int_ws);
+
+  print_fix(x_m_int);
+
+  print_fp(x_copy);
+
+  return x_copy;
+}
+
 FPArray FPMath::exp(const FPArray &x) {
   assert(x.party != PUBLIC);
   assert(x.m_bits == 23);
   assert(x.e_bits == 8);
   assert(FP_INTMD_E_BITS == x.e_bits);
 
+  // sign zero
   BoolArray x_s, x_z;
+
+  // mantissa exponent
   FixArray x_m, x_e;
+
+  // returns (BoolArray x.s, BoolArray x.z, FixArray x.m, FixArray x.e)
   tie(x_s, x_z, x_m, x_e) = fp_op->get_components(x);
 
   BoolArray all_0 = bool_op->input(ALICE, x.size, uint8_t(0));
@@ -645,6 +764,8 @@ FPArray FPMath::exp(const FPArray &x) {
           x_m.data, x_e.data, x.m_bits, x.e_bits);
   BoolArray pos_x_ge_LOGE2 = fp_op->GE<double>(pos_x, double(LOGE2));
   FixArray shift_amt = fix->add(x_e, 1 - x.e_bias());
+
+  std::cout << "1 - x.ebias()" << x.e_bias() << std::endl;
   shift_amt.signed_ = false;
   FixArray m = fix->left_shift(x_m, shift_amt, x.m_bits + 10, 9, all_1.data);
   m.s += 1;

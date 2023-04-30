@@ -250,6 +250,8 @@ void Softmax2(
 	vector<vector<FPArray>> &inArr,
 	vector<vector<FPArray>> &outArr);
 
+void Exp_test();
+
 void Ln(int32_t s1, vector<FPArray> &inArr, vector<FPArray> &outArr);
 
 void Sqrt(int32_t s1, vector<FPArray> &inArr, vector<FPArray> &outArr);

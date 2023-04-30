@@ -263,6 +263,10 @@ void Softmax2_thread(
 	}
 }
 
+void Exp_test(){
+	
+}
+
 void Softmax2(
 	int32_t s1, 
 	int32_t s2, 

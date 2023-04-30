@@ -1058,3 +1058,32 @@ FixArray FixOp::tanh(const FixArray& x, int l_y, int s_y) {
 FixArray FixOp::sqrt(const FixArray& x, int l_y, int s_y, bool recp_sqrt) {
   assert(x.party != PUBLIC);
 }
+
+// 0.3585*((p + 1.353)**2) + 0.344
+// arg1         arg2         arg3
+FixArray FixOp::poly1(const FixArray& p){
+  
+  BoolArray all_1 = bool_op->input(ALICE, 1, 1);
+  BoolArray all_0 = bool_op->input(ALICE, 1, uint8_t(0));
+
+  FixArray arg1 = fix->input(ALICE, 1, uint64_t(1468), true, 16, 12);
+  print_fix(arg1);
+  FixArray arg2 = fix->input(ALICE, 1, uint64_t(5542), true, 16, 12);
+  print_fix(arg2);
+  FixArray arg3 = fix->input(ALICE, 1, uint64_t(1409), true, 16, 12);
+  print_fix(arg3);
+
+  FixArray p_arg2 = this->add(p, arg2);
+
+  FixArray p_arg2_pow2 = this->mul(p_arg2, p_arg2, 32, all_0.data, all_0.data);
+  p_arg2_pow2 =  this->truncate_reduce(p_arg2_pow2, 12);
+  p_arg2_pow2 =  this->reduce(p_arg2_pow2, 16);
+  print_fix(p_arg2_pow2);
+
+  FixArray arg1_p_arg2 = this->mul(p_arg2_pow2, arg1, 32, all_0.data, all_0.data);
+  arg1_p_arg2 =  this->truncate_reduce(arg1_p_arg2, 12);
+  arg1_p_arg2 =  this->reduce(arg1_p_arg2, 16);
+  print_fix(arg1_p_arg2);
+
+  return this->add(arg1_p_arg2, arg3);
+}

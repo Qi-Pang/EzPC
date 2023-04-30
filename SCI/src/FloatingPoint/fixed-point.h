@@ -410,6 +410,7 @@ public:
 
   FixArray tanh(const FixArray& x, int l_y, int s_y);
 
+  FixArray poly1(const FixArray& x);
 };
 
 #endif // FIXED_POINT_H__

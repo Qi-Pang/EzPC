@@ -289,6 +289,10 @@ void Softmax2_thread(
 	}
 }
 
+void Exp_test(){
+	fpmathArr[0]->exp4();
+}
+
 void Softmax2(
 	int32_t s1,
 	int32_t s2,
