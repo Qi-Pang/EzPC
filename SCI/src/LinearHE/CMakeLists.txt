@@ -1,9 +1,9 @@
 find_package(OpenMP REQUIRED)
 
-find_package(SEAL 3.3.2 EXACT QUIET PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
+find_package(SEAL 4.1.1 EXACT QUIET PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
 if (NOT SEAL_FOUND)
-    message(STATUS "SEAL 3.3.2 was not found: clone and install SEAL locally")
-    if (NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/SEAL/native/src/CMakeLists.txt")
+    message(STATUS "SEAL 4.1.1 was not found: clone and install SEAL locally")
+    if (NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/SEAL/CMakeLists.txt")
         find_package(Git REQUIRED)
         message(STATUS "initialize Git submodule: extern/SEAL")
         execute_process(COMMAND git submodule update --init --recursive extern/SEAL
@@ -12,10 +12,10 @@ if (NOT SEAL_FOUND)
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL")
     endif ()
     execute_process(COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${PROJECT_SOURCE_DIR}/build .
-            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/native/src")
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/")
     execute_process(COMMAND ${CMAKE_COMMAND} --build . --target install
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/native/src")
-    find_package(SEAL 3.3.2 EXACT REQUIRED PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/")
+    find_package(SEAL 4.1.1 EXACT REQUIRED PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
 endif()
 
 add_library(SCI-LinearHE

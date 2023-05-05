@@ -33,7 +33,7 @@ SOFTWARE.
             << std::endl
 
 void generate_new_keys(int party, sci::NetIO *io, int slot_count,
-                       std::shared_ptr<seal::SEALContext> &context_,
+                       seal::SEALContext *&context_,
                        seal::Encryptor *&encryptor_,
                        seal::Decryptor *&decryptor_,
                        seal::Evaluator *&evaluator_,
@@ -49,12 +49,11 @@ void free_keys(int party, seal::Encryptor *&encryptor_,
 void send_encrypted_vector(sci::NetIO *io,
                            std::vector<seal::Ciphertext> &ct_vec);
 
-void recv_encrypted_vector(sci::NetIO *io,
-                           std::vector<seal::Ciphertext> &ct_vec);
+void recv_encrypted_vector(seal::SEALContext* context_, sci::NetIO *io, std::vector<seal::Ciphertext> &ct_vec);
 
 void send_ciphertext(sci::NetIO *io, seal::Ciphertext &ct);
 
-void recv_ciphertext(sci::NetIO *io, seal::Ciphertext &ct);
+void recv_ciphertext(seal::SEALContext* context_, sci::NetIO *io, seal::Ciphertext &ct);
 
 void set_poly_coeffs_uniform(
     uint64_t *poly, uint32_t bitlen,

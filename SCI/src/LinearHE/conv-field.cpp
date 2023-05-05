@@ -568,7 +568,7 @@ void ConvField::non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
       min(SEAL_POLY_MOD_DEGREE_MAX, max(8192, 2 * next_pow2(H * W)));
   configure();
 
-  shared_ptr<SEALContext> context_;
+  seal::SEALContext *context_;
   Encryptor *encryptor_;
   Decryptor *decryptor_;
   Evaluator *evaluator_;
@@ -607,7 +607,7 @@ void ConvField::non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
       cout << "[Client] Image encrypted and sent" << endl;
 
     vector<Ciphertext> enc_result(data.out_ct);
-    recv_encrypted_vector(io, enc_result);
+    recv_encrypted_vector(context_, io, enc_result);
     auto HE_result = HE_decrypt(enc_result, data, *decryptor_, *encoder_);
 
     if (verbose)
@@ -646,7 +646,7 @@ void ConvField::non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
     for (int i = 0; i < data.inp_ct; i++) {
       rotations[i].resize(data.filter_size);
     }
-    recv_encrypted_vector(io, ct);
+    recv_encrypted_vector(context_, io, ct);
     rotations = filter_rotations(ct, data, evaluator_, gal_keys_);
     if (verbose)
       cout << "[Server] Filter Rotations done" << endl;

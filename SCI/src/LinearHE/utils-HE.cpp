@@ -20,7 +20,6 @@ SOFTWARE.
 */
 
 #include "LinearHE/utils-HE.h"
-#include "seal/util/polyarithsmallmod.h"
 
 using namespace std;
 using namespace sci;
@@ -28,24 +27,26 @@ using namespace seal;
 using namespace seal::util;
 
 void generate_new_keys(int party, NetIO *io, int slot_count,
-                       shared_ptr<SEALContext> &context_,
+                       SEALContext *&context_,
                        Encryptor *&encryptor_, Decryptor *&decryptor_,
                        Evaluator *&evaluator_, BatchEncoder *&encoder_,
                        GaloisKeys *&gal_keys_, Ciphertext *&zero_,
                        bool verbose) {
-  EncryptionParameters parms(scheme_type::BFV);
+  EncryptionParameters parms(scheme_type::bfv);
   parms.set_poly_modulus_degree(slot_count);
   parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {60, 60, 60, 38}));
   parms.set_plain_modulus(prime_mod);
   // auto context = SEALContext::Create(parms, true, sec_level_type::none);
-  context_ = SEALContext::Create(parms, true, sec_level_type::none);
-  encoder_ = new BatchEncoder(context_);
-  evaluator_ = new Evaluator(context_);
+  context_ = new SEALContext(parms, true, seal::sec_level_type::tc128);
+  encoder_ = new BatchEncoder(*context_);
+  evaluator_ = new Evaluator(*context_);
   if (party == BOB) {
-    KeyGenerator keygen(context_);
-    auto pub_key = keygen.public_key();
-    auto sec_key = keygen.secret_key();
-    auto gal_keys_ = keygen.galois_keys();
+    KeyGenerator keygen(*context_);
+    SecretKey sec_key = keygen.secret_key();
+    PublicKey pub_key;
+    keygen.create_public_key(pub_key);
+    GaloisKeys gal_keys_;
+    keygen.create_galois_keys(gal_keys_);
 
     stringstream os;
     pub_key.save(os);
@@ -66,8 +67,8 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
     io->send_data(&sk_size, sizeof(uint64_t));
     io->send_data(keys_ser_sk.c_str(), sk_size);
 #endif
-    encryptor_ = new Encryptor(context_, pub_key);
-    decryptor_ = new Decryptor(context_, sec_key);
+    encryptor_ = new Encryptor(*context_, pub_key);
+    decryptor_ = new Decryptor(*context_, sec_key);
   } else // party == ALICE
   {
     uint64_t pk_size;
@@ -79,10 +80,10 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
     stringstream is;
     PublicKey pub_key;
     is.write(key_share, pk_size);
-    pub_key.load(context_, is);
+    pub_key.load(*context_, is);
     gal_keys_ = new GaloisKeys();
     is.write(key_share + pk_size, gk_size);
-    gal_keys_->load(context_, is);
+    gal_keys_->load(*context_, is);
     delete[] key_share;
 
 #ifdef HE_DEBUG
@@ -97,7 +98,7 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
     delete[] key_share_sk;
     decryptor_ = new Decryptor(context_, sec_key);
 #endif
-    encryptor_ = new Encryptor(context_, pub_key);
+    encryptor_ = new Encryptor(*context_, pub_key);
     vector<uint64_t> pod_matrix(slot_count, 0ULL);
     Plaintext tmp;
     encoder_->encode(pod_matrix, tmp);
@@ -140,7 +141,7 @@ void send_encrypted_vector(NetIO *io, vector<Ciphertext> &ct_vec) {
   io->send_data(ct_ser.c_str(), ct_ser.size());
 }
 
-void recv_encrypted_vector(NetIO *io, vector<Ciphertext> &ct_vec) {
+void recv_encrypted_vector(SEALContext* context_, NetIO *io, vector<Ciphertext> &ct_vec) {
   assert(ct_vec.size() > 0);
   stringstream is;
   uint64_t ct_size;
@@ -149,7 +150,7 @@ void recv_encrypted_vector(NetIO *io, vector<Ciphertext> &ct_vec) {
   io->recv_data(c_enc_result, ct_size * ct_vec.size());
   for (size_t ct = 0; ct < ct_vec.size(); ct++) {
     is.write(c_enc_result + ct_size * ct, ct_size);
-    ct_vec[ct].unsafe_load(is);
+    ct_vec[ct].unsafe_load(*context_, is);
   }
   delete[] c_enc_result;
 }
@@ -164,14 +165,14 @@ void send_ciphertext(NetIO *io, Ciphertext &ct) {
   io->send_data(ct_ser.c_str(), ct_ser.size());
 }
 
-void recv_ciphertext(NetIO *io, Ciphertext &ct) {
+void recv_ciphertext(SEALContext* context_, NetIO *io, Ciphertext &ct) {
   stringstream is;
   uint64_t ct_size;
   io->recv_data(&ct_size, sizeof(uint64_t));
   char *c_enc_result = new char[ct_size];
   io->recv_data(c_enc_result, ct_size);
   is.write(c_enc_result, ct_size);
-  ct.unsafe_load(is);
+  ct.unsafe_load(*context_, is);
   delete[] c_enc_result;
 }
 
@@ -192,7 +193,7 @@ void set_poly_coeffs_uniform(
       noise &= bitlen_mask;
       for (size_t j = 0; j < coeff_mod_count; j++) {
         poly[i + (j * coeff_count)] =
-            barrett_reduce_63(noise, coeff_modulus[j]);
+            barrett_reduce_64(noise, coeff_modulus[j]);
       }
     } else {
       uint64_t noise[2]; // LSB || MSB
@@ -206,6 +207,18 @@ void set_poly_coeffs_uniform(
             barrett_reduce_128(noise, coeff_modulus[j]);
       }
     }
+  }
+}
+
+// Port from SEAL 3.3.2
+inline void add_poly_poly_coeffmod(const std::uint64_t *operand1,
+            const std::uint64_t *operand2, std::size_t coeff_count,
+            const Modulus &modulus, std::uint64_t *result) {
+  const uint64_t modulus_value = modulus.value();
+  for (; coeff_count--; result++, operand1++, operand2++) {
+    std::uint64_t sum = *operand1 + *operand2;
+    *result = sum - (modulus_value & static_cast<std::uint64_t>(
+        -static_cast<std::int64_t>(sum >= modulus_value)));
   }
 }
 

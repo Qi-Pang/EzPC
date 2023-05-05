@@ -133,7 +133,7 @@ class ConvField {
 public:
   int party;
   sci::NetIO *io;
-  std::shared_ptr<seal::SEALContext> context[2];
+  seal::SEALContext *context[2];
   seal::Encryptor *encryptor[2];
   seal::Decryptor *decryptor[2];
   seal::Evaluator *evaluator[2];
