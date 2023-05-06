@@ -28,7 +28,7 @@ class ElemWiseProdField {
 public:
   int party;
   sci::NetIO *io;
-  std::shared_ptr<seal::SEALContext> context;
+  seal::SEALContext *context;
   seal::Encryptor *encryptor;
   seal::Decryptor *decryptor;
   seal::Evaluator *evaluator;

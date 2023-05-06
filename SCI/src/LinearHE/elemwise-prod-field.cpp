@@ -69,7 +69,7 @@ void ElemWiseProdField::elemwise_product(int32_t size, vector<uint64_t> &inArr,
     send_encrypted_vector(io, ct);
 
     vector<Ciphertext> enc_result(num_ct);
-    recv_encrypted_vector(io, enc_result);
+    recv_encrypted_vector(this->context, io, enc_result);
     for (int i = 0; i < num_ct; i++) {
       int offset = i * slot_count;
       vector<uint64_t> tmp_vec(slot_count, 0);
@@ -106,7 +106,7 @@ void ElemWiseProdField::elemwise_product(int32_t size, vector<uint64_t> &inArr,
     }
 
     vector<Ciphertext> ct(num_ct);
-    recv_encrypted_vector(io, ct);
+    recv_encrypted_vector(this->context, io, ct);
 
     vector<Ciphertext> enc_result(num_ct);
     for (int i = 0; i < num_ct; i++) {

@@ -214,7 +214,7 @@ void FCField::matrix_multiplication(int32_t num_rows, int32_t common_dim,
       min(max(8192, 2 * next_pow2(common_dim)), SEAL_POLY_MOD_DEGREE_MAX);
   configure();
 
-  shared_ptr<SEALContext> context_;
+  seal::SEALContext* context_;
   Encryptor *encryptor_;
   Decryptor *decryptor_;
   Evaluator *evaluator_;
@@ -248,7 +248,7 @@ void FCField::matrix_multiplication(int32_t num_rows, int32_t common_dim,
       cout << "[Client] Vector processed and sent" << endl;
 
     Ciphertext enc_result;
-    recv_ciphertext(io, enc_result);
+    recv_ciphertext(context_, io, enc_result);
     auto HE_result = fc_postprocess(enc_result, data, *encoder_, *decryptor_);
     if (verbose)
       cout << "[Client] Result received and decrypted" << endl;
@@ -296,7 +296,7 @@ void FCField::matrix_multiplication(int32_t num_rows, int32_t common_dim,
       cout << "[Server] Matrix and noise processed" << endl;
 
     Ciphertext ct;
-    recv_ciphertext(io, ct);
+    recv_ciphertext(context_, io, ct);
 
 #ifdef HE_DEBUG
     PRINT_NOISE_BUDGET(decryptor_, ct, "before FC Online");
