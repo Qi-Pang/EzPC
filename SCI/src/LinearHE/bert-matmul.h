@@ -68,7 +68,7 @@ public:
   int party;
   sci::NetIO *io;
   FCMetadata data;
-  std::shared_ptr<seal::SEALContext> context;
+  seal::SEALContext *context;
   seal::Encryptor *encryptor;
   seal::Decryptor *decryptor;
   seal::Evaluator *evaluator;

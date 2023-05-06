@@ -358,7 +358,7 @@ void BERTFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim,
       min(max(8192, 2 * next_pow2(common_dim)), SEAL_POLY_MOD_DEGREE_MAX);
   configure();
 
-  shared_ptr<SEALContext> context_;
+  seal::SEALContext *context_;
   Encryptor *encryptor_;
   Decryptor *decryptor_;
   Evaluator *evaluator_;
@@ -376,15 +376,19 @@ void BERTFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim,
     // evaluator_ = this->evaluator;
     // encoder_ = this->encoder;
     // gal_keys_ = this->gal_keys;
-    encoder_ = new BatchEncoder(context_);
-    evaluator_ = new Evaluator(context_);
-    KeyGenerator keygen(context_);
-    auto pub_key = keygen.public_key();
-    auto sec_key = keygen.secret_key();
-    gal_keys_ = keygen.galois_keys();
-    relin_keys_ = keygen.relin_keys();
-    encryptor_ = new Encryptor(context_, pub_key);
-    decryptor_ = new Decryptor(context_, sec_key);
+    encoder_ = new BatchEncoder(*context_);
+    evaluator_ = new Evaluator(*context_);
+    KeyGenerator keygen(*context_);
+    SecretKey sec_key = keygen.secret_key();
+    PublicKey pub_key;
+    keygen.create_public_key(pub_key);
+    GaloisKeys gal_keys_;
+    keygen.create_galois_keys(gal_keys_);
+    RelinKeys relin_keys_;
+    keygen.create_relin_keys(relin_keys_);
+
+    encryptor_ = new Encryptor(*context_, pub_key);
+    decryptor_ = new Decryptor(*context_, sec_key);
     test_fresh_noise(*encryptor_, *decryptor_, *encoder_);
     zero_ = this->zero;
   }
@@ -446,7 +450,7 @@ void BERTFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim,
       cout << "[Client] Vector processed and sent" << endl;
 
     Ciphertext enc_result;
-    recv_ciphertext(io, enc_result);
+    recv_ciphertext(context_, io, enc_result);
     cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
     auto HE_result = bertfc_postprocess(enc_result, data, *encoder_, *decryptor_);
     if (verbose)
@@ -498,7 +502,7 @@ void BERTFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim,
     vector<Ciphertext> cts(12);
 
     // recv_ciphertext(io, cts);
-    recv_encrypted_vector(io, cts);
+    recv_encrypted_vector(context_, io, cts);
     if (verbose)
       cout << "[Server] cts received" << endl;
 
