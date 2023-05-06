@@ -71,6 +71,8 @@ public:
 
   vector<FPArray> softmax_beacon(const vector<FPArray>& x);
   vector<FPArray> softmax_secfloat(const vector<FPArray>& x);
+  vector<FixArray> softmax_fix(const vector<FixArray>& x);
+  
 };
 
 #endif // FLOATING_POINT_MATH_H__

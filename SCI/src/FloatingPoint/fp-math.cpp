@@ -1220,3 +1220,74 @@ vector<FPArray> FPMath::softmax_secfloat(const vector<FPArray>& x) {
   }
   return ret;
 }
+
+vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
+  return x;
+  // int N = x.size();
+  // int n = x[0].size;
+  // int ell = x[0].ell;
+  // int s = x[0].s;
+  // bool signed_ = x[0].signed_;
+  // // assert(m_bits > 0);
+  // for(int i = 1; i < N; i++) {
+  //   assert(x[i].party != PUBLIC);
+  //   assert(x[i].ell == ell);
+  //   assert(x[i].s == s);
+  //   assert(x[i].size == n);
+  // }
+  // FixArray x_max = fix->max(x);
+  // FixArray x_max_flat(party, N*n, signed_, ell, s);
+  // for (int i = 0; i < N; i++) {
+  //   for (int j = 0; j < n; j++) {
+  //     x_max_flat.data[i*n + j] = x_max.data[i];
+  //   }
+  // }
+
+  // FixArray x_flat = concat(x);
+  // FixArray shifted_x_flat = fix->sub(x_flat, x_max_flat);
+
+  // FixArray e_x_flat = this->exp4(shifted_x_flat);
+
+  // vector<FixArray> e_x_tr(n);
+  // for (int i = 0; i < n; i++) {
+  //   e_x_tr[i] = FixArray(party, N, signed_, ell, s);
+  //   for (int j = 0; j < N; j++) {
+  //     e_x_tr[i].data[j] = e_x_flat.data[j*n + i];
+  //   }
+  // }
+  // FixArray sum_e_x;
+  // {
+  //   vector<FixArray> tmp = e_x_tr;
+  //   int num_adds_old = n; int num_adds_curr = n/2;
+  //   while(num_adds_old > 1) {
+  //     int odd_num_adds = num_adds_old & 1;
+  //     vector<FixArray> lhs(num_adds_curr); vector<FixArray> rhs(num_adds_curr);
+  //     for (int j = odd_num_adds; j < num_adds_old && j + 1 < num_adds_old; j += 2) {
+  //       lhs[j/2] = tmp[j]; rhs[j/2] = tmp[j+1];
+  //     }
+  //     FixArray lhs_concat = concat(lhs);
+  //     FixArray rhs_concat = concat(rhs);
+  //     lhs_concat = fix->add(lhs_concat, rhs_concat);
+  //     for (int j = 0; j < num_adds_old && j + 1 < num_adds_old; j += 2) {
+  //       tmp[odd_num_adds + (j/2)] = lhs_concat.subset((j/2)*N, (j/2)*N + N);
+  //     }
+  //     num_adds_old = num_adds_curr + odd_num_adds;
+  //     num_adds_curr = num_adds_old/2;
+  //   }
+  //   sum_e_x = tmp[0];
+  // }
+  // FixArray sum_e_x_replicated(party, N*n, signed_, ell, s);
+  // for(int i = 0; i < N; i++) {
+  //   for (int j = 0; j < n; j++) {
+  //     sum_e_x_replicated.data[i*n + j] = sum_e_x.data[i];
+  //   }
+  // }
+
+  // FixArray ret_flat = fix->div(e_x_flat, sum_e_x_replicated, ell, s);
+  // vector<FixArray> ret(N);
+  // for (int i = 0; i < N; i++) {
+  //   ret[i] = FixArray(party, n, signed_, ell, s);
+  //   memcpy(ret[i].data, ret_flat.data + i*n, n*sizeof(uint64_t));
+  // }
+  // return ret;
+}

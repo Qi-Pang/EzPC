@@ -65,3 +65,6 @@ add_test_floatml(dotprod)
 add_test_floatml(matmul)
 add_test_floatml(sigmoid)
 add_test_floatml(softmax)
+
+add_executable(BERT-HE-SEAL "test_bert_matmul_seal.cpp")
+target_link_libraries(BERT-HE-SEAL SCI-HE)

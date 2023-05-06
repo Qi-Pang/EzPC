@@ -385,6 +385,83 @@ void Softmax2(
 	delete[] out_e;
 }
 
+void Softmax3_thread(
+	int tid, int mchunk, int n, int ell, int s,
+	uint64_t **in_data, uint64_t **out_data)
+{
+	vector<FixArray> softin, softout;
+
+	for (int i = 0; i < mchunk; i++)
+		softin.push_back(fixopArr[tid]->input(WHICHPARTY, n, in_data[i], true, ell, s));
+
+	softout = fpmathArr[tid]->softmax_fix(softin);
+	for (int i = 0; i < mchunk; i++)
+	{
+		memcpy(out_data[i], softout[i].data, n * sizeof(uint8_t));
+	}
+}
+
+void Softmax3(
+	int32_t s1,
+	int32_t s2,
+	vector<vector<FixArray>> &inArr,
+	vector<vector<FixArray>> &outArr)
+{
+	int bitlength = inArr[0][0].ell;
+	int scale = inArr[0][0].s;
+
+	uint64_t **row_data = new uint64_t *[s1];
+
+	uint64_t **out_data = new uint64_t *[s1];
+
+	for (int i = 0; i < s1; i++)
+	{
+		row_data[i] = new uint64_t[s2];
+
+		out_data[i] = new uint64_t[s2];
+
+		for (int j = 0; j < s2; j++)
+		{
+			row_data[i][j] = inArr[i][j].data[0];
+		}
+	}
+
+	vector<int> chunks = get_chunks(s1, __nt);
+	thread threads[MAX_THREADS];
+	int offset = 0;
+	for (int i = 0; i < __nt; i++)
+	{
+		if (chunks[i] > 0)
+		{
+			threads[i] = thread(Softmax3_thread,
+								i, chunks[i], s2, bitlength, scale,
+								row_data + offset, out_data + offset);
+			offset += chunks[i];
+		}
+	}
+
+	for (int i = 0; i < __nt; i++)
+		if (chunks[i] > 0)
+			threads[i].join();
+
+	for (int i = 0; i < s1; i++)
+	{
+		for (int j = 0; j < s2; j++)
+		{
+			outArr[i][j].data[0] = out_data[i][j];
+		}
+	}
+
+	for (int i = 0; i < s1; i++)
+	{
+		delete[] row_data[i];
+		delete[] out_data[i];
+	}
+
+	delete[] row_data;
+	delete[] out_data;
+}
+
 void dotProduct_thread(
 	int tid, int chunk, int colsize, int m_bits, int e_bits,
 	uint8_t **Row1_s, uint8_t **Row1_z, uint64_t **Row1_m, uint64_t **Row1_e,

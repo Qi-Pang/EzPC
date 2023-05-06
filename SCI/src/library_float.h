@@ -250,6 +250,12 @@ void Softmax2(
 	vector<vector<FPArray>> &inArr,
 	vector<vector<FPArray>> &outArr);
 
+void Softmax3(
+	int32_t s1,
+	int32_t s2,
+	vector<vector<FixArray>> &inArr,
+	vector<vector<FixArray>> &outArr);
+
 void Exp_test();
 
 void Ln(int32_t s1, vector<FPArray> &inArr, vector<FPArray> &outArr);
