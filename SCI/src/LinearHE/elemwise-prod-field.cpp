@@ -30,7 +30,7 @@ ElemWiseProdField::ElemWiseProdField(int party, NetIO *io) {
   this->io = io;
   this->slot_count = POLY_MOD_DEGREE;
   generate_new_keys(party, io, slot_count, context, encryptor, decryptor,
-                    evaluator, encoder, gal_keys, zero);
+                    evaluator, encoder, gal_keys, relin_keys, zero);
 }
 
 ElemWiseProdField::~ElemWiseProdField() {

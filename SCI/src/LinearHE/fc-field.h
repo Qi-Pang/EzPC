@@ -74,6 +74,7 @@ public:
   seal::Evaluator *evaluator;
   seal::BatchEncoder *encoder;
   seal::GaloisKeys *gal_keys;
+  seal::RelinKeys *relin_keys;
   seal::Ciphertext *zero;
   size_t slot_count;
 

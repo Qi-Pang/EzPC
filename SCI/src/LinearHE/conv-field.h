@@ -139,6 +139,7 @@ public:
   seal::Evaluator *evaluator[2];
   seal::BatchEncoder *encoder[2];
   seal::GaloisKeys *gal_keys[2];
+  seal::RelinKeys *relin_keys[2];
   seal::Ciphertext *zero[2];
   size_t slot_count;
   ConvMetadata data;

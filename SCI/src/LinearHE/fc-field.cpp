@@ -169,7 +169,7 @@ FCField::FCField(int party, NetIO *io) {
   this->io = io;
   this->slot_count = POLY_MOD_DEGREE;
   generate_new_keys(party, io, slot_count, context, encryptor, decryptor,
-                    evaluator, encoder, gal_keys, zero);
+                    evaluator, encoder, gal_keys, relin_keys, zero);
 }
 
 FCField::~FCField() {
@@ -220,10 +220,11 @@ void FCField::matrix_multiplication(int32_t num_rows, int32_t common_dim,
   Evaluator *evaluator_;
   BatchEncoder *encoder_;
   GaloisKeys *gal_keys_;
+  RelinKeys *relin_keys_;
   Ciphertext *zero_;
   if (slot_count > POLY_MOD_DEGREE) {
     generate_new_keys(party, io, slot_count, context_, encryptor_, decryptor_,
-                      evaluator_, encoder_, gal_keys_, zero_);
+                      evaluator_, encoder_, gal_keys_, relin_keys_, zero_);
   } else {
     context_ = this->context;
     encryptor_ = this->encryptor;
@@ -231,6 +232,7 @@ void FCField::matrix_multiplication(int32_t num_rows, int32_t common_dim,
     evaluator_ = this->evaluator;
     encoder_ = this->encoder;
     gal_keys_ = this->gal_keys;
+    relin_keys_ = this->relin_keys;
     zero_ = this->zero;
   }
 

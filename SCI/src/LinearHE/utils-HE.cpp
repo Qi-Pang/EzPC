@@ -30,11 +30,11 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
                        SEALContext *&context_,
                        Encryptor *&encryptor_, Decryptor *&decryptor_,
                        Evaluator *&evaluator_, BatchEncoder *&encoder_,
-                       GaloisKeys *&gal_keys_, Ciphertext *&zero_,
+                       GaloisKeys *&gal_keys_, RelinKeys *&relin_keys_, Ciphertext *&zero_,
                        bool verbose) {
   EncryptionParameters parms(scheme_type::bfv);
   parms.set_poly_modulus_degree(slot_count);
-  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {43, 43, 44, 44, 44}));
+  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {32, 31, 31, 31, 31, 31, 31}));
   parms.set_plain_modulus(prime_mod);
   // auto context = SEALContext::Create(parms, true, sec_level_type::none);
   context_ = new SEALContext(parms, true, seal::sec_level_type::tc128);
@@ -47,17 +47,22 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
     keygen.create_public_key(pub_key);
     GaloisKeys gal_keys_;
     keygen.create_galois_keys(gal_keys_);
+    RelinKeys relin_keys_;
+    keygen.create_relin_keys(relin_keys_);
 
     stringstream os;
     pub_key.save(os);
     uint64_t pk_size = os.tellp();
     gal_keys_.save(os);
     uint64_t gk_size = (uint64_t)os.tellp() - pk_size;
+    relin_keys_.save(os);
+    uint64_t rk_size = (uint64_t)os.tellp() - pk_size - gk_size;
 
     string keys_ser = os.str();
     io->send_data(&pk_size, sizeof(uint64_t));
     io->send_data(&gk_size, sizeof(uint64_t));
-    io->send_data(keys_ser.c_str(), pk_size + gk_size);
+    io->send_data(&rk_size, sizeof(uint64_t));
+    io->send_data(keys_ser.c_str(), pk_size + gk_size + rk_size);
 
 #ifdef HE_DEBUG
     stringstream os_sk;
@@ -73,10 +78,12 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
   {
     uint64_t pk_size;
     uint64_t gk_size;
+    uint64_t rk_size;
     io->recv_data(&pk_size, sizeof(uint64_t));
     io->recv_data(&gk_size, sizeof(uint64_t));
-    char *key_share = new char[pk_size + gk_size];
-    io->recv_data(key_share, pk_size + gk_size);
+    io->recv_data(&rk_size, sizeof(uint64_t));
+    char *key_share = new char[pk_size + gk_size + rk_size];
+    io->recv_data(key_share, pk_size + gk_size + rk_size);
     stringstream is;
     PublicKey pub_key;
     is.write(key_share, pk_size);
@@ -84,6 +91,9 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
     gal_keys_ = new GaloisKeys();
     is.write(key_share + pk_size, gk_size);
     gal_keys_->load(*context_, is);
+    relin_keys_ = new RelinKeys();
+    is.write(key_share + pk_size + gk_size, rk_size);
+    relin_keys_->load(*context_, is);
     delete[] key_share;
 
 #ifdef HE_DEBUG

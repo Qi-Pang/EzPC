@@ -463,11 +463,11 @@ ConvField::ConvField(int party, NetIO *io) {
   this->io = io;
   this->slot_count = POLY_MOD_DEGREE_LARGE;
   generate_new_keys(party, io, slot_count, context[1], encryptor[1],
-                    decryptor[1], evaluator[1], encoder[1], gal_keys[1],
+                    decryptor[1], evaluator[1], encoder[1], gal_keys[1], relin_keys[1],
                     zero[1]);
   this->slot_count = POLY_MOD_DEGREE;
   generate_new_keys(party, io, slot_count, context[0], encryptor[0],
-                    decryptor[0], evaluator[0], encoder[0], gal_keys[0],
+                    decryptor[0], evaluator[0], encoder[0], gal_keys[0], relin_keys[0],
                     zero[0]);
 }
 
@@ -574,6 +574,7 @@ void ConvField::non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
   Evaluator *evaluator_;
   BatchEncoder *encoder_;
   GaloisKeys *gal_keys_;
+  RelinKeys *relin_keys_;
   Ciphertext *zero_;
   if (slot_count == POLY_MOD_DEGREE) {
     context_ = this->context[0];
@@ -582,6 +583,7 @@ void ConvField::non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
     evaluator_ = this->evaluator[0];
     encoder_ = this->encoder[0];
     gal_keys_ = this->gal_keys[0];
+    relin_keys_ = this->relin_keys[0];
     zero_ = this->zero[0];
   } else if (slot_count == POLY_MOD_DEGREE_LARGE) {
     context_ = this->context[1];
@@ -590,10 +592,11 @@ void ConvField::non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
     evaluator_ = this->evaluator[1];
     encoder_ = this->encoder[1];
     gal_keys_ = this->gal_keys[1];
+    relin_keys_ = this->relin_keys[1];
     zero_ = this->zero[1];
   } else {
     generate_new_keys(party, io, slot_count, context_, encryptor_, decryptor_,
-                      evaluator_, encoder_, gal_keys_, zero_, verbose);
+                      evaluator_, encoder_, gal_keys_, relin_keys_, zero_, verbose);
   }
 
   if (party == BOB) {
