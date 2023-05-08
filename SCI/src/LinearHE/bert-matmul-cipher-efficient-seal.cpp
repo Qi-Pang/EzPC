@@ -576,7 +576,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim, int
 
         cout << "Result budget: " << decryptor->invariant_noise_budget(enc_result[0]) << " bits" << endl;
 
-        // print_ct(enc_result[0], data.slot_count);
+        print_ct(enc_result[0], data.slot_count);
 
         // std::cout << plaintextMultResult.to_string() << endl;
 

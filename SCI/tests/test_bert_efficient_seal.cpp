@@ -9,7 +9,7 @@ using namespace sci;
 
 int party = 0;
 int bitlength = 32;
-int num_threads = 1;
+int num_threads = 16;
 int port = 8000;
 string address = "127.0.0.1";
 int input_dim = 128;
@@ -41,11 +41,13 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
 
   for (int i = 0; i < input_dim; i++)
     for (int j = 0; j < common_dim; j++)
-        A[i][j] = (i + j) % 2;
+        A[i][j] = i + j;
+        // A[i][j] = 1;
 
   for (int i = 0; i < common_dim; i++)
     for (int j = 0; j < output_dim; j++)
-        B[i][j] = (i + j + 1) % 2;
+        B[i][j] = i + j;
+        // B[i][j] = 1;
 
   cout << "prime: " << prime_mod << endl;
   INIT_TIMER;
@@ -67,7 +69,9 @@ int main(int argc, char **argv) {
   amap.arg("l", bitlength, "Bitlength of inputs");
   amap.parse(argc, argv);
   // prime_mod = default_prime_mod.at(bitlength);
-  prime_mod = 268582913;
+  // prime_mod = 268582913;
+  prime_mod = 33832961;
+  // prime_mod = 65537;
 
   cout << "===================================================================="
        << endl;
