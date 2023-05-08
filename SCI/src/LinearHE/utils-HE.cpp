@@ -34,7 +34,8 @@ void generate_new_keys(int party, NetIO *io, int slot_count,
                        bool verbose) {
   EncryptionParameters parms(scheme_type::bfv);
   parms.set_poly_modulus_degree(slot_count);
-  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {36, 36, 36, 36, 37, 37}));
+  // parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {36, 36, 36, 36, 37, 37}));
+  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {43, 43, 43, 44, 44}));
   parms.set_plain_modulus(prime_mod);
   // auto context = SEALContext::Create(parms, true, sec_level_type::none);
   context_ = new SEALContext(parms, true, seal::sec_level_type::tc128);

@@ -160,7 +160,7 @@ vector<Plaintext> BEFCField::generate_packing_masks(const FCMetadata &data)
 
 Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, Ciphertext ct, int k, vector<vector<Plaintext>> rotation_masks)
 {
-    int m = -(32 - k);
+    int m = -(128 - k);
     Ciphertext ct1;
     Ciphertext ct2;
     evaluator->rotate_rows(ct, k, *gal_keys, ct1);
@@ -492,14 +492,12 @@ uint64_t* BEFCField::bert_efficient_postprocess(vector<Ciphertext> &cts, const F
     encoder->decode(pt, plain);
     #pragma omp parallel for
     for (int row = 0; row < data.slot_count; row++) {
-        int j = row / 32; // row num
-        int k = row % 32; // col num
-        if (row >= data.slot_count / 2)
-        {
-            j = j - data.slot_count / 2;
-            k = k + 32;
-        }
-        result[i * data.slot_count + k * data.image_size + j] = plain[row];
+        int j = row / data.image_size + i * 64;
+        int k = row % data.image_size;
+        // k-th row, j-th diag
+        // k, (k + j) % 128
+        result[k + ((k + j) % 128) * data.image_size] = plain[row];
+
     }
   }
   return result;
