@@ -17,6 +17,9 @@ if (NOT SEAL_FOUND)
     execute_process(COMMAND ${CMAKE_COMMAND} --build . --target install
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/")
     find_package(SEAL 4.1.1 EXACT REQUIRED PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
+else ()
+    execute_process(COMMAND ${CMAKE_COMMAND} --build . --target install
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/")
 endif()
 
 link_directories( ${OpenFHE_LIBDIR} )
