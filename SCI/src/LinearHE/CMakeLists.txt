@@ -1,5 +1,6 @@
 find_package(OpenMP REQUIRED)
-
+find_package(OpenFHE)
+set(CMAKE_CXX_FLAGS "${OpenFHE_CXX_FLAGS} -Wno-error")
 find_package(SEAL 4.1.1 EXACT QUIET PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
 if (NOT SEAL_FOUND)
     message(STATUS "SEAL 4.1.1 was not found: clone and install SEAL locally")
@@ -18,13 +19,27 @@ if (NOT SEAL_FOUND)
     find_package(SEAL 4.1.1 EXACT REQUIRED PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
 endif()
 
+link_directories( ${OpenFHE_LIBDIR} )
+link_directories( ${OPENMP_LIBRARIES} )
+set( CMAKE_EXE_LINKER_FLAGS ${OpenFHE_EXE_LINKER_FLAGS} )
+link_libraries( ${OpenFHE_SHARED_LIBRARIES} )
+
 add_library(SCI-LinearHE
     conv-field.cpp
     fc-field.cpp
     elemwise-prod-field.cpp
     utils-HE.cpp
     bert-matmul.cpp
+    bert-matmul-cipher-efficient.cpp
+    bert-matmul-cipher-efficient-seal.cpp
+    utils-HE-openfhe.cpp
 )
+
+include_directories( ${OPENMP_INCLUDES} )
+include_directories( ${OpenFHE_INCLUDE} )
+include_directories( ${OpenFHE_INCLUDE}/third-party/include )
+include_directories( ${OpenFHE_INCLUDE}/core )
+include_directories( ${OpenFHE_INCLUDE}/pke )
 
 target_link_libraries(SCI-LinearHE
     PUBLIC

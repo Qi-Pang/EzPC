@@ -25,6 +25,7 @@ SOFTWARE.
 #include "LinearHE/defines-HE.h"
 #include "seal/seal.h"
 #include "utils/emp-tool.h"
+#include "openfhe.h"
 
 #define PRINT_NOISE_BUDGET(decryptor, ct, print_msg)                           \
   if (verbose)                                                                 \
@@ -32,37 +33,31 @@ SOFTWARE.
             << decryptor->invariant_noise_budget(ct) << " bits" << RESET       \
             << std::endl
 
-void generate_new_keys(int party, sci::NetIO *io, int slot_count,
-                       seal::SEALContext *&context_,
-                       seal::Encryptor *&encryptor_,
-                       seal::Decryptor *&decryptor_,
-                       seal::Evaluator *&evaluator_,
-                       seal::BatchEncoder *&encoder_,
-                       seal::GaloisKeys *&gal_keys_, seal::Ciphertext *&zero_,
-                       bool verbose = false);
+// void generate_new_keys(int party, NetIO *io, int slot_count,
+//                        lbcrypto::CCParams<lbcrypto::CryptoContextBFVRNS> &parameters,
+//                        lbcrypto::CryptoContext<lbcrypto::DCRTPoly> *&cryptoContext, lbcrypto::KeyPair<lbcrypto::DCRTPoly> *&keyPair,
+//                        bool verbose);
 
-void free_keys(int party, seal::Encryptor *&encryptor_,
-               seal::Decryptor *&decryptor_, seal::Evaluator *&evaluator_,
-               seal::BatchEncoder *&encoder_, seal::GaloisKeys *&gal_keys_,
-               seal::Ciphertext *&zero_);
+void send_encrypted_vector_openfhe(sci::NetIO *io,
+                           std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> &ct_vec);
 
-void send_encrypted_vector(sci::NetIO *io, std::vector<seal::Ciphertext> &ct_vec);
+void recv_encrypted_vector_openfhe(sci::NetIO *io,
+                           std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> &ct_vec);
 
-void recv_encrypted_vector(seal::SEALContext* context_, sci::NetIO *io, std::vector<seal::Ciphertext> &ct_vec);
+void send_ciphertext_openfhe(sci::NetIO *io, lbcrypto::Ciphertext<lbcrypto::DCRTPoly> &ct);
 
-void send_ciphertext(sci::NetIO *io, seal::Ciphertext &ct);
+void recv_ciphertext_openfhe(sci::NetIO *io, lbcrypto::Ciphertext<lbcrypto::DCRTPoly> &ct);
 
-void recv_ciphertext(seal::SEALContext* context_, sci::NetIO *io, seal::Ciphertext &ct);
 
-void set_poly_coeffs_uniform(
-    uint64_t *poly, uint32_t bitlen,
-    std::shared_ptr<seal::UniformRandomGenerator> random,
-    std::shared_ptr<const seal::SEALContext::ContextData> &context_data);
-
-void flood_ciphertext(
-    seal::Ciphertext &ct,
-    std::shared_ptr<const seal::SEALContext::ContextData> &context_data,
-    uint32_t noise_len,
-    seal::MemoryPoolHandle pool = seal::MemoryManager::GetPool());
+// void set_poly_coeffs_uniform_openfhe(
+//     uint64_t *poly, uint32_t bitlen,
+//     std::shared_ptr<seal::UniformRandomGenerator> random,
+//     std::shared_ptr<const seal::SEALContext::ContextData> &context_data);
+// 
+// void flood_ciphertext_openfhe(
+//     seal::Ciphertext &ct,
+//     std::shared_ptr<const seal::SEALContext::ContextData> &context_data,
+//     uint32_t noise_len,
+//     seal::MemoryPoolHandle pool = seal::MemoryManager::GetPool());
 
 #endif // UTILS_HE_H__

@@ -1,3 +1,6 @@
+find_package(OpenFHE)
+set(CMAKE_CXX_FLAGS "${OpenFHE_CXX_FLAGS} -Wno-error")
+
 macro (add_test_OT _name)
 	add_executable(${_name}-OT "test_ring_${_name}.cpp")
     target_link_libraries(${_name}-OT SCI-OT) 
@@ -66,5 +69,22 @@ add_test_floatml(matmul)
 add_test_floatml(sigmoid)
 add_test_floatml(softmax)
 
+include_directories( ${OPENMP_INCLUDES} )
+include_directories( ${OpenFHE_INCLUDE} )
+include_directories( ${OpenFHE_INCLUDE}/third-party/include )
+include_directories( ${OpenFHE_INCLUDE}/core )
+include_directories( ${OpenFHE_INCLUDE}/pke )
+
+link_directories( ${OpenFHE_LIBDIR} )
+link_directories( ${OPENMP_LIBRARIES} )
+set( CMAKE_EXE_LINKER_FLAGS ${OpenFHE_EXE_LINKER_FLAGS} )
+link_libraries( ${OpenFHE_SHARED_LIBRARIES} )
+
 add_executable(BERT-HE-SEAL "test_bert_matmul_seal.cpp")
 target_link_libraries(BERT-HE-SEAL SCI-HE)
+
+add_executable(BERT-HE-CIPHER-EFFICIENT "test_bert_efficient.cpp")
+target_link_libraries(BERT-HE-CIPHER-EFFICIENT SCI-HE)
+
+add_executable(BERT-HE-CIPHER-EFFICIENT-SEAL "test_bert_efficient_seal.cpp")
+target_link_libraries(BERT-HE-CIPHER-EFFICIENT-SEAL SCI-HE)

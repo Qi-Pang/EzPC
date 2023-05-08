@@ -127,33 +127,70 @@ void free_keys(int party, Encryptor *&encryptor_, Decryptor *&decryptor_,
   }
 }
 
+// TODO: slow, fix this
 void send_encrypted_vector(NetIO *io, vector<Ciphertext> &ct_vec) {
   assert(ct_vec.size() > 0);
-  stringstream os;
-  uint64_t ct_size;
   for (size_t ct = 0; ct < ct_vec.size(); ct++) {
+    stringstream os;
+    uint64_t ct_size;
     ct_vec[ct].save(os);
-    if (!ct)
-      ct_size = os.tellp();
-  }
-  string ct_ser = os.str();
-  io->send_data(&ct_size, sizeof(uint64_t));
-  io->send_data(ct_ser.c_str(), ct_ser.size());
+    ct_size = os.tellp();
+    string ct_ser = os.str();
+    io->send_data(&ct_size, sizeof(uint64_t));
+    io->send_data(ct_ser.c_str(), ct_ser.size());
+    }
 }
 
 void recv_encrypted_vector(SEALContext* context_, NetIO *io, vector<Ciphertext> &ct_vec) {
   assert(ct_vec.size() > 0);
-  stringstream is;
-  uint64_t ct_size;
-  io->recv_data(&ct_size, sizeof(uint64_t));
-  char *c_enc_result = new char[ct_size * ct_vec.size()];
-  io->recv_data(c_enc_result, ct_size * ct_vec.size());
   for (size_t ct = 0; ct < ct_vec.size(); ct++) {
-    is.write(c_enc_result + ct_size * ct, ct_size);
+    stringstream is;
+    uint64_t ct_size;
+    io->recv_data(&ct_size, sizeof(uint64_t));
+    char *c_enc_result = new char[ct_size];
+    io->recv_data(c_enc_result, ct_size);
+    is.write(c_enc_result, ct_size);
     ct_vec[ct].unsafe_load(*context_, is);
+    delete[] c_enc_result;
   }
-  delete[] c_enc_result;
 }
+
+// void send_encrypted_vector(NetIO *io, vector<Ciphertext> &ct_vec) {
+//   assert(ct_vec.size() > 0);
+//   stringstream os;
+//   uint64_t ct_size;
+//   for (size_t ct = 0; ct < ct_vec.size(); ct++) {
+//     ct_vec[ct].save(os);
+//     if (!ct){
+//       ct_size = os.tellp();
+//       cout << "send curr ct size " << ct_size << endl;
+//     }
+//     cout << "curr os" << os.str().size() << endl;
+//   }
+//   string ct_ser = os.str();
+//   cout << "send vec size " << ct_vec.size() << endl;
+//   cout << "send data size " << ct_size << endl;
+//   io->send_data(&ct_size, sizeof(uint64_t));
+//   cout << "send ct ser size " << ct_ser.size() << endl;
+//   io->send_data(ct_ser.c_str(), ct_ser.size());
+// }
+
+// void recv_encrypted_vector(SEALContext* context_, NetIO *io, vector<Ciphertext> &ct_vec) {
+//   assert(ct_vec.size() > 0);
+//   stringstream is;
+//   uint64_t ct_size;
+//   io->recv_data(&ct_size, sizeof(uint64_t));
+//   cout << "recv data size " << ct_size << endl;
+//   char *c_enc_result = new char[ct_size * ct_vec.size()];
+//   io->recv_data(c_enc_result, ct_size * ct_vec.size());
+//   cout << "recv data ct" << endl;
+//   for (size_t ct = 0; ct < ct_vec.size(); ct++) {
+//     is.write(c_enc_result + ct_size * ct, ct_size);
+//     ct_vec[ct].unsafe_load(*context_, is);
+//     cout << "recv data load count " << ct << endl;
+//   }
+//   delete[] c_enc_result;
+// }
 
 void send_ciphertext(NetIO *io, Ciphertext &ct) {
   stringstream os;
