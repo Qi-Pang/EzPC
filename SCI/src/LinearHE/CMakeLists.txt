@@ -17,11 +17,12 @@ if (NOT SEAL_FOUND)
     execute_process(COMMAND ${CMAKE_COMMAND} --build . --target install
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/")
     find_package(SEAL 4.1.1 EXACT REQUIRED PATHS "${PROJECT_SOURCE_DIR}/build/" NO_DEFAULT_PATH)
-else ()
-    execute_process(COMMAND ${CMAKE_COMMAND} --build . --target install
-            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/")
 endif()
 
+
+execute_process(COMMAND ${CMAKE_COMMAND} --build . --target install
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/extern/SEAL/")
+            
 link_directories( ${OpenFHE_LIBDIR} )
 link_directories( ${OPENMP_LIBRARIES} )
 set( CMAKE_EXE_LINKER_FLAGS ${OpenFHE_EXE_LINKER_FLAGS} )
@@ -35,6 +36,7 @@ add_library(SCI-LinearHE
     bert-matmul.cpp
     bert-matmul-cipher-efficient.cpp
     bert-matmul-cipher-efficient-seal.cpp
+    bert-matmul-cipher-efficient-seal-ckks.cpp
     utils-HE-openfhe.cpp
 )
 

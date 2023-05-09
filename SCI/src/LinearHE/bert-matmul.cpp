@@ -506,9 +506,9 @@ void BERTFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim,
     if (verbose)
       cout << "[Server] cts received" << endl;
 
-#ifdef HE_DEBUG
-    PRINT_NOISE_BUDGET(decryptor_, ct, "before FC Online");
-#endif
+// #ifdef HE_DEBUG
+//     PRINT_NOISE_BUDGET(decryptor_, ct, "before FC Online");
+// #endif
 
     auto HE_result = bertfc_online(cts, encoded_mat, data, *evaluator_, gal_keys_,
                                *zero_, enc_noise);

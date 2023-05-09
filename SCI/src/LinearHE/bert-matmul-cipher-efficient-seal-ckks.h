@@ -26,7 +26,7 @@ Modified by Deevashwer Rathee
 #ifndef BERTFC_FIELD_H__
 #define BERTFC_FIELD_H__
 
-#include "utils-HE.h"
+#include "utils-HE-ckks.h"
 
 using namespace std;
 using namespace sci;
@@ -44,7 +44,7 @@ struct FCMetadata {
   int32_t image_size;
 };
 
-class BEFCField {
+class BEFCField_CKKS {
 public:
   int party;
   NetIO *io;
@@ -53,17 +53,23 @@ public:
   Encryptor *encryptor;
   Decryptor *decryptor;
   Evaluator *evaluator;
-  BatchEncoder *encoder;
+  CKKSEncoder *encoder;
   GaloisKeys *gal_keys;
   RelinKeys *relin_keys;
   Ciphertext *zero;
   size_t slot_count;
+  size_t poly_mod_degree;
+  double scale;
 
-  BEFCField(int party, NetIO *io);
+  BEFCField_CKKS(int party, NetIO *io);
 
-  ~BEFCField();
+  ~BEFCField_CKKS();
+
+  void generate_new_keys();
 
   void configure();
+
+  void free_keys();
 
   vector<vector<Plaintext>> generate_rotation_masks(const FCMetadata &data);
   vector<Plaintext> generate_cipher_masks(const FCMetadata &data);
@@ -71,9 +77,9 @@ public:
 
   Ciphertext rotation_by_one(const FCMetadata &data,  Ciphertext ct, int k, vector<vector< Plaintext>> rotation_masks);
 
-  vector<Ciphertext> bert_efficient_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
+  vector<Ciphertext> bert_efficient_preprocess_vec(vector<double> &input, const FCMetadata &data);
 
-  vector<vector<Plaintext>> bert_efficient_preprocess_matrix(const uint64_t *const *matrix, const FCMetadata &data);
+  vector<vector<Plaintext>> bert_efficient_preprocess_matrix(const vector<vector<double>> matrix, const FCMetadata &data);
 
   Ciphertext bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
@@ -85,16 +91,16 @@ public:
 
   vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 
-  void print_noise_budget_vec(vector<Ciphertext> v);
+  void print_scale_vec(vector<Ciphertext> v);
 
   void print_ct(Ciphertext &ct, int len);
   void print_pt(Plaintext &pt, int len);
 
   void matrix_multiplication(int32_t input_dim, int32_t common_dim,
                              int32_t output_dim,
-                             vector<vector<uint64_t>> &A,
-                             vector<vector<uint64_t>> &B,
-                             vector<vector<uint64_t>> &C,
+                             vector<vector<double>> &A,
+                             vector<vector<double>> &B,
+                             vector<vector<double>> &C,
                              bool verify_output = false, bool verbose = false);
 
               
