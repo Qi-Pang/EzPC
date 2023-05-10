@@ -24,14 +24,15 @@ Modified by Qi Pang
 */
 
 #include "LinearHE/bert-matmul-cipher-efficient-seal.h"
-// #include "scheme/bgvrns/bgvrns-ser.h"
 #include <omp.h>
 
 using namespace std;
 using namespace sci;
 using namespace seal;
 
-void BEFCField::print_noise_budget_vec(vector<Ciphertext> v){
+#define HE_TIMING
+
+void BEFCField::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << "Noise budget: ";
     for(int i = 0; i < v.size(); i++){
         cout << YELLOW << decryptor->invariant_noise_budget(v[i]) << " ";
@@ -45,7 +46,7 @@ void BEFCField::print_ct(Ciphertext &ct, int len){
     print_pt(pt, len);
 }
 
-void BEFCField::print_pt(Plaintext &pt, int len){
+void BEFCField::print_pt(Plaintext &pt, int len) {
     vector<int64_t> dest(len, 0ULL);
     encoder->decode(pt, dest);
     cout << "Decode first 5 result: ";
@@ -61,26 +62,23 @@ void BEFCField::print_pt(Plaintext &pt, int len){
 }
 
 // Generate the masks for 1-step rotation
-vector<vector<Plaintext>> BEFCField::generate_rotation_masks(const FCMetadata &data)
-{
+vector<vector<Plaintext>> BEFCField::generate_rotation_masks(const FCMetadata &data) {
     vector<vector<Plaintext>> result;
-    for (int i = 0; i < 128; i++)
-    {
+    for (int i = 0; i < 128; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
         vector<int64_t> mask2(data.slot_count, 0LL);
-        for (int j = 0; j < 128 - i; j++)
-            for (int k = 0; k < 32; k++)
-            {
+        for (int j = 0; j < 128 - i; j++) {
+            for (int k = 0; k < 32; k++) {
                 mask1[j + 128 * k] = 1;
                 mask1[j + 128 * k + data.slot_count / 2] = 1;
             }
-
-        for (int j = 128 - i; j < 128; j++)
-            for (int k = 0; k < 32; k++)
-            {
+        }
+        for (int j = 128 - i; j < 128; j++) {
+            for (int k = 0; k < 32; k++) {
                 mask2[j + 128 * k] = 1;
                 mask2[j + 128 * k + data.slot_count / 2] = 1;
             }
+        }
         Plaintext pt1;
         Plaintext pt2;
         encoder->encode(mask1, pt1);
@@ -91,11 +89,9 @@ vector<vector<Plaintext>> BEFCField::generate_rotation_masks(const FCMetadata &d
 }
 
 // Generate cipher_masks: 1111100000..., 0000011111..., ...
-vector<Plaintext> BEFCField::generate_cipher_masks(const FCMetadata &data)
-{
+vector<Plaintext> BEFCField::generate_cipher_masks(const FCMetadata &data) {
     vector<Plaintext> result;
-    for (int i = 0; i < 32; i++)
-    {
+    for (int i = 0; i < 32; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
         for (int k = 0; k < 128; k++)
             mask1[i * 128 + k] = 1;
@@ -104,8 +100,7 @@ vector<Plaintext> BEFCField::generate_cipher_masks(const FCMetadata &data)
         result.push_back(pt);
     }
 
-    for (int i = 0; i < 32; i++)
-    {
+    for (int i = 0; i < 32; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
         for (int k = 0; k < 128; k++)
             mask1[i * 128 + k + data.slot_count / 2] = 1;
@@ -114,8 +109,7 @@ vector<Plaintext> BEFCField::generate_cipher_masks(const FCMetadata &data)
         result.push_back(pt);
     }
 
-    for (int i = 0; i < 32; i++)
-    {
+    for (int i = 0; i < 32; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
         for (int k = 0; k < 128; k++)
             mask1[i * 128 + k] = 1;
@@ -124,8 +118,7 @@ vector<Plaintext> BEFCField::generate_cipher_masks(const FCMetadata &data)
         result.push_back(pt);
     }
 
-    for (int i = 0; i < 32; i++)
-    {
+    for (int i = 0; i < 32; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
         for (int k = 0; k < 128; k++)
             mask1[i * 128 + k + data.slot_count / 2] = 1;
@@ -137,13 +130,11 @@ vector<Plaintext> BEFCField::generate_cipher_masks(const FCMetadata &data)
 }
 
 // Generate packing_masks: 1111100000, 0000011111
-vector<Plaintext> BEFCField::generate_packing_masks(const FCMetadata &data)
-{
+vector<Plaintext> BEFCField::generate_packing_masks(const FCMetadata &data) {
     vector<Plaintext> result;
     vector<int64_t> mask1(data.slot_count, 0LL);
     vector<int64_t> mask2(data.slot_count, 0LL);
-    for (int i = 0; i < data.slot_count / 2; i++)
-    {
+    for (int i = 0; i < data.slot_count / 2; i++) {
         mask1[i] = 1;
         mask2[i + data.slot_count / 2] = 1;
         
@@ -157,17 +148,49 @@ vector<Plaintext> BEFCField::generate_packing_masks(const FCMetadata &data)
     return result;
 }
 
-// 1-step rotations contain 2 sub-rotations
-// Ciphertext hoisted_rotation_by_one(const FCMetadata &data, Ciphertext ct, int k, vector<vector<Plaintext>> rotation_masks, SEALContext &cryptoContext, std::shared_ptr<vector<lbcrypto::DCRTPoly>> &rotation_precompute)
-// {
-//     int m = -(32 - k);
-//     Ciphertext ct1 = cryptoContext->EvalFastRotation(ct, k, 2 * data.slot_count, rotation_precompute);
-//     Ciphertext ct2 = cryptoContext->EvalFastRotation(ct, m, 2 * data.slot_count, rotation_precompute);
-//     return cryptoContext->EvalAdd(cryptoContext->EvalMult(ct1, rotation_masks[k][0]), cryptoContext->EvalMult(ct2, rotation_masks[k][1]));
-// }
+vector<Plaintext> BEFCField::generate_depth3_masks(const FCMetadata &data) {
+    vector<Plaintext> result;
 
-Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, Ciphertext ct, int k, vector<vector<Plaintext>> rotation_masks)
-{
+    for (int i = 0; i < 64; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        for (int k = 0; k < 128 - i; k++)
+            mask1[i * 128 + k] = 1;
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+
+    for (int i = 0; i < 64; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        for (int k = 0; k < 128 - i; k++)
+            mask1[i * 128 + k] = 1;
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+
+    for (int i = 0; i < 64; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        for (int k = 128 - i; k < 128; k++)
+            mask1[i * 128 + k] = 1;
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+
+    for (int i = 0; i < 64; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        for (int k = 128 - i; k < 128; k++)
+            mask1[i * 128 + k] = 1;
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+    return result;
+}
+
+Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, Ciphertext ct, int k, vector<vector<Plaintext>> rotation_masks) {
+
     int m = -(128 - k);
     Ciphertext ct1;
     Ciphertext ct2;
@@ -183,6 +206,17 @@ Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, Ciphertext ct, int
     evaluator->add(mul1, mul2, add);
 
     return add;
+}
+
+vector<Ciphertext> BEFCField::rotation_by_one_depth3(const FCMetadata &data, Ciphertext ct, int k) {
+
+    int m = -(128 - k);
+    Ciphertext ct1;
+    Ciphertext ct2;
+    evaluator->rotate_rows(ct, k, *gal_keys, ct1);
+    evaluator->rotate_rows(ct, m, *gal_keys, ct2);
+
+    return {ct1, ct2};
 }
 
 // column-wise packing
@@ -208,23 +242,20 @@ vector<vector<Plaintext>> BEFCField::bert_efficient_preprocess_matrix(const uint
     vector<int64_t> temp2;
     int num_diag = 32;
     int num_matrix_per_diag = data.filter_h / (data.slot_count / data.image_size); // should be 12
-    for (int l = 0; l < num_diag; l++)
-    {//iterate over all diagonals
+    for (int l = 0; l < num_diag; l++) {
+        //iterate over all diagonals
         vector<Plaintext> temp_matrix_diag(num_matrix_per_diag);
         int matrix_diag_index = 0;
-        for (int i = 0; i < data.filter_h / num_diag; i++)
-        {//iterate over subblocks (32x32) of rows
-            for (int j = 0; j < num_diag; j++) 
-            {//iterate over columns
-                for (int k = 0; k < 128; k++)
-                {
+        for (int i = 0; i < data.filter_h / num_diag; i++) {
+            //iterate over subblocks (32x32) of rows
+            for (int j = 0; j < num_diag; j++) {
+                //iterate over columns
+                for (int k = 0; k < 128; k++) {
                     temp2.push_back(matrix[i * num_diag + j][(j + l) % num_diag]);
                 }
-                if (temp2.size() % (data.slot_count / 2) == 0)
-                {
-                    std::rotate(temp2.begin() + (temp2.size() / (data.slot_count / 2) - 1) * data.slot_count / 2, temp2.begin() + temp2.size() - l * 128, temp2.end());
-                    if (temp2.size() == data.slot_count)
-                    {
+                if (temp2.size() % (data.slot_count / 2) == 0) {
+                    rotate(temp2.begin() + (temp2.size() / (data.slot_count / 2) - 1) * data.slot_count / 2, temp2.begin() + temp2.size() - l * 128, temp2.end());
+                    if (temp2.size() == data.slot_count) {
                         Plaintext pt;
                         encoder->encode(temp2, pt);
                         temp_matrix_diag[matrix_diag_index] = pt;
@@ -237,23 +268,20 @@ vector<vector<Plaintext>> BEFCField::bert_efficient_preprocess_matrix(const uint
         weightMatrix.push_back(temp_matrix_diag);
     }
 
-    for (int l = 0; l < num_diag; l++)
-    {//iterate over all diagonals
+    for (int l = 0; l < num_diag; l++) {
+        //iterate over all diagonals
         vector<Plaintext> temp_matrix_diag(num_matrix_per_diag);
         int matrix_diag_index = 0;
-        for (int i = 0; i < data.filter_h / num_diag; i++)
-        {//iterate over subblocks (32x32) of rows
-            for (int j = 0; j < num_diag; j++) 
-            {//iterate over columns
-                for (int k = 0; k < 128; k++)
-                {
+        for (int i = 0; i < data.filter_h / num_diag; i++) {
+            //iterate over subblocks (32x32) of rows
+            for (int j = 0; j < num_diag; j++) {
+                //iterate over columns
+                for (int k = 0; k < 128; k++) {
                     temp2.push_back(matrix[i * num_diag + j][(j + l) % num_diag + num_diag]);
                 }
-                if (temp2.size() % (data.slot_count / 2) == 0)
-                {
+                if (temp2.size() % (data.slot_count / 2) == 0) {
                     std::rotate(temp2.begin() + (temp2.size() / (data.slot_count / 2) - 1) * data.slot_count / 2, temp2.begin() + temp2.size() - l * 128, temp2.end());
-                    if (temp2.size() == data.slot_count)
-                    {
+                    if (temp2.size() == data.slot_count) {
                         Plaintext pt;
                         encoder->encode(temp2, pt);
                         temp_matrix_diag[matrix_diag_index] = pt;
@@ -273,16 +301,7 @@ vector<vector<Plaintext>> BEFCField::bert_efficient_preprocess_matrix(const uint
 Ciphertext BEFCField::bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
   // Sample randomness into vector
   vector<int64_t> noise(data.slot_count, 0ULL);
-//   PRG128 prg;
-//   prg.random_mod_p<uint64_t>(noise.data(), data.slot_count, prime_mod);
 
-  // Puncture the vector with secret shares where an actual fc result value
-  // lives
-//   for (int row = 0; row < data.filter_h; row++) {
-//     int curr_set = row / data.inp_ct;
-//     noise[(row % data.inp_ct) + next_pow2(data.image_size) * curr_set] =
-//         secret_share[row];
-//   }
   for (int i = 0; i < data.slot_count; i++)
     noise[i] = secret_share[i];
 
@@ -297,20 +316,20 @@ Ciphertext BEFCField::bert_efficient_preprocess_noise(const uint64_t *secret_sha
 vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<vector<Plaintext>> & rotation_masks) {
 
     //prepare rotated intermediate representation
+    cout << "[Server] Online Start" << endl;
     vector<vector<Ciphertext>> rotatedIR(cts.size());
-
     int num_diag = 32;
-    std::cout << "[Server] Online Start" << endl;
-    auto t1 = high_resolution_clock::now();
-    // omp_set_num_threads(12);
+
+    #ifdef HE_TIMING
+    auto t1_rotate = high_resolution_clock::now();
+    # endif
+
     #pragma omp parallel for
-    for (int i = 0; i < cts.size(); i++)
-    {   
+    for (int i = 0; i < cts.size(); i++) {   
         vector<Ciphertext> tmp;
         tmp.push_back(cts[i]);
 
-        for (int j = 1; j < num_diag; j++)
-        {
+        for (int j = 1; j < num_diag; j++) {
             Ciphertext temp_rot;
             evaluator->rotate_rows(cts[i], (num_diag - j) * data.image_size, *gal_keys, temp_rot);
             tmp.push_back(temp_rot);
@@ -319,21 +338,27 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
         tmp.clear();
     }
 
+    #ifdef HE_TIMING
+    auto t2_rotate = high_resolution_clock::now();
+    auto interval = (t2_rotate - t1_rotate)/1e+9;
+    std::cout << "[Server] Online - rotation takes " << interval.count() << "sec" << endl;
+    # endif
+
     #ifdef HE_DEBUG
-        print_noise_budget_vec(rotatedIR[0]);
+    print_noise_budget_vec(rotatedIR[0]);
     #endif
 
-    auto t2 = high_resolution_clock::now();
-    auto ms_double = (t2 - t1)/1e+9;
-    std::cout << "[Server] Online - rotation done " << ms_double.count() << endl;
+    #ifdef HE_TIMING
+    auto t1_mul = high_resolution_clock::now();
+    # endif
+
     //compute matrix multiplication
     vector<Ciphertext> temp_result1(enc_mat1.size() * cts.size());
     vector<Ciphertext> temp_result2(enc_mat2.size() * cts.size());
-    t1 = high_resolution_clock::now();
 
     #pragma omp parallel for
-    for (int k = 0; k < enc_mat1.size() / 2 * cts.size(); k++)
-    {//iterate over all ciphertexts
+    for (int k = 0; k < enc_mat1.size() / 2 * cts.size(); k++) {
+        //iterate over all ciphertexts
         int j = k / cts.size();
         int i = k % cts.size();
         Ciphertext ct1_l;
@@ -351,18 +376,25 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
         temp_result2[k + enc_mat2.size() * cts.size() / 2] = ct2_r; // right half
     }
 
+    #ifdef HE_TIMING
+    auto t2_mul = high_resolution_clock::now();
+    interval = (t2_rotate - t1_rotate)/1e+9;
+    std::cout << "[Server] Mult first layer takes " << interval.count() << "sec" << endl;
+    # endif
+
     #ifdef HE_DEBUG
         print_noise_budget_vec(temp_result1);
         print_noise_budget_vec(temp_result2);
     #endif
 
-    std::cout << "[Server] Mult first layer done. "  << endl;
+    #ifdef HE_TIMING
+    auto t1_add_rotate = high_resolution_clock::now();
+    # endif
 
     Ciphertext result_left1 = temp_result1[0];
     Ciphertext result_left2 = temp_result2[0];
 
-    for (int k = 1; k < temp_result1.size() / 2; k++)
-    {
+    for (int k = 1; k < temp_result1.size() / 2; k++) {
         evaluator->add_inplace(result_left1, temp_result1[k]);
         evaluator->add_inplace(result_left2, temp_result2[k]);
     }
@@ -375,8 +407,8 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
 
     Ciphertext result_right1 = temp_result1[temp_result1.size() / 2];
     Ciphertext result_right2 = temp_result2[temp_result1.size() / 2];
-    for (int k = 1; k < temp_result1.size() / 2; k++)
-    {
+
+    for (int k = 1; k < temp_result1.size() / 2; k++) {
         evaluator->add_inplace(result_right1, temp_result1[k + temp_result1.size() / 2]);
         evaluator->add_inplace(result_right2, temp_result2[k + temp_result2.size() / 2]);
     }
@@ -388,6 +420,12 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
     evaluator->add_inplace(result_right1, rtt_right1);
     evaluator->add_inplace(result_right2, rtt_right2);
 
+    #ifdef HE_TIMING
+    auto t2_add_rotate = high_resolution_clock::now();
+    interval = (t2_add_rotate - t1_add_rotate)/1e+9;
+    std::cout << "[Server] Rotate and add takes " << interval.count() << "sec" << endl;
+    # endif
+
     #ifdef HE_DEBUG
         PRINT_NOISE_BUDGET(decryptor, result_left1, "2nd Rotation and Add");
         PRINT_NOISE_BUDGET(decryptor, result_left2, "2nd Rotation and Add");
@@ -395,15 +433,7 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
         PRINT_NOISE_BUDGET(decryptor, result_right2, "2nd Rotation and Add");
     #endif
 
-    // result_left1 = cryptoContext->EvalMult(result_left1, packing_masks[0]);
-    // result_right1 = cryptoContext->EvalMult(result_right1, packing_masks[1]);
-    // result = cryptoContext->EvalAdd(result_left1, result_right1);
-
     vector<Ciphertext> result = {result_left1, result_right1, result_left2, result_right2};
-
-    t2 = high_resolution_clock::now();
-    ms_double = (t2 - t1)/1e+9;
-    std::cout << "[Server] Online Done " << ms_double.count() << endl;
 
     return result;
 }
@@ -421,22 +451,20 @@ vector<Ciphertext> BEFCField::bert_efficient_cipher(const FCMetadata &data, vect
     auto HE_result2_left = Cipher_plain_result[2];
     auto HE_result2_right = Cipher_plain_result[3];
     vector<Ciphertext> rotation_results(data.image_size);
-    auto t1 = high_resolution_clock::now();
     vector<Ciphertext> rotation_results_left(data.image_size);
     vector<Ciphertext> rotation_results_right(data.image_size);
     
+    #ifdef HE_TIMING
+    auto t1_mul = high_resolution_clock::now();
+    # endif
+
     int num_diag = 32;
     #pragma omp parallel for
-    for (int i = 0; i < data.image_size; i++)
-    {
-        #ifdef HE_DEBUG
-            PRINT_NOISE_BUDGET(decryptor, HE_result2_left, "before rotation"); 
-        #endif
+    for (int i = 0; i < data.image_size; i++) {
+
         Ciphertext temp_mult = rotation_by_one(data, HE_result2_left, i, rotation_masks);
         Ciphertext ct_l;
-        #ifdef HE_DEBUG
-            PRINT_NOISE_BUDGET(decryptor, temp_mult, "after rotation"); 
-        #endif
+
         evaluator->multiply(HE_result1_left, temp_mult, ct_l);
         evaluator->relinearize_inplace(ct_l, *relin_keys);
         rotation_results_left[i] = ct_l;
@@ -450,68 +478,162 @@ vector<Ciphertext> BEFCField::bert_efficient_cipher(const FCMetadata &data, vect
         rotation_results[i] = add;
     }
 
+    #ifdef HE_TIMING
+    auto t2_mul = high_resolution_clock::now();
+    auto interval = (t2_mul - t1_mul)/1e+9;
+    std::cout << "[Server] Cipher-Cipher Rotation 1 takes " << interval.count() << "sec" << endl;
+    # endif
+
     #ifdef HE_DEBUG
-        print_noise_budget_vec(rotation_results_left);
-        print_noise_budget_vec(rotation_results_right);
-        cout << "After cipher cipher mult before Add " << endl;
-        print_noise_budget_vec(rotation_results);
+    print_noise_budget_vec(rotation_results_left);
+    print_noise_budget_vec(rotation_results_right);
+    cout << "After cipher cipher mult before Add " << endl;
+    print_noise_budget_vec(rotation_results);
     #endif
 
-    auto t2 = high_resolution_clock::now();
-    auto ms_double = (t2 - t1)/1e+9;
-    std::cout << "[Server] Cipher-Cipher Rotation 1 " << ms_double.count() << std::endl;
+    #ifdef HE_TIMING
+    auto t1_mul_2 = high_resolution_clock::now();
+    # endif
 
-    t1 = high_resolution_clock::now();
     int local_rotation = std::ceil(std::log2(32));
     #pragma omp parallel for
-    for (int i = 0; i < data.image_size; i++)
-    {
-        // rotation_results_left[i] = cryptoContext->EvalAdd(cryptoContext->EvalRotate(rotation_results_left[i], data.slot_count/2), rotation_results_left[i]);
-
-        // auto cPrecomp = cryptoContext->EvalFastRotationPrecompute(rotation_results[i]);
-        // Ciphertext<DCRTPoly> temp_rotation = rotation_results[i];
-        for (int k = 0; k < local_rotation; k++)
-        {
+    for (int i = 0; i < data.image_size; i++) {
+        for (int k = 0; k < local_rotation; k++) {
             Ciphertext temp2;
-            // cout << "Before rotate " << (int32_t) pow(2, k) * 128 << endl;
             evaluator->rotate_rows(rotation_results[i], (int32_t) pow(2, k) * 128, *gal_keys,temp2);
             evaluator->add_inplace(rotation_results[i], temp2);
         }
-        // Plaintext plaintextMultResult;
-        // cryptoContext->Decrypt(keyPair.secretKey, rotation_results[i], &plaintextMultResult);
-        // std::cout << "Dec Result rotation results 0: " << plaintextMultResult << endl;
 
-        // cout << "Another multiply plain" << endl;
         evaluator->multiply_plain_inplace(rotation_results[i], cipher_masks[i]);
 
-        // cryptoContext->Decrypt(keyPair.secretKey, rotation_results[i], &plaintextMultResult);
-        // std::cout << "Dec Result rotation results 0: " << plaintextMultResult << endl;
     }
-    t2 = high_resolution_clock::now();
-    ms_double = (t2 - t1)/1e+9;
-    std::cout << "[Server] Cipher-Cipher Rotation 2 " << ms_double.count() << std::endl;
+
+    #ifdef HE_TIMING
+    auto t2_mul_2 = high_resolution_clock::now();
+    interval = (t2_mul_2 - t1_mul_2)/1e+9;
+    std::cout << "[Server] Cipher-Cipher Rotation 2 takes " << interval.count() << "sec" << endl;
+    # endif
+
     #ifdef HE_DEBUG
-        cout << "After last mult" << endl;
-        print_noise_budget_vec(rotation_results);
+    cout << "After last mult" << endl;
+    print_noise_budget_vec(rotation_results);
     #endif
+
     // Packing
-    t1 = high_resolution_clock::now();
     vector<Ciphertext> results(2);
     results[0] = rotation_results[0];
     results[1] = rotation_results[data.slot_count / data.image_size];
 
-    for (int i = 1; i < data.slot_count / data.image_size; i++)
-    {
+    #ifdef HE_TIMING
+    auto t1_pack = high_resolution_clock::now();
+    # endif
+
+    #pragma omp parallel for
+    for (int i = 1; i < data.slot_count / data.image_size; i++) {
         evaluator->add_inplace(results[0], rotation_results[i]);
         evaluator->add_inplace(results[1], rotation_results[i + data.slot_count / data.image_size]);
     }
 
-    t2 = high_resolution_clock::now();
-    ms_double = (t2 - t1)/1e+9;
-    std::cout << "[Server] Cipher-Cipher Packing " << ms_double.count() << std::endl;
+    #ifdef HE_TIMING
+    auto t2_pack = high_resolution_clock::now();
+    interval = (t2_pack - t1_pack)/1e+9;
+    std::cout << "[Server] Packing takes " << interval.count() << "sec" << endl;
+    # endif
+
     #ifdef HE_DEBUG
-        print_noise_budget_vec(results);
+    print_noise_budget_vec(results);
     #endif
+
+    return results;
+}
+
+vector<Ciphertext> BEFCField::bert_efficient_cipher_depth3(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& depth3_masks){
+    
+    Ciphertext HE_result1_left = Cipher_plain_result[0];
+    Ciphertext HE_result1_right = Cipher_plain_result[1];
+    Ciphertext HE_result2_left = Cipher_plain_result[2];
+    Ciphertext HE_result2_right = Cipher_plain_result[3];
+
+    vector<Ciphertext> rotation_results(data.image_size * 2);
+    auto t1 = high_resolution_clock::now();
+    vector<Ciphertext> rotation_results_left(data.image_size * 2);
+    vector<Ciphertext> rotation_results_right(data.image_size * 2);
+
+    #ifdef HE_TIMING
+    auto t1_mul = high_resolution_clock::now();
+    # endif
+
+    int num_diag = 32;
+    #pragma omp parallel for
+    for (int i = 0; i < data.image_size; i++) {
+        vector<Ciphertext> temp_mult = rotation_by_one_depth3(data, HE_result2_left, i);
+        rotation_results_left[i] = HE_result1_left;
+        evaluator->multiply_inplace(rotation_results_left[i], temp_mult[0]);
+        evaluator->relinearize_inplace(rotation_results_left[i], *relin_keys);
+        rotation_results_left[i + data.image_size] = HE_result1_left;
+        evaluator->multiply_inplace(rotation_results_left[i + data.image_size], temp_mult[1]);
+        evaluator->relinearize_inplace(rotation_results_left[i + data.image_size], *relin_keys);
+
+        temp_mult = rotation_by_one_depth3(data, HE_result2_right, i);
+        rotation_results_right[i] = HE_result1_right;
+        evaluator->multiply_inplace(rotation_results_right[i], temp_mult[0]);
+        evaluator->relinearize_inplace(rotation_results_right[i], *relin_keys);
+        rotation_results_right[i + data.image_size] = HE_result1_right;
+        evaluator->multiply_inplace(rotation_results_right[i + data.image_size], temp_mult[1]);
+        evaluator->relinearize_inplace(rotation_results_right[i + data.image_size], *relin_keys);
+
+        evaluator->add(rotation_results_left[i], rotation_results_right[i], rotation_results[i]);
+        evaluator->add(rotation_results_left[i + data.image_size], rotation_results_right[i+ data.image_size], rotation_results[i+ data.image_size]);
+    }
+
+    #ifdef HE_TIMING
+    auto t2_mul = high_resolution_clock::now();
+    auto interval = (t2_mul - t1_mul)/1e+9;
+    std::cout << "[Server] Cipher-Cipher Rotation 1 takes " << interval.count() << "sec" << endl;
+    # endif
+
+    #ifdef HE_TIMING
+    auto t1_mul_2 = high_resolution_clock::now();
+    # endif
+    int local_rotation = std::ceil(std::log2(32));
+    #pragma omp parallel for
+    for (int i = 0; i < data.image_size * 2; i++) {
+        for (int k = 0; k < local_rotation; k++) {
+            Ciphertext temp2;
+            evaluator->rotate_rows(rotation_results[i], (int32_t) pow(2, k) * 128, *gal_keys,temp2);
+            evaluator->add_inplace(rotation_results[i], temp2);
+        }
+        evaluator->multiply_plain_inplace(rotation_results[i], depth3_masks[i]);
+    }
+    #ifdef HE_TIMING
+    auto t2_mul_2 = high_resolution_clock::now();
+    interval = (t2_mul_2 - t1_mul_2)/1e+9;
+    std::cout << "[Server] Cipher-Cipher Rotation 2 takes " << interval.count() << "sec" << endl;
+    # endif
+
+    // Packing
+    vector<Ciphertext> results(2);
+    results[0] = rotation_results[0];
+    results[1] = rotation_results[data.slot_count / data.image_size];
+
+    #ifdef HE_TIMING
+    auto t1_pack = high_resolution_clock::now();
+    # endif
+
+    #pragma omp parallel for
+    for (int i = 1; i < data.slot_count / data.image_size; i++) {
+        evaluator->add_inplace(results[0], rotation_results[i]);
+        evaluator->add_inplace(results[0], rotation_results[i + data.image_size]);
+        evaluator->add_inplace(results[1], rotation_results[i + data.slot_count / data.image_size]);
+        evaluator->add_inplace(results[1], rotation_results[i + data.slot_count / data.image_size + data.image_size]);
+    }
+
+    #ifdef HE_TIMING
+    auto t2_pack = high_resolution_clock::now();
+    interval = (t2_pack - t1_pack)/1e+9;
+    std::cout << "[Server] Packing takes " << interval.count() << "sec" << endl;
+    # endif
+
     return results;
 }
 
@@ -524,14 +646,12 @@ int omp_thread_count() {
 
 uint64_t* BEFCField::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
   uint64_t *result = new uint64_t[data.image_size*data.image_size];
-  for (int i = 0; i < cts.size(); i++)
-  {
+  for (int i = 0; i < cts.size(); i++) {
     vector<int64_t> plain(data.slot_count, 0ULL);
     Plaintext pt;
     decryptor->decrypt(cts[i], pt);
-    //   decryptor.decrypt(ct, tmp);
-    //   batch_encoder.decode(tmp, plain);
     encoder->decode(pt, plain);
+
     #pragma omp parallel for
     for (int row = 0; row < data.slot_count; row++) {
         int j = row / data.image_size + i * 64;
@@ -573,8 +693,7 @@ void BEFCField::configure() {
   data.inp_ct = ceil((float)next_pow2(data.filter_h) / data.pack_num);
 }
 
-vector<uint64_t> BEFCField::ideal_functionality(uint64_t *vec,
-                                              uint64_t **matrix) {
+vector<uint64_t> BEFCField::ideal_functionality(uint64_t *vec, uint64_t **matrix) {
   vector<uint64_t> result(data.filter_h, 0ULL);
   for (int row = 0; row < data.filter_h; row++) {
     for (int idx = 0; idx < data.filter_w; idx++) {
@@ -585,47 +704,43 @@ vector<uint64_t> BEFCField::ideal_functionality(uint64_t *vec,
   return result;
 }
 
-void BEFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim, int32_t output_dim, vector<vector<uint64_t>> &A, vector<vector<uint64_t>> &B, vector<vector<uint64_t>> &C, bool verify_output, bool verbose) {
+void BEFCField::matrix_multiplication(int32_t input_dim, 
+                                      int32_t common_dim, 
+                                      int32_t output_dim, 
+                                      vector<vector<uint64_t>> &A, 
+                                      vector<vector<uint64_t>> &B, 
+                                      vector<vector<uint64_t>> &C, 
+                                      bool verify_output) {
 
-    cout << "Calling BERT MATMUL" << endl;
     data.filter_h = common_dim;
     data.filter_w = output_dim;
     data.image_size = input_dim;
     this->slot_count = 8192;
     configure();
 
-    if (party == BOB) {  // Client
     
+    if (party == BOB) {  
+        // Client
         vector<uint64_t> vec(common_dim * input_dim);
         for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
                 vec[j*input_dim + i] = A[i][j];
 
-        if (verbose)
-            cout << "[Client] Vector Generated" << endl;
         auto cts = bert_efficient_preprocess_vec(vec, data);
-        // send_ciphertext(io, cts);
         auto io_start = io->counter;
         send_encrypted_vector(io, cts);
-        cout << "size of cts (Bytes): " << sizeof(Ciphertext) << " " << sizeof(Ciphertext) * cts.size() << endl;
-        if (verbose)
-            cout << "[Client] Vector processed and sent of length " << cts.size() << endl;
+        cout << "[Client] Input cts sent" << endl;
+        cout << "[Client] Size of cts (Bytes): " << sizeof(Ciphertext) << " " << sizeof(Ciphertext) * cts.size() << endl;
 
         vector<Ciphertext> enc_result(2);
         recv_encrypted_vector(context, io, enc_result);
-
-        cout << "Result budget: " << decryptor->invariant_noise_budget(enc_result[0]) << " bits" << endl;
+        cout << "[Client] Output cts received" << endl;
+        cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
 
         print_ct(enc_result[0], data.slot_count);
 
-        // std::cout << plaintextMultResult.to_string() << endl;
-
-        cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
         auto HE_result = bert_efficient_postprocess(enc_result, data);
-        if (verbose)
-            cout << "[Client] Result received and decrypted" << endl;
         
-
         // for (int i = 0; i < num_rows; i++) {
         //   C[i][0] = HE_result[i];
         // }
@@ -633,15 +748,17 @@ void BEFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim, int
         //   verify(&vec, nullptr, C);
 
         delete[] HE_result;
-    } else // party == ALICE // Server
-    {
-        auto t1 = high_resolution_clock::now();
+    } else {
+        // Server
+        #ifdef HE_TIMING
+        auto t1_total = high_resolution_clock::now();
+        auto t1_preprocess = high_resolution_clock::now();
+        #endif 
+
         vector<uint64_t> vec(common_dim);
         for (int i = 0; i < common_dim; i++) {
-        vec[i] = B[i][0];
+            vec[i] = B[i][0];
         }
-        if (verbose)
-            cout << "[Server] Vector Generated" << endl;
         vector<uint64_t *> matrix_mod_p(common_dim);
         vector<uint64_t *> matrix(common_dim);
         for (int i = 0; i < common_dim; i++) {
@@ -656,99 +773,70 @@ void BEFCField::matrix_multiplication(int32_t input_dim, int32_t common_dim, int
             matrix[i][j] = val;
         }
         }
-        if (verbose)
-        cout << "[Server] Matrix generated with prime mod: " << prime_mod << endl;
 
         PRG128 prg;
         uint64_t *secret_share = new uint64_t[input_dim*output_dim];
         prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
         auto encoded_mat = bert_efficient_preprocess_matrix(matrix_mod_p.data(), data);
 
-        if (verbose)
-        cout << "[Server] Matrix processed" << endl;
-
         auto rotation_masks = generate_rotation_masks(data);
         auto cipher_masks = generate_cipher_masks(data);
-        // auto packing_masks = generate_packing_masks(data, cryptoContext_);
-
-        if (verbose)
-        cout << "[Server] Masks processed" << endl;
+        auto depth3_masks = generate_depth3_masks(data);
 
         // Ciphertext enc_noise = bert_efficient_preprocess_noise(secret_share, data, cryptoContext_, keyPair_);
-        // if (verbose)
-        //   cout << "[Server] Noise processed" << endl;
-
-        auto t2 = high_resolution_clock::now();
-        auto ms_double = (t2 - t1)/1e+9;
-        if (verbose)
-        cout << "[Server] Matrix processed " << ms_double.count() << "sec" << endl;
+        // cout << "[Server] Noise processed" << endl;
+        #ifdef HE_TIMING
+        auto t2_preprocess = high_resolution_clock::now();
+        auto interval = (t2_preprocess - t1_preprocess)/1e+9;
+        cout << "[Server] Preprocessing takes " << interval.count() << "sec" << endl;
+        #endif 
 
         auto io_start = io->counter;
         vector<Ciphertext> cts(12);
         recv_encrypted_vector(this->context, io, cts);
 
-        cout << "[Server] Recieve encrypted vec" << endl;
-
-        t2 = high_resolution_clock::now();
-        ms_double = (t2 - t1)/1e+9;
-        if (verbose)
-        cout << "[Server] cts received " << ms_double.count() << endl;
-
         #ifdef HE_DEBUG
             print_noise_budget_vec(cts);
         #endif
 
-        Ciphertext HE_result1;
-        Ciphertext HE_result2;
-        // omp_set_num_threads(4);
-        // #pragma omp parallel private(HE_result1, HE_result2) shared(cts, encoded_mat, data, cryptoContext_, keyPair_) 
-        // {
-        //     #pragma omp single 
-        //     {
-        //     #pragma omp task
-        //         bertfc_cipher_online(cts, encoded_mat, data, cryptoContext_, keyPair_, HE_result1);
-        //     #pragma omp task
-        //         bertfc_online_col(cts, encoded_mat_col_pack, data, cryptoContext_, keyPair_, ciphermasks_col[0], ciphermasks_col[1], HE_result2);
-        //     }
-        // }
+        #ifdef HE_TIMING
+        auto t1_cipher_plain = high_resolution_clock::now();
+        #endif 
+
         auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
 
-        auto t3 = high_resolution_clock::now();
-        ms_double = (t3 - t1)/1e+9;
-        if (verbose)
-        cout << "[Server] Cipher-Plaintext Matmul Done " << ms_double.count() << "sec" << endl;
+        #ifdef HE_TIMING
+        auto t2_cipher_plain = high_resolution_clock::now();
+        interval = (t2_cipher_plain - t1_cipher_plain)/1e+9;
+        cout << "[Server] Cipher-Plaintext Matmul takes " << interval.count() << "sec" << endl;
 
+        auto t1_cipher_cipher = high_resolution_clock::now();
+        #endif 
 
-        // Plaintext plaintextMultResult;
-        // cryptoContext->Decrypt(keyPair.secretKey, HE_result1, &plaintextMultResult);
-        // auto reencrypt_vector = plaintextMultResult->GetPackedValue();
-        // HE_result1 = cryptoContext->Encrypt(keyPair_.publicKey, cryptoContext_->MakePackedPlaintext(reencrypt_vector));
+        // auto HE_result = bert_efficient_cipher(data, Cipher_plain_results, rotation_masks, cipher_masks);
+        auto HE_result = bert_efficient_cipher_depth3(data, Cipher_plain_results, depth3_masks);
 
-        // cryptoContext->Decrypt(keyPair.secretKey, HE_result2, &plaintextMultResult);
-        // reencrypt_vector = plaintextMultResult->GetPackedValue();
-        // HE_result2 = cryptoContext->Encrypt(keyPair_.publicKey, cryptoContext_->MakePackedPlaintext(reencrypt_vector));
-
-        // if (verbose)
-        //   cout << "[Server] Reencrypted " << endl;
-
-        auto HE_result = bert_efficient_cipher(data, Cipher_plain_results, rotation_masks, cipher_masks);
-
-        auto t5 = high_resolution_clock::now();
-        ms_double = (t5 - t1)/1e+9;
-        if (verbose)
-        cout << "[Server] Cipher-Cipher Matmul Done " << ms_double.count() << "sec" << endl;
+        #ifdef HE_TIMING
+        auto t2_cipher_cipher = high_resolution_clock::now();
+        interval = (t2_cipher_cipher - t1_cipher_cipher)/1e+9;
+        cout << "[Server] Cipher-Cipher Matmul takes " << interval.count() << "sec" << endl;
+        #endif 
 
         send_encrypted_vector(io, HE_result);
+
+        cout << "[Server] Result sent" << endl;
         cout << "[Server] size of result (Bytes): " << io->counter - io_start << endl;
 
-        if (verbose)
-            cout << "[Server] Result computed and sent sb" << endl;
-
-
         for (int i = 0; i < common_dim; i++) {
-        delete[] matrix_mod_p[i];
-        delete[] matrix[i];
+            delete[] matrix_mod_p[i];
+            delete[] matrix[i];
         }
         delete[] secret_share;
+
+        #ifdef HE_TIMING
+        auto t2_total = high_resolution_clock::now();
+        interval = (t2_total - t1_total)/1e+9;
+        cout << "[Server] Total Time " << interval.count() << "sec" << endl;
+        #endif 
     }
 }

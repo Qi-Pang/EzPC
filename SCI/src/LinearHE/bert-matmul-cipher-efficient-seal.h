@@ -68,8 +68,11 @@ public:
   vector<vector<Plaintext>> generate_rotation_masks(const FCMetadata &data);
   vector<Plaintext> generate_cipher_masks(const FCMetadata &data);
   vector<Plaintext> generate_packing_masks(const FCMetadata &data);
+  vector<Plaintext> generate_depth3_masks(const FCMetadata &data);
 
   Ciphertext rotation_by_one(const FCMetadata &data,  Ciphertext ct, int k, vector<vector< Plaintext>> rotation_masks);
+
+  vector<Ciphertext> rotation_by_one_depth3(const FCMetadata &data, Ciphertext ct, int k);
 
   vector<Ciphertext> bert_efficient_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
 
@@ -80,6 +83,8 @@ public:
   vector<Ciphertext> bert_efficient_online(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<vector<Plaintext>> & rotation_masks);
 
   vector<Ciphertext> bert_efficient_cipher(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<vector<Plaintext>>& rotation_masks, vector<Plaintext>& cipher_masks);
+
+  vector<Ciphertext> bert_efficient_cipher_depth3(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& depth3_masks);
 
   uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 
@@ -95,7 +100,7 @@ public:
                              vector<vector<uint64_t>> &A,
                              vector<vector<uint64_t>> &B,
                              vector<vector<uint64_t>> &C,
-                             bool verify_output = false, bool verbose = false);
+                             bool verify_output = false);
 
               
   

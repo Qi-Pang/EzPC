@@ -26,8 +26,6 @@ SOFTWARE.
 #include "seal/seal.h"
 #include "utils/emp-tool.h"
 
-#define HE_DEBUG
-
 #define PRINT_NOISE_BUDGET(decryptor, ct, print_msg)                           \
   std::cout << "[Server] Noise Budget " << print_msg << ": " << YELLOW         \
             << decryptor->invariant_noise_budget(ct) << " bits" << RESET       \
