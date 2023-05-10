@@ -163,7 +163,8 @@ vector<Plaintext> BEFCField::generate_depth3_masks(const FCMetadata &data) {
 
     for (int i = 0; i < 64; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 0; k < 128 - i - 64; k++)
+        // for (int k = 0; k < 128 - i - 64; k++)
+        for (int k = 0; k < 128 - i; k++)
             mask1[i * 128 + k] = 1;
         Plaintext pt;
         encoder->encode(mask1, pt);
@@ -181,7 +182,8 @@ vector<Plaintext> BEFCField::generate_depth3_masks(const FCMetadata &data) {
 
     for (int i = 0; i < 64; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 128 - i - 64; k < 128; k++)
+        for (int k = 128 - i; k < 128; k++)
+        // for (int k = 128 - i - 64; k < 128; k++)
             mask1[i * 128 + k] = 1;
         Plaintext pt;
         encoder->encode(mask1, pt);
@@ -379,7 +381,7 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
 
     #ifdef HE_TIMING
     auto t2_mul = high_resolution_clock::now();
-    interval = (t2_mul - t1_mul)/1e+9;
+    interval = (t2_rotate - t1_rotate)/1e+9;
     std::cout << "[Server] Mult first layer takes " << interval.count() << "sec" << endl;
     # endif
 
@@ -614,17 +616,18 @@ vector<Ciphertext> BEFCField::bert_efficient_cipher_depth3(const FCMetadata &dat
 
     // Packing
     vector<Ciphertext> results(2);
-    // results[0] = rotation_results[0];
-    // results[1] = rotation_results[data.slot_count / data.image_size];
-    evaluator->add(rotation_results[0], rotation_results[data.image_size], results[0]);
-    evaluator->add(rotation_results[data.slot_count / data.image_size], rotation_results[data.slot_count / data.image_size + data.image_size], results[1]);
+    results[0] = rotation_results[0];
+    results[1] = rotation_results[data.slot_count / data.image_size];
+
+    // evaluator->add(rotation_results[0], rotation_results[data.image_size], results[0]);
+    // evaluator->add(rotation_results[data.slot_count / data.image_size], rotation_results[data.slot_count / data.image_size + data.image_size], results[1]);
 
 
     #ifdef HE_TIMING
     auto t1_pack = high_resolution_clock::now();
     # endif
 
-    // #pragma omp parallel for
+    #pragma omp parallel for
     for (int i = 1; i < data.slot_count / data.image_size; i++) {
         evaluator->add_inplace(results[0], rotation_results[i]);
         evaluator->add_inplace(results[0], rotation_results[i + data.image_size]);
@@ -740,8 +743,12 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         recv_encrypted_vector(context, io, enc_result);
         cout << "[Client] Output cts received" << endl;
         cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
-
         print_noise_budget_vec(enc_result);
+
+        #ifdef HE_DEBUG
+        
+        #endif
+
         print_ct(enc_result[0], data.slot_count);
 
         auto HE_result = bert_efficient_postprocess(enc_result, data);
