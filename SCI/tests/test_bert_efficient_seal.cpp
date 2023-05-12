@@ -45,84 +45,92 @@ std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
 }
 
 void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
-  vector<vector<uint64_t>> A(input_dim);   // Inputs
-  vector<vector<uint64_t>> B(common_dim);  // Weights
-  vector<vector<uint64_t>> C(input_dim);   // Outputs
-  PRG128 prg;
-  for (int i = 0; i < common_dim; i++) {
-    B[i].resize(output_dim);
-    // C[i].resize(output_dim);
-    if (party == ALICE) {  // Server
-      prg.random_data(B[i].data(), output_dim * sizeof(uint64_t));
-      for (int j = 0; j < output_dim; j++) {
-        B[i][j] = ((int64_t)B[i][j]) >> (64 - filter_precision);
-      }
+    vector<vector<uint64_t>> A(input_dim);   // Inputs
+    vector<vector<uint64_t>> B1(common_dim);  // Weights
+    vector<vector<uint64_t>> B2(common_dim);  // Weights
+    vector<vector<uint64_t>> C(input_dim);   // Outputs
+    PRG128 prg;
+    for (int i = 0; i < common_dim; i++) {
+        B1[i].resize(output_dim);
+        B2[i].resize(output_dim);
+        // C[i].resize(output_dim);
+        if (party == ALICE) {  // Server
+            prg.random_data(B1[i].data(), output_dim * sizeof(uint64_t));
+            prg.random_data(B2[i].data(), output_dim * sizeof(uint64_t));
+            for (int j = 0; j < output_dim; j++) {
+                B1[i][j] = ((int64_t)B1[i][j]) >> (64 - filter_precision);
+                B2[i][j] = ((int64_t)B2[i][j]) >> (64 - filter_precision);
+            }
+        }
     }
-  }
-  for (int i = 0; i < input_dim; i++) {
-    A[i].resize(common_dim);
-    C[i].resize(output_dim);
+    for (int i = 0; i < input_dim; i++) {
+        A[i].resize(common_dim);
+        C[i].resize(output_dim);
+    }
 
-  }
-  
-  A = read_data("./X_quantize_0.txt");
-  B = read_data("./Q_quantize_0.txt");
+    A = read_data("./X_quantize_0.txt");
+    B1 = read_data("./Q_quantize_0.txt");
+    B2 = read_data("./K_quantize_0.txt");
 
-  cout << "prime: " << prime_mod << endl;
-  INIT_TIMER;
-  START_TIMER;
-  befc.matrix_multiplication(input_dim, common_dim, output_dim, A, B, C, true);
-  STOP_TIMER("Total Time for FC");
+    // A = read_data("./random_X.txt");
+    // B1 = read_data("./random_Y.txt");
+    // B2 = read_data("./random_Z.txt");
+
+    cout << "prime: " << prime_mod << endl;
+    INIT_TIMER;
+    START_TIMER;
+    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, B1, B2, C, true);
+    STOP_TIMER("Total Time for FC");
 }
 
 int main(int argc, char **argv) {
-  ArgMapping amap;
-  amap.arg("r", party, "Role of party: ALICE = 1; BOB = 2");
-  amap.arg("p", port, "Port Number");
-  amap.arg("n", input_dim, "Input Dim");
-  amap.arg("c", common_dim, "Common Dim");
-  amap.arg("k", output_dim, "Output Dim");
-  amap.arg("fp", filter_precision, "Filter Precision");
-  amap.arg("ip", address, "IP Address of server (ALICE)");
-  amap.arg("l", bitlength, "Bitlength of inputs");
-  amap.parse(argc, argv);
-  // prime_mod = default_prime_mod.at(bitlength);
+    ArgMapping amap;
+    amap.arg("r", party, "Role of party: ALICE = 1; BOB = 2");
+    amap.arg("p", port, "Port Number");
+    amap.arg("n", input_dim, "Input Dim");
+    amap.arg("c", common_dim, "Common Dim");
+    amap.arg("k", output_dim, "Output Dim");
+    amap.arg("fp", filter_precision, "Filter Precision");
+    amap.arg("ip", address, "IP Address of server (ALICE)");
+    amap.arg("l", bitlength, "Bitlength of inputs");
+    amap.parse(argc, argv);
+    // prime_mod = default_prime_mod.at(bitlength);
 
-  // 32 bits
-  // prime_mod = 4293918721;
+    // 32 bits
+    // prime_mod = 4293918721;
 
-  // 30 bits
-  // prime_mod = 1073872897; 
+    // 30 bits
+    // prime_mod = 1073872897; 
 
-  // 29 bits 
-  prime_mod = 536903681;
+    // 29 bits 
+    prime_mod = 536903681;
 
-  // 28bits
-  // prime_mod = 268582913;
-  
-  // 25 bits
-  // prime_mod = 33832961;
-  // prime_mod = 65537;
+    // 28bits
+    // prime_mod = 268582913;
 
-  cout << "===================================================================="
-       << endl;
-  cout << "Role: " << party << " - Bitlength: " << bitlength
-       << " - Mod: " << prime_mod << " - InputDim: " << input_dim
-       << " - CommonDim: " << common_dim << " - OutputDim: " << output_dim << 
-       " - # Threads: " << num_threads << endl;
-  cout << "===================================================================="
-       << endl;
+    // 25 bits
+    // prime_mod = 33832961;
+    // prime_mod = 65537;
 
-  NetIO *io = new NetIO(party == 1 ? nullptr : address.c_str(), port);
+    cout << "===================================================================="
+        << endl;
+    cout << "Role: " << party << " - Bitlength: " << bitlength
+        << " - Mod: " << prime_mod << " - InputDim: " << input_dim
+        << " - CommonDim: " << common_dim << " - OutputDim: " << output_dim << 
+        " - # Threads: " << num_threads << endl;
+    cout << "===================================================================="
+        << endl;
 
-  auto io_start = io->counter;
+    NetIO *io = new NetIO(party == 1 ? nullptr : address.c_str(), port);
 
-  BEFCField befc(party, io);
-  cout << "Before MatMul" << endl;
-  MatMul(befc, input_dim, common_dim, output_dim);
+    auto io_start = io->counter;
 
-  cout << "Communication Round: " << io->num_rounds << endl;
+    BEFCField befc(party, io);
+    cout << "Before MatMul" << endl;
+    MatMul(befc, input_dim, common_dim, output_dim);
 
-  io->flush();
-  return 0;
+    cout << "Communication Round: " << io->num_rounds << endl;
+
+    io->flush();
+    return 0;
 }

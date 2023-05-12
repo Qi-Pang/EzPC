@@ -50,10 +50,12 @@ void BEFCField::print_ct(Ciphertext &ct, int len){
 void BEFCField::print_pt(Plaintext &pt, int len) {
     vector<int64_t> dest(len, 0ULL);
     encoder->decode(pt, dest);
-    cout << "Decode first 5 result: ";
+    cout << "Decode first 5 rows: ";
     int non_zero_count;
-    for(int i =0; i < 5; i++){
-        cout << dest[i] << " ";
+    for(int i = 0; i < 5; i++){
+        for (int j = 0; j < 64; j++)
+            cout << dest[i + j * 128] << " ";
+        cout << endl;
         // if(dest[i] != 0){
         //     non_zero_count += 1;
         // }
@@ -190,6 +192,78 @@ vector<Plaintext> BEFCField::generate_depth3_masks(const FCMetadata &data) {
     return result;
 }
 
+vector<Plaintext> BEFCField::generate_cross_packing_masks(const FCMetadata &data) {
+    vector<Plaintext> result;
+
+    for (int i = 0; i < 32; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        if (i == 0) {
+            for (int k = 0; k < 128 - i; k++)
+                mask1[k] = 1;
+        }
+        else {
+            for (int k = 0; k < 128 - i; k++)
+                mask1[i * 128 + k] = 1;
+            for (int k = 0; k < 128 - i; k++)
+                mask1[i * 128 + k + data.slot_count / 2] = 1;
+        }
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+
+    for (int i = 32; i <= 64; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        if (i == 64) {
+            for (int k = 0; k < 128 - i; k++)
+                mask1[k + data.slot_count / 2] = 1;
+        }
+        else {
+            for (int k = 0; k < 128 - i; k++)
+                mask1[(i - 32) * 128 + k] = 1;
+            for (int k = 0; k < 128 - i; k++)
+                mask1[(i - 32) * 128 + k + data.slot_count / 2] = 1;
+        }
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+
+    for (int i = 0; i < 32; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        if (i == 0) {
+            for (int k = 128 - i; k < 128; k++)
+                mask1[k] = 1;
+        }
+        else {
+            for (int k = 128 - i; k < 128; k++)
+                mask1[i * 128 + k] = 1;
+            for (int k = 128 - i; k < 128; k++)
+                mask1[i * 128 + k + data.slot_count / 2] = 1;
+        }
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+    for (int i = 32; i <= 64; i++) {
+        vector<int64_t> mask1(data.slot_count, 0LL);
+        if (i == 64) {
+            for (int k = 128 - i; k < 128; k++)
+                mask1[k + data.slot_count / 2] = 1;
+        }
+        else {
+            for (int k = 128 - i; k < 128; k++)
+                mask1[(i - 32) * 128 + k] = 1;
+            for (int k = 128 - i; k < 128; k++)
+                mask1[(i - 32) * 128 + k + data.slot_count / 2] = 1;
+        }
+        Plaintext pt;
+        encoder->encode(mask1, pt);
+        result.push_back(pt);
+    }
+    return result;
+}
+
 Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, Ciphertext ct, int k, vector<vector<Plaintext>> rotation_masks) {
 
     int m = -(128 - k);
@@ -295,6 +369,129 @@ vector<vector<Plaintext>> BEFCField::bert_efficient_preprocess_matrix(const uint
         weightMatrix.push_back(temp_matrix_diag);
     }
     return weightMatrix;
+}
+
+pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
+    vector<vector<Plaintext>> weightMatrix1;
+    vector<vector<Plaintext>> weightMatrix2;
+    vector<int64_t> temp2;
+    int num_diag = 32;
+    int num_matrix_per_diag = data.filter_h / (data.slot_count / data.image_size); // should be 12
+
+    int matrix_flag = 0;
+    for (int l = 0; l < num_diag; l++) {
+        vector<Plaintext> temp_matrix_diag(num_matrix_per_diag);
+        int matrix_diag_index = 0;
+        for (int i = 0; i < data.filter_h / num_diag; i++) {
+            for (int j = 0; j < num_diag; j++) {
+                for (int k = 0; k < 128; k++) {
+                    if (matrix_flag == 0)
+                        temp2.push_back(matrix1[i * num_diag + j][(j + l) % num_diag]);
+                    else
+                        temp2.push_back(matrix2[i * num_diag + j][(j + l) % num_diag]);
+                }
+                if (temp2.size() % (data.slot_count / 2) == 0) {
+                    matrix_flag = (matrix_flag + 1) % 2;
+                    std::rotate(temp2.begin() + (temp2.size() / (data.slot_count / 2) - 1) * data.slot_count / 2, temp2.begin() + temp2.size() - l * 128, temp2.end());
+                    if (temp2.size() == data.slot_count) {
+                        Plaintext pt;
+                        encoder->encode(temp2, pt);
+                        temp_matrix_diag[matrix_diag_index] = pt;
+                        matrix_diag_index++;
+                        temp2.clear();
+                    }
+                }
+            }
+        }
+        weightMatrix1.push_back(temp_matrix_diag);
+    }
+
+    matrix_flag = 0;
+    for (int l = 0; l < num_diag; l++) {
+        vector<Plaintext> temp_matrix_diag(num_matrix_per_diag);
+        int matrix_diag_index = 0;
+        for (int i = 0; i < data.filter_h / num_diag; i++) {
+            for (int j = 0; j < num_diag; j++) {
+                for (int k = 0; k < 128; k++) {
+                    if (matrix_flag == 0)
+                        temp2.push_back(matrix1[i * num_diag + j][(j + l) % num_diag + num_diag]);
+                    else
+                        temp2.push_back(matrix2[i * num_diag + j][(j + l) % num_diag + num_diag]);
+                }
+                if (temp2.size() % (data.slot_count / 2) == 0) {
+                    matrix_flag = (matrix_flag + 1) % 2;
+                    std::rotate(temp2.begin() + (temp2.size() / (data.slot_count / 2) - 1) * data.slot_count / 2, temp2.begin() + temp2.size() - l * 128, temp2.end());
+                    if (temp2.size() == data.slot_count) {
+                        Plaintext pt;
+                        encoder->encode(temp2, pt);
+                        temp_matrix_diag[matrix_diag_index] = pt;
+                        matrix_diag_index++;
+                        temp2.clear();
+                    }
+                }
+            }
+        }
+        weightMatrix1.push_back(temp_matrix_diag);
+    }
+
+    matrix_flag = 0;
+    for (int l = 0; l < num_diag; l++) {
+        vector<Plaintext> temp_matrix_diag(num_matrix_per_diag);
+        int matrix_diag_index = 0;
+        for (int i = 0; i < data.filter_h / num_diag; i++) {
+            for (int j = 0; j < num_diag; j++) {
+                for (int k = 0; k < 128; k++) {
+                    if (matrix_flag == 0)
+                        temp2.push_back(matrix2[i * num_diag + j][(j + l) % num_diag]);
+                    else
+                        temp2.push_back(matrix1[i * num_diag + j][(j + l) % num_diag]);
+                }
+                if (temp2.size() % (data.slot_count / 2) == 0) {
+                    matrix_flag = (matrix_flag + 1) % 2;
+                    std::rotate(temp2.begin() + (temp2.size() / (data.slot_count / 2) - 1) * data.slot_count / 2, temp2.begin() + temp2.size() - l * 128, temp2.end());
+                    if (temp2.size() == data.slot_count) {
+                        std::rotate(temp2.begin(), temp2.begin() + temp2.size() / 2, temp2.end());
+                        Plaintext pt;
+                        encoder->encode(temp2, pt);
+                        temp_matrix_diag[matrix_diag_index] = pt;
+                        matrix_diag_index++;
+                        temp2.clear();
+                    }
+                }
+            }
+        }
+        weightMatrix2.push_back(temp_matrix_diag);
+    }
+
+    matrix_flag = 0;
+    for (int l = 0; l < num_diag; l++) {
+        vector<Plaintext> temp_matrix_diag(num_matrix_per_diag);
+        int matrix_diag_index = 0;
+        for (int i = 0; i < data.filter_h / num_diag; i++) {
+            for (int j = 0; j < num_diag; j++) {
+                for (int k = 0; k < 128; k++) {
+                    if (matrix_flag == 0)
+                        temp2.push_back(matrix2[i * num_diag + j][(j + l) % num_diag + num_diag]);
+                    else
+                        temp2.push_back(matrix1[i * num_diag + j][(j + l) % num_diag + num_diag]);
+                }
+                if (temp2.size() % (data.slot_count / 2) == 0) {
+                    matrix_flag = (matrix_flag + 1) % 2;
+                    std::rotate(temp2.begin() + (temp2.size() / (data.slot_count / 2) - 1) * data.slot_count / 2, temp2.begin() + temp2.size() - l * 128, temp2.end());
+                    if (temp2.size() == data.slot_count) {
+                        std::rotate(temp2.begin(), temp2.begin() + temp2.size() / 2, temp2.end());
+                        Plaintext pt;
+                        encoder->encode(temp2, pt);
+                        temp_matrix_diag[matrix_diag_index] = pt;
+                        matrix_diag_index++;
+                        temp2.clear();
+                    }
+                }
+            }
+        }
+        weightMatrix2.push_back(temp_matrix_diag);
+    }
+    return std::make_pair(weightMatrix1, weightMatrix2);
 }
 
 /* Generates a masking vector of random noise that will be applied to parts of
@@ -435,6 +632,82 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
     #endif
 
     vector<Ciphertext> result = {result_left1, result_right1, result_left2, result_right2};
+
+    return result;
+}
+
+vector<Ciphertext> BEFCField::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
+
+    vector<vector<Ciphertext>> rotatedIR(cts.size());
+
+    int num_diag = 32;
+    cout << "[Server] Online Start" << endl;
+    auto t1 = high_resolution_clock::now();
+    #pragma omp parallel for
+    for (int i = 0; i < cts.size(); i++)
+    {   
+        vector<Ciphertext> tmp;
+        tmp.push_back(cts[i]);
+
+        for (int j = 1; j < num_diag; j++) {
+            Ciphertext temp_rot;
+            evaluator->rotate_rows(cts[i], (num_diag - j) * data.image_size, *gal_keys, temp_rot);
+            tmp.push_back(temp_rot);
+        }
+
+        for (int j = 0; j < num_diag; j++) {
+            Ciphertext temp_rot;
+            evaluator->rotate_columns(tmp[j], *gal_keys, temp_rot);
+            tmp.push_back(temp_rot);
+        }
+
+        rotatedIR[i] = tmp;
+        tmp.clear();
+    }
+
+    auto t2 = high_resolution_clock::now();
+    auto ms_double = (t2 - t1)/1e+9;
+    cout << "[Server] Online - rotation done " << ms_double.count() << endl;
+    //compute matrix multiplication
+    vector<Ciphertext> temp_result1(enc_mat1.size() * cts.size() / 2); // left
+    vector<Ciphertext> temp_result2(enc_mat2.size() * cts.size() / 2); // right
+    t1 = high_resolution_clock::now();
+
+    #pragma omp parallel for
+    for (int k = 0; k < temp_result1.size(); k++) {
+        int j = k / cts.size();
+        int i = k % cts.size();
+
+        Ciphertext ct1_l;
+        Ciphertext ct1_r;
+        evaluator->multiply_plain(rotatedIR[i][j], enc_mat1[j][i], ct1_l);
+        evaluator->multiply_plain(rotatedIR[i][j + num_diag], enc_mat2[j][i], ct1_r);
+        evaluator->add(ct1_l, ct1_r, temp_result1[k]);
+
+        Ciphertext ct2_l;
+        Ciphertext ct2_r;
+        evaluator->multiply_plain(rotatedIR[i][j], enc_mat1[j + enc_mat1.size() / 2][i], ct2_l);
+        evaluator->multiply_plain(rotatedIR[i][j + num_diag], enc_mat2[j + enc_mat2.size() / 2][i], ct2_r);
+        evaluator->add(ct2_l, ct2_r, temp_result2[k]);
+
+        // temp_result1[k] = cryptoContext->EvalAdd(cryptoContext->EvalMult(rotatedIR[i][j],  enc_mat1[j][i]), cryptoContext->EvalMult(rotatedIR[i][j + num_diag],  enc_mat2[j][i])); // left half
+        // temp_result2[k] = cryptoContext->EvalAdd(cryptoContext->EvalMult(rotatedIR[i][j],  enc_mat1[j + enc_mat1.size() / 2][i]), cryptoContext->EvalMult(rotatedIR[i][j + num_diag],  enc_mat2[j + enc_mat2.size() / 2][i])); // right half
+    }
+
+    Ciphertext result_left = temp_result1[0];
+    Ciphertext result_right = temp_result2[0];
+
+    for (int k = 1; k < temp_result1.size(); k++)
+    {
+        evaluator->add_inplace(result_left, temp_result1[k]);
+        evaluator->add_inplace(result_right, temp_result2[k]);
+    }
+
+    vector<Ciphertext> result = {result_left, result_right};
+
+    t2 = high_resolution_clock::now();
+    ms_double = (t2 - t1)/1e+9;
+    cout << "[Server] Online Done " << ms_double.count() << endl;
 
     return result;
 }
@@ -641,6 +914,86 @@ vector<Ciphertext> BEFCField::bert_efficient_cipher_depth3(const FCMetadata &dat
     return results;
 }
 
+vector<Ciphertext> BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& cross_masks)
+{
+    Ciphertext HE_result_1_left = Cipher_plain_result[0];
+    Ciphertext HE_result_2_left = Cipher_plain_result[1];
+
+    Ciphertext HE_result_1_right;
+    Ciphertext HE_result_2_right;
+
+    evaluator->rotate_columns(HE_result_1_left, *gal_keys, HE_result_1_right);
+    evaluator->rotate_columns(HE_result_2_left, *gal_keys, HE_result_2_right);
+
+    vector<Ciphertext> rotation_results(data.image_size + 2);
+    auto t1 = high_resolution_clock::now();
+    vector<Ciphertext> rotation_results_left(data.image_size + 2);
+    vector<Ciphertext> rotation_results_right(data.image_size + 2);
+
+    #pragma omp parallel for
+    for (int i = 0; i <= data.image_size / 2; i++) {
+        vector<Ciphertext> temp_mult = rotation_by_one_depth3(data, HE_result_1_right, i);
+
+        evaluator->multiply(HE_result_1_left, temp_mult[0], rotation_results_left[i]);
+        evaluator->relinearize_inplace(rotation_results_left[i], *relin_keys);
+
+        evaluator->multiply(HE_result_1_left, temp_mult[1], rotation_results_left[i + data.image_size / 2 + 1]);
+        evaluator->relinearize_inplace(rotation_results_left[i + data.image_size / 2 + 1], *relin_keys);
+
+        temp_mult = rotation_by_one_depth3(data, HE_result_2_right, i);
+
+        evaluator->multiply(HE_result_2_left, temp_mult[0], rotation_results_right[i]);
+        evaluator->relinearize_inplace(rotation_results_right[i], *relin_keys);
+
+        evaluator->multiply(HE_result_2_left, temp_mult[1], rotation_results_right[i + data.image_size / 2 + 1]);
+        evaluator->relinearize_inplace(rotation_results_right[i + data.image_size / 2 + 1], *relin_keys);
+
+        evaluator->add(rotation_results_left[i], rotation_results_right[i], rotation_results[i]);
+        evaluator->add(rotation_results_left[i + data.image_size / 2 + 1], rotation_results_right[i + data.image_size / 2 + 1], rotation_results[i + data.image_size / 2 + 1]);
+    }
+    auto t2 = high_resolution_clock::now();
+    auto ms_double = (t2 - t1)/1e+9;
+    std::cout << "[Server] Cipher-Cipher Rotation 1 " << ms_double.count() << std::endl;
+
+    t1 = high_resolution_clock::now();
+    int local_rotation = std::ceil(std::log2(32));
+    #pragma omp parallel for
+    for (int i = 0; i < data.image_size + 2; i++) {
+        for (int k = 0; k < local_rotation; k++) {
+            Ciphertext temp2;
+            evaluator->rotate_rows(rotation_results[i], (int32_t) pow(2, k) * 128, *gal_keys, temp2);
+            evaluator->add_inplace(rotation_results[i], temp2);
+        }
+        evaluator->multiply_plain_inplace(rotation_results[i], cross_masks[i]);
+    }
+    t2 = high_resolution_clock::now();
+    ms_double = (t2 - t1)/1e+9;
+    std::cout << "[Server] Cipher-Cipher Rotation 2 " << ms_double.count() << std::endl;
+    // Packing
+    t1 = high_resolution_clock::now();
+    vector<Ciphertext> results(2);
+    
+    evaluator->add(rotation_results[0], rotation_results[65], results[0]);
+    evaluator->add(rotation_results[32], rotation_results[32 + 65], results[1]);
+
+    for (int i = 1; i < 32; i++) {
+        Ciphertext temp;
+        evaluator->add_inplace(results[0], rotation_results[i]);
+        evaluator->add_inplace(results[0], rotation_results[i + 65]);
+        evaluator->add_inplace(results[1], rotation_results[i + 32]);
+        evaluator->add_inplace(results[1], rotation_results[i + 32 + 65]);
+    }
+
+    evaluator->add_inplace(results[0], rotation_results[64]);
+    evaluator->add_inplace(results[0], rotation_results[64 + 65]);
+
+    t2 = high_resolution_clock::now();
+    ms_double = (t2 - t1)/1e+9;
+    std::cout << "[Server] Cipher-Cipher Packing " << ms_double.count() << std::endl;
+
+    return results;
+}
+
 int omp_thread_count() {
     int n = 0;
     #pragma omp parallel reduction(+:n)
@@ -667,6 +1020,32 @@ uint64_t* BEFCField::bert_efficient_postprocess(vector<Ciphertext> &cts, const F
     }
   }
   return result;
+}
+
+uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+    uint64_t *result = new uint64_t[data.image_size*data.image_size];
+    for (int i = 0; i < cts.size(); i++) {
+        vector<int64_t> plain(data.slot_count, 0ULL);
+        Plaintext tmp;
+        decryptor->decrypt(cts[i], tmp);
+        encoder->decode(tmp, plain);
+
+        #pragma omp parallel for
+        for (int row = 0; row < data.slot_count; row++) {
+            int j = row / data.image_size;
+            int k = row % data.image_size;
+            if (j < 32) { // k, (k + j) % 128
+                result[k + ((k + j + i * 32) % data.image_size) * data.image_size] = plain[row];
+            }
+            else if (j == 32 && i == 0) { // (64 + k) % 128, k
+                result[((k + 64) % data.image_size) + k * data.image_size] = plain[row];
+            }
+            else { // (k - 32 + j) % 128, k
+                result[k * data.image_size + (k + j - 32 + i * 32) % 128] = plain[row];
+            }
+        }
+    }
+    return result;
 }
 
 BEFCField::BEFCField(int party, NetIO *io) {
@@ -712,7 +1091,8 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
                                       int32_t common_dim, 
                                       int32_t output_dim, 
                                       vector<vector<uint64_t>> &A, 
-                                      vector<vector<uint64_t>> &B, 
+                                      vector<vector<uint64_t>> &B1, 
+                                      vector<vector<uint64_t>> &B2, 
                                       vector<vector<uint64_t>> &C, 
                                       bool verify_output) {
 
@@ -742,9 +1122,18 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
 
         print_noise_budget_vec(enc_result);
-        print_ct(enc_result[0], data.slot_count);
+        // print_ct(enc_result[0], data.slot_count);
 
-        auto HE_result = bert_efficient_postprocess(enc_result, data);
+        // auto HE_result = bert_efficient_postprocess(enc_result, data);
+        auto HE_result = bert_cross_packing_postprocess(enc_result, data);
+
+        #ifdef HE_DEBUG
+        for (int i = 64; i < 67; i++) {
+            for (int j = 0; j < 128; j++)
+                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            cout << endl;
+        }
+        #endif
         
         // for (int i = 0; i < num_rows; i++) {
         //   C[i][0] = HE_result[i];
@@ -760,33 +1149,48 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         auto t1_preprocess = high_resolution_clock::now();
         #endif 
 
-        vector<uint64_t> vec(common_dim);
+        // vector<uint64_t> vec(common_dim);
+        // for (int i = 0; i < common_dim; i++) {
+        //     vec[i] = B[i][0];
+        // }
+
+        vector<uint64_t *> matrix_mod_p1(common_dim);
+        vector<uint64_t *> matrix_mod_p2(common_dim);
+        vector<uint64_t *> matrix1(common_dim);
+        vector<uint64_t *> matrix2(common_dim);
         for (int i = 0; i < common_dim; i++) {
-            vec[i] = B[i][0];
-        }
-        vector<uint64_t *> matrix_mod_p(common_dim);
-        vector<uint64_t *> matrix(common_dim);
-        for (int i = 0; i < common_dim; i++) {
-        matrix_mod_p[i] = new uint64_t[output_dim];
-        matrix[i] = new uint64_t[output_dim];
-        for (int j = 0; j < output_dim; j++) {
-            matrix_mod_p[i][j] = neg_mod((int64_t)B[i][j], (int64_t)prime_mod);
-            int64_t val = (int64_t)B[i][j];
-            if (val > int64_t(prime_mod/2)) {
-            val = val - prime_mod;
+            matrix_mod_p1[i] = new uint64_t[output_dim];
+            matrix_mod_p2[i] = new uint64_t[output_dim];
+            matrix1[i] = new uint64_t[output_dim];
+            matrix2[i] = new uint64_t[output_dim];
+            for (int j = 0; j < output_dim; j++) {
+                matrix_mod_p1[i][j] = neg_mod((int64_t)B1[i][j], (int64_t)prime_mod);
+                matrix_mod_p2[i][j] = neg_mod((int64_t)B2[i][j], (int64_t)prime_mod);
+                int64_t val = (int64_t)B1[i][j];
+                if (val > int64_t(prime_mod / 2)) {
+                    val = val - prime_mod;
+                }
+                matrix1[i][j] = val;
+                val = (int64_t)B2[i][j];
+                if (val > int64_t(prime_mod / 2)) {
+                    val = val - prime_mod;
+                }
+                matrix2[i][j] = val;
             }
-            matrix[i][j] = val;
-        }
         }
 
         PRG128 prg;
         uint64_t *secret_share = new uint64_t[input_dim*output_dim];
         prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
-        auto encoded_mat = bert_efficient_preprocess_matrix(matrix_mod_p.data(), data);
+        // auto encoded_mat1 = bert_efficient_preprocess_matrix(matrix_mod_p1.data(), data);
+        // auto encoded_mat2 = bert_efficient_preprocess_matrix(matrix_mod_p2.data(), data);
+
+        auto cross_mat = bert_cross_packing_matrix(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
 
         auto rotation_masks = generate_rotation_masks(data);
         auto cipher_masks = generate_cipher_masks(data);
         auto depth3_masks = generate_depth3_masks(data);
+        auto cross_masks = generate_cross_packing_masks(data);
 
         // Ciphertext enc_noise = bert_efficient_preprocess_noise(secret_share, data, cryptoContext_, keyPair_);
         // cout << "[Server] Noise processed" << endl;
@@ -808,7 +1212,8 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         auto t1_cipher_plain = high_resolution_clock::now();
         #endif 
 
-        auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
+        // auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
+        auto Cipher_plain_results = bert_cipher_plain(cts, cross_mat.first, cross_mat.second, data);
 
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();
@@ -819,7 +1224,8 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         #endif 
 
         // auto HE_result = bert_efficient_cipher(data, Cipher_plain_results, rotation_masks, cipher_masks);
-        auto HE_result = bert_efficient_cipher_depth3(data, Cipher_plain_results, depth3_masks);
+        // auto HE_result = bert_efficient_cipher_depth3(data, Cipher_plain_results, depth3_masks);
+        auto HE_result = bert_cipher_cipher_cross_packing(data, Cipher_plain_results, cross_masks);
 
         #ifdef HE_TIMING
         auto t2_cipher_cipher = high_resolution_clock::now();
@@ -833,8 +1239,10 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         cout << "[Server] size of result (Bytes): " << io->counter - io_start << endl;
 
         for (int i = 0; i < common_dim; i++) {
-            delete[] matrix_mod_p[i];
-            delete[] matrix[i];
+            delete[] matrix_mod_p1[i];
+            delete[] matrix_mod_p2[i];
+            delete[] matrix1[i];
+            delete[] matrix2[i];
         }
         delete[] secret_share;
 
