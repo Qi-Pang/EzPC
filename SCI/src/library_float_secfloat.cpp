@@ -290,7 +290,6 @@ void Softmax2_thread(
 }
 
 void Exp_test(){
-	fpmathArr[0]->exp4();
 }
 
 void Softmax2(

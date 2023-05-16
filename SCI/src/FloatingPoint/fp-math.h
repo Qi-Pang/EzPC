@@ -62,7 +62,7 @@ public:
   vector<FPArray> softmax(const vector<FPArray>& x);
 
   FPArray exp3(const FPArray &x);
-  void exp4();
+  FixArray exp4(const FixArray &x);
 
   FPArray sigmoid_bf16(const FPArray &x);
   FPArray sigmoid_fp32(const FPArray &x);

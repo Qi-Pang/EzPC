@@ -46,7 +46,8 @@ add_executable(math-float "test_float_math.cpp")
 target_include_directories(math-float PUBLIC ${MPFR_INCLUDES}) 
 target_link_libraries(math-float SCI-FloatingPoint ${MPFR_LIBRARIES}) 
 
-add_subdirectory(GC)
+# add_subdirectory(GC)
+add_subdirectory(activation)
 
 macro(add_test_secfloat name)
 	add_executable(${name}-secfloatml "test_floatml_${name}.cpp")
@@ -91,3 +92,9 @@ target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
 
 add_executable(BERT-HE-CIPHER-EFFICIENT-CKKS "test_bert_efficient_seal_ckks.cpp")
 target_link_libraries(BERT-HE-CIPHER-EFFICIENT-CKKS SCI-HE)
+
+add_executable(BERT-HE-IRON "test_bert_iron.cpp")
+target_link_libraries(BERT-HE-IRON SCI-HE)
+
+add_executable(BERT-HE-CTPT "test_bert_ctpt.cpp")
+target_link_libraries(BERT-HE-CTPT SCI-HE)

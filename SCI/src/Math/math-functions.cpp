@@ -887,3 +887,158 @@ void MathFunctions::ReLU(int32_t dim, uint64_t *x, uint64_t *y, int32_t bw_x,
   delete[] tmp;
   delete[] tmp_msb;
 }
+
+void MathFunctions::scalar_add(int dim, uint64_t a, uint64_t* b, uint64_t* c){
+  for(int i = 0; i < dim; i++){
+    c[i] = ((party == ALICE)?a:0) + b[i];
+  }
+}
+
+void MathFunctions::scalar_sub(int dim, uint64_t* a, uint64_t b, uint64_t* c){
+  for(int i = 0; i < dim; i++){
+    c[i] = a[i] - ((party == ALICE)?b:0);
+  }
+}
+
+void MathFunctions::share_add(int dim, uint64_t* a, uint64_t* b, uint64_t* c){
+  for(int i = 0;i < dim;i++){
+    c[i] = a[i] + b[i];
+  }
+}
+
+void MathFunctions::share_sub(int dim, uint64_t* a, uint64_t* b, uint64_t* c){
+  for(int i = 0;i < dim;i++){
+    c[i] = a[i] - b[i];
+  }
+
+}
+
+void MathFunctions::scalar_mul(int dim, uint64_t a, uint64_t* b, uint64_t* c){
+  for(int i = 0;i < dim;i++){
+    c[i] = a * b[i];
+  }
+}
+
+void MathFunctions::layer_norm_iron(int32_t dim, uint64_t *x, uint64_t *y, int32_t bw_x, int32_t bw_y,
+            int32_t s_x, int32_t s_y){
+
+  // Average
+  uint64_t sum = 0;
+  uint64_t ell_mask = (bw_x == 64) ? -1 : ((1ULL << (bw_x)) - 1);
+  for (int i = 0; i < dim; i++){
+    std::cout << "layer_norm " << std::hex << x[i] << std::dec << endl;
+    sum += x[i];
+    // sum &= ell_mask;
+  }
+  uint64_t avg = sum / dim;
+
+  uint64_t *x_sub_avg = new uint64_t[dim];
+  for (int i = 0; i < dim; i++){
+    x_sub_avg[i] = x[i] - avg;
+  }
+
+  // Step 1
+  // Compute (x_i - u)^2
+  uint64_t *x_sub_avg_sqr_tmp = new uint64_t[dim];
+  uint64_t *x_sub_avg_sqr = new uint64_t[dim];
+  mult->hadamard_product(dim, x_sub_avg, x_sub_avg, x_sub_avg_sqr_tmp, bw_x, bw_x, 2*bw_x, true, true, MultMode::None);
+  trunc->truncate_and_reduce(dim, x_sub_avg_sqr_tmp, x_sub_avg_sqr, s_x, bw_x);
+
+  // Step 2
+  // sqrt and reciprocal
+  uint64_t *x_sub_avg_sqr_sum = new uint64_t[1];
+  uint64_t *sigma_recip = new uint64_t[1];
+  x_sub_avg_sqr_sum[0] = 0;
+  for (int i = 0; i < dim; i++){
+    x_sub_avg_sqr_sum[0] += x_sub_avg_sqr[i];
+  }
+
+  sqrt(1, x_sub_avg_sqr_sum, sigma_recip, bw_x, bw_x, s_x, s_x, true);
+
+  // Step 3
+  uint64_t *sigma_recip_list = new uint64_t[dim];
+  uint64_t *result_tmp = new uint64_t[dim];
+  for (int i = 0; i < dim; i++){
+    sigma_recip_list[i] = sigma_recip[0];
+  }
+  mult->hadamard_product(dim, x_sub_avg, sigma_recip_list, result_tmp, bw_x, bw_x, 2*bw_x, true, true, MultMode::None);
+  trunc->truncate_and_reduce(dim, result_tmp, y, s_y, bw_y);
+
+  delete[] x_sub_avg;
+  delete[] x_sub_avg_sqr_tmp;
+  delete[] x_sub_avg_sqr;
+  delete[] x_sub_avg_sqr_sum;
+  delete[] sigma_recip;
+  delete[] sigma_recip_list;
+  delete[] result_tmp;
+
+}
+
+void MathFunctions::gelu_iron(int32_t dim, uint64_t *x, uint64_t *y, int bw_x, int bw_y , int s_x, int s_y){
+  // TODO implement gelu again
+  uint64_t *xsquare_tmp = new uint64_t[dim];
+  uint64_t *xsquare = new uint64_t[dim];
+  uint64_t *xcube_tmp = new uint64_t[dim];
+  uint64_t *xcube = new uint64_t[dim];
+  
+  mult->hadamard_product(dim, x, x, xsquare_tmp, bw_x, bw_x, bw_x, true, true, MultMode::None);
+  trunc->truncate_and_reduce(dim, xsquare_tmp, xsquare, s_x, bw_x);
+
+  mult->hadamard_product(dim, x, xsquare, xcube_tmp, bw_x, bw_x, bw_x, true, true, MultMode::None);
+  trunc->truncate_and_reduce(dim, xcube_tmp, xcube, s_x, bw_x);
+  
+  int64_t consx = round((0.044715) * (1 << bw_x));
+  int64_t conssqrt2pi =  round((1.25331413732) * (1 << bw_x));
+
+  uint64_t *xcube_factor_tmp = new uint64_t[dim];
+  uint64_t *xcube_factor = new uint64_t[dim];
+
+  scalar_mul(dim, consx, xcube, xcube_factor_tmp);
+
+  trunc->truncate_and_reduce(dim, xcube_factor_tmp, xcube_factor, s_x, bw_x);
+  
+  uint64_t *xcube_factor_plus_x = new uint64_t[dim];
+  share_add(dim,x,xcube_factor,xcube_factor_plus_x);
+  uint64_t *z_temp = new uint64_t[dim];
+  uint64_t *z = new uint64_t[dim];
+
+  scalar_mul(dim, conssqrt2pi, xcube_factor_plus_x,z_temp);
+  trunc->truncate_and_reduce(dim, z_temp, z, s_x, bw_x);
+  
+  uint64_t *tanz = new uint64_t[dim];
+  tanh(dim, z, tanz, bw_x, bw_y, s_x, s_y);
+  
+  int64_t conshalf = round((0.5) * (1 << bw_x));
+
+  // depends on party
+  uint64_t consone = round((1) * (1 << bw_x));
+  uint64_t *tanz_plus_one = new uint64_t[dim];
+  uint64_t *halfx_tmp = new uint64_t[dim];
+  uint64_t *halfx = new uint64_t[dim];
+
+  scalar_mul(dim,conshalf,x,halfx_tmp);
+  trunc->truncate_and_reduce(dim, halfx_tmp, halfx, s_x, bw_x);
+
+  scalar_add(dim,consone,tanz,tanz_plus_one);
+
+  uint64_t *y_tmp = new uint64_t[dim];
+  
+  mult->hadamard_product(dim, halfx, tanz_plus_one, y_tmp, bw_x, bw_x, bw_x, true, true, MultMode::None);
+  trunc->truncate_and_reduce(dim, y_tmp, y, s_y, bw_y);
+
+  delete[] xsquare_tmp;
+  delete[] xsquare;
+  delete[] xcube_tmp;
+  delete[] xcube;
+  delete[] xcube_factor_tmp;
+  delete[] xcube_factor;
+  delete[] xcube_factor_plus_x;
+  delete[] z_temp;
+  delete[] z;
+  delete[] tanz;
+  delete[] tanz_plus_one;
+  delete[] halfx_tmp;
+  delete[] halfx;
+  delete[] y_tmp;
+}
+

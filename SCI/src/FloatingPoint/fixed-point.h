@@ -30,7 +30,7 @@ SOFTWARE.
 
 #define print_fix(vec)                                                         \
   {                                                                            \
-    auto tmp_pub = fix->output(PUBLIC, vec).subset(I, I + J);                  \
+    auto tmp_pub = fix->output(PUBLIC, vec);                  \
     cout << #vec << "_pub: " << tmp_pub << endl;                               \
   }
 

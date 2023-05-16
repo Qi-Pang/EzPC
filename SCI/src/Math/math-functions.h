@@ -61,6 +61,16 @@ public:
            int32_t s_nm, int32_t s_dn, int32_t s_out, bool signed_nm = true,
            bool compute_msnzb = false);
 
+  void scalar_add(int dim, uint64_t a, uint64_t* b, uint64_t* c);
+
+  void scalar_sub(int dim, uint64_t* a, uint64_t b, uint64_t* c);
+
+  void share_add(int dim, uint64_t* a, uint64_t* b, uint64_t* c);
+
+  void share_sub(int dim, uint64_t* a, uint64_t* b, uint64_t* c);
+
+  void scalar_mul(int dim, uint64_t a, uint64_t* b, uint64_t* c);
+
   // Assumes x is always negative
   void lookup_table_exp(int32_t dim, uint64_t *x, uint64_t *y, int32_t bw_x,
                         int32_t bw_y, int32_t s_x, int32_t s_y);
@@ -77,6 +87,11 @@ public:
   // bw_y = bw_x
   void ReLU(int32_t dim, uint64_t *x, uint64_t *y, int32_t bw_x,
             uint64_t six = 0);
+
+  void layer_norm_iron(int32_t dim, uint64_t *x, uint64_t *y, int32_t bw_x, int32_t bw_y,
+            int32_t s_x, int32_t s_y);
+
+  void gelu_iron(int32_t dim, uint64_t *x, uint64_t *y, int bw_x, int bw_y , int s_x, int s_y);
 };
 
 #endif
