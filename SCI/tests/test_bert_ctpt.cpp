@@ -1,7 +1,7 @@
 /*
 Authors: Qi Pang
 */
-#include "LinearHE/bert-matmul-cipher-efficient-seal.h"
+#include "LinearHE/bert-ct-pt.h"
 #include <fstream>
 
 using namespace std;
@@ -44,7 +44,7 @@ std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
     return data;
 }
 
-void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
+void MatMul(BECTPT &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
     vector<vector<uint64_t>> A(input_dim);   // Inputs
     vector<vector<uint64_t>> B1(common_dim);  // Weights
     vector<vector<uint64_t>> B2(common_dim);  // Weights
@@ -103,14 +103,31 @@ int main(int argc, char **argv) {
     // prime_mod = 1073872897; 
 
     // 29 bits 
-    prime_mod = 536903681;
+    // prime_mod = 536903681;
 
-    // 28bits
+    // 37 bits
+    // prime_mod = 137439010817;
+
+    // 28 bits
     // prime_mod = 268582913;
 
     // 25 bits
     // prime_mod = 33832961;
+    
+    // 16 bits
     // prime_mod = 65537;
+
+    // 17 bits
+    prime_mod = 147457;
+    
+    // 18 bits
+    // prime_mod = 270337;
+
+    // 19 bits
+    // prime_mod = 557057;
+
+    // 20 bits
+    // prime_mod = 1073153;
 
     cout << "===================================================================="
         << endl;
@@ -125,7 +142,7 @@ int main(int argc, char **argv) {
 
     auto io_start = io->counter;
 
-    BEFCField befc(party, io);
+    BECTPT befc(party, io);
     cout << "Before MatMul" << endl;
     MatMul(befc, input_dim, common_dim, output_dim);
 

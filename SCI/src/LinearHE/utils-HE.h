@@ -42,6 +42,28 @@ void generate_new_keys(int party, sci::NetIO *io, int slot_count,
                        seal::Ciphertext *&zero_,
                        bool verbose = false);
 
+void generate_new_keys_iron(int party, sci::NetIO *io, int slot_count,
+                       seal::SEALContext *&context_,
+                       seal::Encryptor *&encryptor_,
+                       seal::Decryptor *&decryptor_,
+                       seal::Evaluator *&evaluator_,
+                       seal::BatchEncoder *&encoder_,
+                       seal::GaloisKeys *&gal_keys_, 
+                       seal::RelinKeys *&relin_keys_, 
+                       seal::Ciphertext *&zero_,
+                       bool verbose = false);
+
+void generate_new_keys_ctpt(int party, sci::NetIO *io, int slot_count,
+                       seal::SEALContext *&context_,
+                       seal::Encryptor *&encryptor_,
+                       seal::Decryptor *&decryptor_,
+                       seal::Evaluator *&evaluator_,
+                       seal::BatchEncoder *&encoder_,
+                       seal::GaloisKeys *&gal_keys_, 
+                       seal::RelinKeys *&relin_keys_, 
+                       seal::Ciphertext *&zero_,
+                       bool verbose = false);
+
 void free_keys(int party, seal::Encryptor *&encryptor_,
                seal::Decryptor *&decryptor_, seal::Evaluator *&evaluator_,
                seal::BatchEncoder *&encoder_, seal::GaloisKeys *&gal_keys_,

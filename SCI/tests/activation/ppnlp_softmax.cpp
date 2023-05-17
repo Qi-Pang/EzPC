@@ -35,7 +35,7 @@ int party, port = 32000;
 int num_threads = 1;
 string address = "127.0.0.1";
 
-int dim = 4;
+int dim = 128;
 int bw_x = 16;
 int bw_y = 16;
 int s_x = 12;
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < dim; i++) {
     //    x[i] &= mask_x;
-    x[i] = i << (s_x - 1);
+    x[i] = (i % 4) << (s_x - 1);
   }
 
   /************** Fork Threads ****************/

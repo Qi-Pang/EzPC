@@ -44,7 +44,7 @@ struct FCMetadata {
   int32_t image_size;
 };
 
-class BEFCField {
+class IRONFC {
 public:
   int party;
   NetIO *io;
@@ -59,47 +59,25 @@ public:
   Ciphertext *zero;
   size_t slot_count;
 
-  BEFCField(int party, NetIO *io);
+  IRONFC(int party, NetIO *io);
 
-  ~BEFCField();
+  ~IRONFC();
 
   void configure();
 
-  vector<vector<Plaintext>> generate_rotation_masks(const FCMetadata &data);
-  vector<Plaintext> generate_cipher_masks(const FCMetadata &data);
-  vector<Plaintext> generate_packing_masks(const FCMetadata &data);
-  vector<Plaintext> generate_depth3_masks(const FCMetadata &data);
-  vector<Plaintext> generate_cross_packing_masks(const FCMetadata &data);
+  Plaintext encode_vector(const uint64_t *vec, const FCMetadata &data);
 
-  Ciphertext rotation_by_one(const FCMetadata &data,  Ciphertext ct, int k, vector<vector< Plaintext>> rotation_masks);
+  vector<Ciphertext> preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
 
-  vector<Ciphertext> rotation_by_one_depth3(const FCMetadata &data, Ciphertext ct, int k);
-
-  vector<Ciphertext> bert_efficient_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
-
-  vector<vector<Plaintext>> bert_efficient_preprocess_matrix(const uint64_t *const *matrix, const FCMetadata &data);
+  vector<vector<Plaintext>> preprocess_matrix(const uint64_t *const *matrix, const FCMetadata &data);
 
   pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
 
-  pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_matrix_bsgs(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
-
-  Ciphertext bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
-
-  vector<Ciphertext> bert_efficient_online(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<vector<Plaintext>> & rotation_masks);
+  Ciphertext preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
   vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
 
-  vector<Ciphertext> bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
-
-  vector<Ciphertext> bert_efficient_cipher(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<vector<Plaintext>>& rotation_masks, vector<Plaintext>& cipher_masks);
-
-  vector<Ciphertext> bert_efficient_cipher_depth3(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& depth3_masks);
-
-  vector<Ciphertext> bert_cipher_cipher_cross_packing(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& cross_masks);
-
-  uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
-
-  uint64_t* bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
+  uint64_t* bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 
   vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 

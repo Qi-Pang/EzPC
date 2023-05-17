@@ -1,7 +1,7 @@
 /*
 Authors: Qi Pang
 */
-#include "LinearHE/bert-matmul-cipher-efficient-seal.h"
+#include "LinearHE/iron-seal.h"
 #include <fstream>
 
 using namespace std;
@@ -44,7 +44,7 @@ std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
     return data;
 }
 
-void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
+void MatMul(IRONFC &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
     vector<vector<uint64_t>> A(input_dim);   // Inputs
     vector<vector<uint64_t>> B1(common_dim);  // Weights
     vector<vector<uint64_t>> B2(common_dim);  // Weights
@@ -68,13 +68,13 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
         C[i].resize(output_dim);
     }
 
-    // A = read_data("./X_quantize_0.txt");
-    // B1 = read_data("./Q_quantize_0.txt");
-    // B2 = read_data("./K_quantize_0.txt");
+    A = read_data("./X_quantize_0.txt");
+    B1 = read_data("./Q_quantize_0.txt");
+    B2 = read_data("./K_quantize_0.txt");
 
-    A = read_data("./random_X.txt");
-    B1 = read_data("./random_Y.txt");
-    B2 = read_data("./random_Z.txt");
+    // A = read_data("./random_X.txt");
+    // B1 = read_data("./random_Y.txt");
+    // B2 = read_data("./random_Z.txt");
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
@@ -103,7 +103,10 @@ int main(int argc, char **argv) {
     // prime_mod = 1073872897; 
 
     // 29 bits 
-    prime_mod = 536903681;
+    // prime_mod = 536903681;
+
+    // 37 bits
+    prime_mod = 137439010817;
 
     // 28bits
     // prime_mod = 268582913;
@@ -125,7 +128,7 @@ int main(int argc, char **argv) {
 
     auto io_start = io->counter;
 
-    BEFCField befc(party, io);
+    IRONFC befc(party, io);
     cout << "Before MatMul" << endl;
     MatMul(befc, input_dim, common_dim, output_dim);
 
