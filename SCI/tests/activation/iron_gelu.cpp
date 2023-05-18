@@ -19,57 +19,115 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "FloatingPoint/fp-math.h"
+#include "Math/math-functions.h"
 #include "BuildingBlocks/aux-protocols.h"
-#include "NonLinear/argmax.h"
 #include <fstream>
 #include <iostream>
 #include <thread>
 #include <cmath>
-#include <vector>
 
 using namespace sci;
 using namespace std;
 
-#define MAX_THREADS 12
+#define MAX_THREADS 4
 
 int party, port = 32000;
-int num_threads = 12;
+int num_threads = 4;
 string address = "127.0.0.1";
 
-int32_t dim = num_threads*128;
-int32_t array_size = 128;
-int32_t bw_x = 24;
-int32_t bw_y = 24;
-int32_t s_x = 12;
-int32_t s_y = 12;
-int32_t input_size = dim*array_size;
+int dim =  128*3072;
+int bw_x = 37;
+int bw_y = 37;
+int s_x = 12;
+int s_y = 12;
 
-bool signed_ = true;
-
-uint64_t mask_x = (bw_x == 64 ? -1 : ((1ULL << 14) - 1));
-uint64_t mask_y = (bw_y == 64 ? -1 : ((1ULL << 14) - 1));
+uint64_t mask_x = (bw_x == 64 ? -1 : ((1ULL << (bw_x -35)) - 1));
+uint64_t mask_y = (bw_y == 64 ? -1 : ((1ULL << bw_y) - 1));
 
 IOPack *iopackArr[MAX_THREADS];
 OTPack *otpackArr[MAX_THREADS];
 
-void softmax_double(const double* input, double* output, int dim, int array_size) {
-  
-  for (int i = 0; i < dim; i++){
-    double sumExp = 0.0;
-    // Compute the exponential of each input element and accumulate the sum
-    for (int j = 0; j < array_size; ++j) {
-      double expValue = std::exp(input[j + i*array_size]);
-      output[j + i*array_size] = expValue;
-      sumExp += expValue;
-    }
-    
-    // Normalize the exponential values by dividing each by the sum
-    for (int j = 0; j < array_size; ++j) {
-      output[j + i*array_size] /= sumExp;
-    }
-  }
+double gelu(double x) {
+  const double sqrtTwoOverPi = std::sqrt(2.0 / M_PI);
+  return 0.5 * x * (1.0 + std::tanh(sqrtTwoOverPi * (x + 0.044715 * std::pow(x, 3))));
 }
+
+void ScalarAdd(int dim, uint64_t a, uint64_t* b, uint64_t* c){
+                for(int i = 0;i < dim;i++)
+                {
+                  c[i] = ((party == ALICE)?a:0)+b[i];
+                }
+}
+void ShareAdd(int dim, uint64_t* a, uint64_t* b, uint64_t* c){
+                for(int i = 0;i < dim;i++)
+                {
+                  c[i] = a[i]+b[i];
+                }
+}
+
+void ScalarMul(int dim, uint64_t a, uint64_t* b, uint64_t* c){
+                for(int i = 0;i < dim;i++)
+                {
+                  c[i] = a*b[i];
+                }
+}
+
+void gelu(auto math,int dim,uint64_t *x, uint64_t *y, int bw_x,int bw_y , int s_x,int s_y)
+{
+  // TODO implement gelu again
+  uint64_t *xsquare_tmp = new uint64_t[dim];
+  uint64_t *xsquare = new uint64_t[dim];
+  uint64_t *xcube_tmp = new uint64_t[dim];
+  uint64_t *xcube = new uint64_t[dim];
+  
+    math->mult->hadamard_product(dim, x, x, xsquare_tmp, bw_x, bw_x, bw_x, true, true, MultMode::None);
+    math->trunc->truncate_and_reduce(dim, xsquare_tmp, xsquare, s_x, bw_x);
+
+    math->mult->hadamard_product(dim, x, xsquare, xcube_tmp, bw_x, bw_x, bw_x, true, true, MultMode::None);
+    math->trunc->truncate_and_reduce(dim, xcube_tmp, xcube, s_x, bw_x);
+    
+    int64_t consx = round((0.044715) * (1 << bw_x));
+    int64_t conssqrt2pi =  round((1.25331413732) * (1 << bw_x));
+
+    uint64_t *xcube_factor_tmp = new uint64_t[dim];
+    uint64_t *xcube_factor = new uint64_t[dim];
+
+    ScalarMul(dim, consx, xcube, xcube_factor_tmp);
+
+    math->trunc->truncate_and_reduce(dim, xcube_factor_tmp, xcube_factor, s_x, bw_x);
+    
+    uint64_t *xcube_factor_plus_x = new uint64_t[dim];
+    ShareAdd(dim,x,xcube_factor,xcube_factor_plus_x);
+    uint64_t *z_temp = new uint64_t[dim];
+    uint64_t *z = new uint64_t[dim];
+
+    ScalarMul(dim, conssqrt2pi, xcube_factor_plus_x,z_temp);
+    math->trunc->truncate_and_reduce(dim, z_temp, z, s_x, bw_x);
+    
+    uint64_t *tanz = new uint64_t[dim];
+    math->tanh(dim, z, tanz, bw_x, bw_y, s_x, s_y);
+    
+    int64_t conshalf = round((0.5) * (1 << bw_x));
+
+    // depends on party
+    uint64_t consone = round((1) * (1 << bw_x));
+    uint64_t *tanz_plus_one = new uint64_t[dim];
+    uint64_t *halfx_tmp = new uint64_t[dim];
+    uint64_t *halfx = new uint64_t[dim];
+
+    ScalarMul(dim,conshalf,x,halfx_tmp);
+    math->trunc->truncate_and_reduce(dim, halfx_tmp, halfx, s_x, bw_x);
+
+    ScalarAdd(dim,consone,tanz,tanz_plus_one);
+
+    uint64_t *y_tmp = new uint64_t[dim];
+    
+    math->mult->hadamard_product(dim, halfx, tanz_plus_one, y_tmp, bw_x, bw_x, bw_x, true, true, MultMode::None);
+    
+    math->trunc->truncate_and_reduce(dim, y_tmp, y, s_y, bw_y);
+}
+
+
 
 uint64_t computeULPErr(double calc, double actual, int SCALE) {
   int64_t calc_fixed = (double(calc) * (1ULL << SCALE));
@@ -81,24 +139,14 @@ uint64_t computeULPErr(double calc, double actual, int SCALE) {
 }
 
 void operation_thread(int tid, uint64_t *x, uint64_t *y, int num_ops) {
-  FPMath *fpmath;
-  // ArgMaxProtocol<uint64_t> *argmax_oracle;
-  int this_party;
+  MathFunctions *math;
   if (tid & 1) {
-    this_party = 3 - party;
+    math = new MathFunctions(3 - party, iopackArr[tid], otpackArr[tid]);
   } else {
-    this_party = party;
+    math = new MathFunctions(party, iopackArr[tid], otpackArr[tid]);
   }
-  fpmath = new FPMath(this_party, iopackArr[tid], otpackArr[tid]);
-  vector<FixArray> input_array;
-  for(int i = 0; i < num_ops; i++){
-    input_array.push_back(fpmath->fix->input(this_party, array_size, &x[i*array_size], true, bw_x, s_x));
-  }
-  vector<FixArray> output_array = fpmath->softmax_fix(input_array);
-  for(int i = 0; i < num_ops; i++){
-    memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
-  }
-  delete fpmath;
+  gelu(math,num_ops,x,y,bw_x,bw_y,s_x,s_y);
+  delete math;
 }
 
 int main(int argc, char **argv) {
@@ -129,20 +177,15 @@ int main(int argc, char **argv) {
 
   /************ Generate Test Data ************/
   /********************************************/
+  PRG128 prg;
 
-  // char fix_key[] = "\x61\x7e\xcd\xa2\xa0\x51\x1e\x96"
-  //                      "\x5e\x41\xc2\x9b\x15\x3f\xc7\x7a";
+  uint64_t *x = new uint64_t[dim];
+  uint64_t *y = new uint64_t[dim];
 
-  PRG128 prg(fix_key);
-
-  uint64_t *x = new uint64_t[input_size];
-  uint64_t *y = new uint64_t[input_size];
-
-  prg.random_data(x, dim * array_size * sizeof(uint64_t));
+  prg.random_data(x, dim * sizeof(uint64_t));
 
   for (int i = 0; i < dim; i++) {
-    for(int j=0;j < array_size;j++)
-       x[i*array_size+j] &= mask_x;
+    x[i] &= mask_x;
   }
 
   /************** Fork Threads ****************/
@@ -165,7 +208,7 @@ int main(int argc, char **argv) {
       lnum_ops = chunk_size;
     }
     operation_threads[i] =
-        std::thread(operation_thread, i, &x[offset*array_size], &y[offset*array_size], lnum_ops);
+        std::thread(operation_thread, i, x + offset, y + offset, lnum_ops);
   }
   for (int i = 0; i < num_threads; ++i) {
     operation_threads[i].join();
@@ -180,41 +223,33 @@ int main(int argc, char **argv) {
   /************** Verification ****************/
   /********************************************/
   if (party == ALICE) {
-    iopackArr[0]->io->send_data(x, input_size * sizeof(uint64_t));
-    iopackArr[0]->io->send_data(y, input_size * sizeof(uint64_t));
+    iopackArr[0]->io->send_data(x, dim * sizeof(uint64_t));
+    iopackArr[0]->io->send_data(y, dim * sizeof(uint64_t));
   } else { // party == BOB
-    uint64_t *x0 = new uint64_t[input_size];
-    uint64_t *y0 = new uint64_t[input_size];
-    iopackArr[0]->io->recv_data(x0, input_size * sizeof(uint64_t));
-    iopackArr[0]->io->recv_data(y0, input_size * sizeof(uint64_t));
+    uint64_t *x0 = new uint64_t[dim];
+    uint64_t *y0 = new uint64_t[dim];
+    iopackArr[0]->io->recv_data(x0, dim * sizeof(uint64_t));
+    iopackArr[0]->io->recv_data(y0, dim * sizeof(uint64_t));
 
     uint64_t total_err = 0;
     uint64_t max_ULP_err = 0;
-    
-    // TODO: Change for Softmax
-    double* dbl_x = new double[input_size];
-    double* dbl_y = new double[input_size];
-    double* dbl_ref = new double[input_size];
-    for (int i = 0; i < input_size; i++) {
-      dbl_x[i] = (signed_val(x0[i] + x[i], bw_x)) / double(1LL << s_x);
-      dbl_y[i] = (signed_val(y0[i] + y[i], bw_y)) / double(1LL << s_y);
-    }
+    for (int i = 0; i < dim; i++) {
+      double dbl_x = (signed_val(x0[i] + x[i], bw_x)) / double(1LL << s_x);
+      double dbl_y = (signed_val(y0[i] + y[i], bw_y)) / double(1LL << s_y);
 
-    softmax_double(dbl_x, dbl_ref, dim, array_size);
+      // TODO GELU function for verification
+      double operation_x = gelu(dbl_x);
 
-    for (int i = 0; i < input_size; i++) {
-      uint64_t err = computeULPErr(dbl_y[i], dbl_ref[i], s_y);
-      if (err > 10){
-        cout << "ULP Error: " << dbl_x[i] << "," << dbl_y[i] << "," << dbl_ref[i] << ","
-      << err << endl;
-      }
-      
+      uint64_t err = computeULPErr(dbl_y, operation_x, s_y);
+    //   cout << "ULP Error: " << dbl_x << "," << dbl_y << "," << operation_x << ","
+    //   << err << endl;
       total_err += err;
       max_ULP_err = std::max(max_ULP_err, err);
     }
-    cerr << "Average ULP error: " << total_err / input_size << endl;
+
+    cerr << "Average ULP error: " << total_err / dim << endl;
     cerr << "Max ULP error: " << max_ULP_err << endl;
-    cerr << "Number of tests: " << input_size << endl;
+    cerr << "Number of tests: " << dim << endl;
 
     delete[] x0;
     delete[] y0;

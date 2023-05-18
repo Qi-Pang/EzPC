@@ -582,6 +582,9 @@ BoolArray FixOp::LT(const FixArray &x, const FixArray &y) {
 
   BoolArray ret(this->party, x.size);
   FixArray diff = this->sub(x, y);
+  // print_fix(x);
+  // print_fix(y);
+  // print_fix(diff);
   aux->MSB(diff.data, ret.data, x.size, diff.ell);
 
   return ret;
@@ -861,13 +864,17 @@ FixArray FixOp::max(const vector<FixArray>& x) {
     }
     FixArray lhs_fp = fix->input(this->party, N*num_cmps_curr, lhs, signed_, ell, s);
     FixArray rhs_fp = fix->input(this->party, N*num_cmps_curr, rhs, signed_, ell, s);
+    // print_fix(lhs_fp);
+    // print_fix(rhs_fp);
     BoolArray cond = fix->GT(lhs_fp, rhs_fp);
+    // print_bool(cond)
     lhs_fp = fix->if_else(cond, lhs_fp, rhs_fp);
     for (int j = 0; j < num_cmps_old && j + 1 < num_cmps_old; j += 2) {
       memcpy(x_tr[odd_num_cmps + (j/2)].data, lhs_fp.data + (j/2)*N, N*sizeof(uint64_t));
     }
     num_cmps_old = num_cmps_curr + odd_num_cmps;
     num_cmps_curr = num_cmps_old/2;
+    // print_fix(x_tr[0]);
   }
   delete[] lhs;
   delete[] rhs;
@@ -995,6 +1002,120 @@ FixArray FixOp::div(const FixArray& nm, const FixArray& dn, int l_out, int s_out
   }
 }
 
+FixArray FixOp::div_batch(const FixArray& nm, const FixArray& dn, int batch_dn_size, int l_out, int s_out, bool normalized_dn) {
+  if (!normalized_dn) assert(dn.signed_ == false);
+  assert(nm.party != PUBLIC && dn.party != PUBLIC);
+  assert(nm.size == dn.size * batch_dn_size);
+  assert(s_out <= dn.s);
+  BoolArray all_0 = bool_op->input(ALICE, dn.size, uint8_t(0));
+  BoolArray all_1 = bool_op->input(ALICE, dn.size, uint8_t(1));
+
+  FixArray nrmlzd_dn;
+  FixArray adjust = fix->input(PUBLIC, dn.size, uint64_t(0), false, dn.ell + 1, 0);
+  if (!normalized_dn) {
+    vector<FixArray> msnzb_one_hot = fix->msnzb_one_hot(dn, dn.ell + 1);
+    for (int i = 0; i < dn.ell; i++) {
+      adjust = fix->add(adjust, fix->mul(msnzb_one_hot[i], (1ULL << (dn.ell - 1 - i))));
+    }
+    adjust.s = dn.ell - 1 - dn.s;
+    BoolArray msb_dn = fix->LSB(msnzb_one_hot[dn.ell - 1]);
+    nrmlzd_dn = fix->mul(dn, adjust, dn.ell + 1, msb_dn.data, all_0.data);
+  } else {
+    if (dn.ell == dn.s + 1) {
+      nrmlzd_dn = fix->extend(dn, dn.s + 2, all_1.data);
+    } else {
+      nrmlzd_dn = fix->reduce(dn, dn.s + 2);
+    }
+  }
+
+  int32_t m, iters;
+  m = (s_out <= 18 ? ceil((s_out - 2) / 2.0) : ceil((ceil(s_out / 2.0) - 2) / 2.0));
+  iters = (s_out <= 18 ? 0 : 1);
+
+  // reciprocal approximation w
+  FixArray eps = fix->reduce(nrmlzd_dn, nrmlzd_dn.s - m);
+  eps.signed_ = false;
+  BoolArray msb_eps = fix->MSB(eps);
+  uint8_t *wrap_eps = new uint8_t[dn.size];
+  fix->aux->MSB_to_Wrap(eps.data, msb_eps.data, wrap_eps, eps.size, eps.ell);
+  FixArray idx = fix->truncate_reduce(fix->reduce(nrmlzd_dn, nrmlzd_dn.s), nrmlzd_dn.s - m, wrap_eps);
+  idx.signed_ = false;
+  delete[] wrap_eps;
+  vector<uint64_t> spec_c0(1 << idx.ell);
+  vector<uint64_t> spec_c1(1 << idx.ell);
+  for (int j = 0; j < (1 << idx.ell); j++) {
+    spec_c0[j] = recp_lookup_c0(j, m);
+    spec_c1[j] = recp_lookup_c1(j, m);
+  }
+  FixArray c0 = fix->LUT(spec_c0, idx, true, m + 4, m + 3);
+  FixArray c1 = fix->LUT(spec_c1, idx, true, 2*m + 3, 2*m + 2);
+  FixArray w = fix->mul(c0, eps, nrmlzd_dn.s + 4, all_0.data, msb_eps.data);
+  w = fix->sub(fix->scale_up(c1, nrmlzd_dn.s + m + 4, nrmlzd_dn.s + m + 3),
+               fix->extend(w, nrmlzd_dn.s + m + 4, all_0.data));
+  w = fix->truncate_reduce(w, w.s - s_out);
+
+  BoolArray msb_nm;
+  uint8_t* msb_nm_data = nullptr;
+  if (nm.signed_) {
+    msb_nm = fix->MSB(nm);
+    msb_nm_data = msb_nm.data;
+  }
+
+  // Change extend w and adjust here
+  FixArray w_extend(party, nm.size, w.signed_, w.ell, w.s);
+  FixArray adjust_extend(party, nm.size, adjust.signed_, adjust.ell, adjust.s);
+
+  for(int i = 0; i < dn.size; i++) {
+    for (int j = 0; j < batch_dn_size; j++) {
+      w_extend.data[i*batch_dn_size + j] = w.data[i];
+      adjust_extend.data[i*batch_dn_size + j] = adjust.data[i];
+    }
+  }
+
+  BoolArray all_0_dm = bool_op->input(ALICE, nm.size, uint8_t(0));
+  // BoolArray all_1_dm = bool_op->input(ALICE, nm.size, uint8_t(1));
+
+  FixArray a = fix->mul(nm, w_extend, nm.ell + s_out, msb_nm_data, all_0_dm.data);
+  a = fix->truncate_reduce(a, nm.s);
+  if ((nm.ell - nm.s) >= (l_out - s_out)) {
+    a = fix->reduce(a, l_out);
+  } else {
+    a = fix->extend(a, l_out, msb_nm_data);
+  }
+
+  if (!normalized_dn) {
+    // Change extend adjust here
+    a = fix->mul(a, adjust_extend, l_out + adjust_extend.s, msb_nm_data, all_0_dm.data);
+    a = fix->truncate_reduce(a, adjust_extend.s);
+  }
+
+  if (iters > 0) {
+    assert(0);
+    FixArray d = fix->mul(w, nrmlzd_dn, s_out + nrmlzd_dn.s + 2, all_0.data, all_0.data);
+    d = fix->truncate_reduce(d, nrmlzd_dn.s);
+    FixArray e = fix->sub(1ULL << d.s, d);
+    e.signed_ = true;
+
+    FixArray a_curr, e_curr;
+    FixArray a_prev = a, e_prev = e;
+    for (int i = 0; i < iters - 1; i++) {
+      e_curr = fix->mul(e_prev, e_prev, 2*s_out + 2, all_0.data, all_0.data);
+      e_curr = fix->truncate_reduce(e_curr, s_out);
+      e_prev = fix->add(e_prev, 1ULL << e_prev.s);
+      a_curr = fix->mul(e_prev, a_prev, l_out + s_out, all_0.data, msb_nm_data);
+      a_curr = fix->truncate_reduce(a_curr, s_out);
+      a_prev = a_curr;
+      e_prev = e_curr;
+    }
+    e_prev = fix->add(e_prev, 1ULL << e_prev.s);
+    FixArray out = fix->mul(e_prev, a_prev, l_out + s_out, all_0.data, msb_nm_data);
+    out = fix->truncate_reduce(out, s_out);
+    return out;
+  } else {
+    return a;
+  }
+}
+
 FixArray FixOp::sigmoid(const FixArray& x, int l_y, int s_y) {
   assert(x.party != PUBLIC);
   assert(x.signed_ == true);
@@ -1069,20 +1190,22 @@ FixArray FixOp::poly1(const FixArray& p){
   BoolArray all_1 = bool_op->input(ALICE, p.size, 1);
   BoolArray all_0 = bool_op->input(ALICE, p.size, uint8_t(0));
 
-  FixArray arg1 = fix->input(ALICE, p.size, uint64_t(1468), true, ell, scale);
-  FixArray arg2 = fix->input(ALICE, p.size, uint64_t(5542), true, ell, scale);
-  FixArray arg3 = fix->input(ALICE, p.size, uint64_t(1409), true, ell, scale);
+  FixArray arg1 = fix->input(PUBLIC, p.size, uint64_t(1468), true, ell, scale);
+  FixArray arg2 = fix->input(PUBLIC, p.size, uint64_t(5542), true, ell, scale);
+  FixArray arg3 = fix->input(PUBLIC, p.size, uint64_t(1409), true, ell, scale);
 
   FixArray p_arg2 = this->add(p, arg2);
 
-  FixArray p_arg2_pow2 = this->mul(p_arg2, p_arg2, 2*ell, all_0.data, all_0.data);
-  p_arg2_pow2 =  this->truncate_reduce(p_arg2_pow2, scale);
-  p_arg2_pow2 =  this->reduce(p_arg2_pow2, ell);
+  FixArray p_arg2_pow2 = this->mul(p_arg2, p_arg2, ell + scale, all_0.data, all_0.data);
+  // Optimization: local truncation
+  p_arg2_pow2 =  this->truncate_reduce(p_arg2_pow2, scale, all_0.data);
+  // p_arg2_pow2 =  this->reduce(p_arg2_pow2, ell);
   // print_fix(p_arg2_pow2);
 
-  FixArray arg1_p_arg2 = this->mul(p_arg2_pow2, arg1, 2*ell, all_0.data, all_0.data);
-  arg1_p_arg2 =  this->truncate_reduce(arg1_p_arg2, scale);
-  arg1_p_arg2 =  this->reduce(arg1_p_arg2, ell);
+  FixArray arg1_p_arg2 = this->mul(p_arg2_pow2, arg1, ell + scale, all_0.data, all_0.data);
+  // Optimization: local truncation
+  arg1_p_arg2 =  this->truncate_reduce(arg1_p_arg2, scale, all_0.data);
+  // arg1_p_arg2 =  this->reduce(arg1_p_arg2, ell);
   // print_fix(arg1_p_arg2);
 
   return this->add(arg1_p_arg2, arg3);

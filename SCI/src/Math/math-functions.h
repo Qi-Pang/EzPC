@@ -26,6 +26,8 @@ SOFTWARE.
 #include "BuildingBlocks/truncation.h"
 #include "BuildingBlocks/value-extension.h"
 #include "LinearOT/linear-ot.h"
+#include "NonLinear/argmax.h"
+// #include "FloatingPoint/fp-math.h"
 
 class MathFunctions {
 public:
@@ -92,6 +94,9 @@ public:
             int32_t s_x, int32_t s_y);
 
   void gelu_iron(int32_t dim, uint64_t *x, uint64_t *y, int bw_x, int bw_y , int s_x, int s_y);
+
+  // void softmax_iron(ArgMaxProtocol<uint64_t> *argmax, FPMath *fpmath, int32_t dim, int32_t array_size, uint64_t *x, uint64_t *y,
+  //                   int32_t bw_x, int32_t bw_y ,int32_t s_x, int32_t s_y);
 };
 
 #endif

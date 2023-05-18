@@ -639,6 +639,8 @@ FixArray FPMath::exp4(const FixArray &x){
   return fp / (2**l)
   */
 
+  // print_fix(x);
+
   int ell = x.ell;
   int scale = x.s;
 
@@ -648,42 +650,62 @@ FixArray FPMath::exp4(const FixArray &x){
   
 
   // ln2
-  FixArray ln2 = fix->input(ALICE, x.size, uint64_t(2839), true, ell, scale);
+  FixArray ln2 = fix->input(PUBLIC, x.size, uint64_t(2839), true, ell, scale);
   // print_fix(ln2);
 
   // inverse of negative ln2
-  FixArray inl = fix->input(ALICE, x.size, uint64_t(-5909), true, ell, scale);
+  FixArray inl = fix->input(PUBLIC, x.size, uint64_t(-5909), true, ell, scale);
   // print_fix(inl);
 
   // x / -math.log(2)
   // Truncate to original scale and bitlength
-  FixArray x_inl = fix->mul(x, inl, 2*ell, all_1.data, all_0.data);
-  x_inl =  fix->truncate_reduce(x_inl, scale);
+  FixArray x_inl = fix->mul(x, inl, 2*ell, all_1.data, all_1.data);
+  // Optimization: local truncation
+  x_inl =  fix->truncate_reduce(x_inl, scale, all_0.data);
   x_inl =  fix->reduce(x_inl, ell);
   // print_fix(x_inl);
 
   // Get the integer part and scale back
   FixArray l_short = fix->truncate_reduce(x_inl, scale);
   FixArray l = fix->scale_up(l_short, ell, scale);
-  // print_fix(l);
 
   // l*math.log(2)
-  FixArray l_ln2 = fix->mul(l, ln2, 2*ell, all_0.data, all_0.data);
+  FixArray l_ln2 = fix->mul(l, ln2, ell+scale, all_0.data, all_0.data);
   l_ln2 =  fix->truncate_reduce(l_ln2, scale);
-  l_ln2 =  fix->reduce(l_ln2, ell);
-  // print_fix(l_ln2);
+  // l_ln2 =  fix->reduce(l_ln2, ell);
 
   // Get the decimal part
   FixArray p = fix->add(x, l_ln2);
+  
+
+  // print_fix(x_inl);
+  // FixArray l_short(x.party, x.size, x.signed_, ell, x.s);
+  // FixArray p(x.party, x.size, x.signed_, ell, x.s);
+
+  // uint64_t dec_mask = (scale == 64) ? -1 : (1ULL << (scale)) - 1;
+  // uint64_t int_mask = -1 - dec_mask;
+
+  // std::cout << std::bitset<sizeof(dec_mask) * 8>(dec_mask) << std::endl;
+  // std::cout << std::bitset<sizeof(int_mask) * 8>(int_mask) << std::endl;
+
+  // for (int i = 0; i < x.size; i++) {
+  //   l_short.data[i] = x_inl.data[i] & int_mask;
+  //   p.data[i] = x_inl.data[i] & dec_mask;
+  // }
+  // print_fix(l_short);
   // print_fix(p);
+  // assert(0);
+
+
+  // Optimization: We don't need that much bit as p \in (-ln2, 0])
+  p = fix->reduce(p, scale + 2);
 
   // Polynomial fit
   FixArray poly_p = fix->poly1(p);
-  // print_fix(poly_p);
+  poly_p = fix->extend(poly_p, ell, all_0.data);
 
-  // 
   l_short.signed_ = false;
-  FixArray ret = fix->right_shift(poly_p, l_short, ell, all_0.data);
+  FixArray ret = fix->right_shift(poly_p, l_short, scale + 1, all_0.data);
   // print_fix(ret);
 
   return ret;
@@ -1213,11 +1235,15 @@ vector<FPArray> FPMath::softmax_secfloat(const vector<FPArray>& x) {
 }
 
 vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
-  // print_fix(x[0]);
   int N = x.size();
   int n = x[0].size;
   int ell = x[0].ell;
   int s = x[0].s;
+
+  // for (int i = 0; i < N; i++){
+  //   print_fix(x[i]);
+  // }
+
   bool signed_ = x[0].signed_;
   // assert(m_bits > 0);
   for(int i = 1; i < N; i++) {
@@ -1226,18 +1252,24 @@ vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
     assert(x[i].s == s);
     assert(x[i].size == n);
   }
-  FixArray x_max = fix->max(x);
-  FixArray x_max_flat(party, N*n, signed_, ell, s);
-  for (int i = 0; i < N; i++) {
-    for (int j = 0; j < n; j++) {
-      x_max_flat.data[i*n + j] = x_max.data[i];
-    }
-  }
+  // FixArray x_max = fix->max(x);
+  // x_max = fix->add(x_max, 1);
+  // FixArray x_max_flat(party, N*n, signed_, ell, s);
+  // for (int i = 0; i < N; i++) {
+  //   for (int j = 0; j < n; j++) {
+  //     x_max_flat.data[i*n + j] = x_max.data[i];
+  //   }
+  // }
+
+  FixArray x_max_flat = fix->input(PUBLIC, N*n, 10<<s, signed_, ell, s);
+  // print_fix(x_max_flat);
+  // assert(0);
 
   FixArray x_flat = concat(x);
   FixArray shifted_x_flat = fix->sub(x_flat, x_max_flat);
 
   FixArray e_x_flat = exp4(shifted_x_flat);
+  // FixArray e_x_flat = shifted_x_flat;
 
   vector<FixArray> e_x_tr(n);
   for (int i = 0; i < n; i++) {
@@ -1267,21 +1299,109 @@ vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
     }
     sum_e_x = tmp[0];
   }
-  FixArray sum_e_x_replicated(party, N*n, signed_, ell, s);
-  for(int i = 0; i < N; i++) {
-    for (int j = 0; j < n; j++) {
-      sum_e_x_replicated.data[i*n + j] = sum_e_x.data[i];
-    }
-  }
+  // FixArray sum_e_x_replicated(party, N*n, signed_, ell, s);
+  // for(int i = 0; i < N; i++) {
+  //   for (int j = 0; j < n; j++) {
+  //     sum_e_x_replicated.data[i*n + j] = sum_e_x.data[i];
+  //   }
+  // }
+  // sum_e_x_replicated.signed_ = false;
+  // FixArray ret_flat = fix->div(e_x_flat, sum_e_x_replicated, ell, s);
+  
+  sum_e_x.signed_ = false;
+  FixArray ret_flat = fix->div_batch(e_x_flat, sum_e_x, n ,ell, s);
 
-  sum_e_x_replicated.signed_ = false;
-
-  FixArray ret_flat = fix->div(e_x_flat, sum_e_x_replicated, ell, s);
   vector<FixArray> ret(N);
   for (int i = 0; i < N; i++) {
     ret[i] = FixArray(party, n, signed_, ell, s);
     memcpy(ret[i].data, ret_flat.data + i*n, n*sizeof(uint64_t));
   }
-  print_fix(ret[0]);
+
+  // for (int i = 0; i < N; i++){
+  //   print_fix(ret[i]);
+  // }
+  return ret;
+}
+
+
+vector<FixArray> FPMath::softmax_fix_iron_1(const vector<FixArray>& x) {
+  int N = x.size();
+  // for (int i = 0; i < N; i++){
+  //   print_fix(x[i]);
+  // }
+  int n = x[0].size;
+  int ell = x[0].ell;
+  int s = x[0].s;
+  bool signed_ = x[0].signed_;
+  // assert(m_bits > 0);
+  for(int i = 1; i < N; i++) {
+    assert(x[i].party != PUBLIC);
+    assert(x[i].ell == ell);
+    assert(x[i].s == s);
+    assert(x[i].size == n);
+  }
+  FixArray x_max = fix->max(x);
+  // print_fix(x_max);
+  FixArray x_max_flat(party, N*n, signed_, ell, s);
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < n; j++) {
+      x_max_flat.data[i*n + j] = x_max.data[i];
+    }
+  }
+
+  FixArray x_flat = concat(x);
+  FixArray shifted_x_flat = fix->sub(x_flat, x_max_flat);
+
+  FixArray e_x_flat = fix->exp(shifted_x_flat, ell, s);
+
+  vector<FixArray> e_x_tr(n);
+  for (int i = 0; i < n; i++) {
+    e_x_tr[i] = FixArray(party, N, signed_, ell, s);
+    for (int j = 0; j < N; j++) {
+      e_x_tr[i].data[j] = e_x_flat.data[j*n + i];
+    }
+  }
+  FixArray sum_e_x;
+  {
+    vector<FixArray> tmp = e_x_tr;
+    int num_adds_old = n; int num_adds_curr = n/2;
+    while(num_adds_old > 1) {
+      int odd_num_adds = num_adds_old & 1;
+      vector<FixArray> lhs(num_adds_curr); vector<FixArray> rhs(num_adds_curr);
+      for (int j = odd_num_adds; j < num_adds_old && j + 1 < num_adds_old; j += 2) {
+        lhs[j/2] = tmp[j]; rhs[j/2] = tmp[j+1];
+      }
+      FixArray lhs_concat = concat(lhs);
+      FixArray rhs_concat = concat(rhs);
+      lhs_concat = fix->add(lhs_concat, rhs_concat);
+      for (int j = 0; j < num_adds_old && j + 1 < num_adds_old; j += 2) {
+        tmp[odd_num_adds + (j/2)] = lhs_concat.subset((j/2)*N, (j/2)*N + N);
+      }
+      num_adds_old = num_adds_curr + odd_num_adds;
+      num_adds_curr = num_adds_old/2;
+    }
+    sum_e_x = tmp[0];
+  }
+  // FixArray sum_e_x_replicated(party, N*n, signed_, ell, s);
+  // for(int i = 0; i < N; i++) {
+  //   for (int j = 0; j < n; j++) {
+  //     sum_e_x_replicated.data[i*n + j] = sum_e_x.data[i];
+  //   }
+  // }
+  // sum_e_x_replicated.signed_ = false;
+  // FixArray ret_flat = fix->div(e_x_flat, sum_e_x_replicated, ell, s);
+  
+  sum_e_x.signed_ = false;
+  FixArray ret_flat = fix->div_batch(e_x_flat, sum_e_x, n ,ell, s);
+
+  // FixArray ret_flat = x_max_flat;
+  vector<FixArray> ret(N);
+  for (int i = 0; i < N; i++) {
+    ret[i] = FixArray(party, n, signed_, ell, s);
+    memcpy(ret[i].data, ret_flat.data + i*n, n*sizeof(uint64_t));
+  }
+  // for (int i = 0; i < N; i++){
+  //   print_fix(ret[i]);
+  // }
   return ret;
 }

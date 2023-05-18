@@ -403,6 +403,9 @@ public:
   // nm and dn must be secret-shared, and s_out should be <= dn.s
   // if normalized_dn is true, it is assumed that dn \in [1,2)
   FixArray div(const FixArray& nm, const FixArray& dn, int l_out, int s_out, bool normalized_dn = false);
+  
+  // Optimization: 
+  FixArray div_batch(const FixArray& nm, const FixArray& dn, int batch_dn_size, int l_out, int s_out, bool normalized_dn = false);
 
   FixArray sqrt(const FixArray& x, int l_y, int s_y, bool recp_sqrt = false);
 
