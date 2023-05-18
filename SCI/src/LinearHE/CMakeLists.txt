@@ -34,7 +34,7 @@ add_library(SCI-LinearHE
     elemwise-prod-field.cpp
     utils-HE.cpp
     bert-matmul.cpp
-    bert-matmul-cipher-efficient.cpp
+    # bert-matmul-cipher-efficient.cpp
     bert-matmul-cipher-efficient-seal.cpp
     bert-matmul-cipher-efficient-seal-ckks.cpp
     # iron-seal.cpp

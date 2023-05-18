@@ -659,10 +659,10 @@ FixArray FPMath::exp4(const FixArray &x){
 
   // x / -math.log(2)
   // Truncate to original scale and bitlength
-  FixArray x_inl = fix->mul(x, inl, 2*ell, all_1.data, all_1.data);
+  FixArray x_inl = fix->mul(x, inl, ell + scale, all_1.data, all_1.data);
   // Optimization: local truncation
   x_inl =  fix->truncate_reduce(x_inl, scale, all_0.data);
-  x_inl =  fix->reduce(x_inl, ell);
+  // x_inl =  fix->reduce(x_inl, ell);
   // print_fix(x_inl);
 
   // Get the integer part and scale back
@@ -676,27 +676,6 @@ FixArray FPMath::exp4(const FixArray &x){
 
   // Get the decimal part
   FixArray p = fix->add(x, l_ln2);
-  
-
-  // print_fix(x_inl);
-  // FixArray l_short(x.party, x.size, x.signed_, ell, x.s);
-  // FixArray p(x.party, x.size, x.signed_, ell, x.s);
-
-  // uint64_t dec_mask = (scale == 64) ? -1 : (1ULL << (scale)) - 1;
-  // uint64_t int_mask = -1 - dec_mask;
-
-  // std::cout << std::bitset<sizeof(dec_mask) * 8>(dec_mask) << std::endl;
-  // std::cout << std::bitset<sizeof(int_mask) * 8>(int_mask) << std::endl;
-
-  // for (int i = 0; i < x.size; i++) {
-  //   l_short.data[i] = x_inl.data[i] & int_mask;
-  //   p.data[i] = x_inl.data[i] & dec_mask;
-  // }
-  // print_fix(l_short);
-  // print_fix(p);
-  // assert(0);
-
-
   // Optimization: We don't need that much bit as p \in (-ln2, 0])
   p = fix->reduce(p, scale + 2);
 
@@ -705,6 +684,8 @@ FixArray FPMath::exp4(const FixArray &x){
   poly_p = fix->extend(poly_p, ell, all_0.data);
 
   l_short.signed_ = false;
+  // Optimization: The polynomial result is within [0, ~0.7)
+  // Thus the upper bound of shift is scale + 1
   FixArray ret = fix->right_shift(poly_p, l_short, scale + 1, all_0.data);
   // print_fix(ret);
 

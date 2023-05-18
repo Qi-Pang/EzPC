@@ -39,8 +39,8 @@ string address = "127.0.0.1";
 
 int32_t dim = num_threads*128;
 int32_t array_size = 128;
-int32_t bw_x = 24;
-int32_t bw_y = 24;
+int32_t bw_x = 37;
+int32_t bw_y = 37;
 int32_t s_x = 12;
 int32_t s_y = 12;
 int32_t input_size = dim*array_size;
