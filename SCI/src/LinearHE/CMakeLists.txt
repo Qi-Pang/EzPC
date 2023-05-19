@@ -37,8 +37,8 @@ add_library(SCI-LinearHE
     bert-matmul-cipher-efficient.cpp
     bert-matmul-cipher-efficient-seal.cpp
     bert-matmul-cipher-efficient-seal-ckks.cpp
-    # iron-seal.cpp
-    # bert-ct-pt.cpp
+    iron-seal.cpp
+    bert-ct-pt.cpp
     # utils-HE-openfhe.cpp
 )
 

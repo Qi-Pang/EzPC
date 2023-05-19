@@ -504,12 +504,12 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross
     int n1;
     int n2;
     if (data.slot_count == 4096) {
-        n1 = 2;
-        n2 = 8;
+        n1 = 4;
+        n2 = 4;
     }
     else {
-        n1 = 4;
-        n2 = 8;
+        n1 = 8;
+        n2 = 4;
     }
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
@@ -799,12 +799,12 @@ vector<Ciphertext> BEFCField::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, ve
     int n1;
     int n2;
     if (data.slot_count == 4096) {
-        n1 = 2;
-        n2 = 8;
+        n1 = 4;
+        n2 = 4;
     }
     else {
-        n1 = 4;
-        n2 = 8;
+        n1 = 8;
+        n2 = 4;
     }
     int num_diag = data.slot_count / data.image_size / 2;
     cout << "[Server] Online Start" << endl;
@@ -839,7 +839,8 @@ vector<Ciphertext> BEFCField::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, ve
     auto t2_rotation = high_resolution_clock::now();
     auto internal_rotation = (t2_rotation - t1_rotation)/1e+9;
     //compute matrix multiplication
-    vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w / data.slot_count * 2, vector<Ciphertext>(n2)); // 8 x 48x8
+    vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w / data.slot_count * 2, vector<Ciphertext>(n2));
+    vector<vector<Ciphertext>> temp_results1(data.image_size * data.filter_w / data.slot_count * 2, vector<Ciphertext>(n2 * cts.size()));
 
     // rotatedIR 48 x 16, enc_mat 64 x 48
 
@@ -853,15 +854,28 @@ vector<Ciphertext> BEFCField::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, ve
                 Ciphertext ct1_r;
                 evaluator->multiply_plain(rotatedIR[ct_i][i], enc_mat1[n1 * j + i + l * num_diag][ct_i], ct1_l);
                 evaluator->multiply_plain(rotatedIR[ct_i][i + n1], enc_mat2[n1 * j + i + l * num_diag][ct_i], ct1_r);
-                if (ct_i == 0 && i == 0)
-                    evaluator->add(ct1_l, ct1_r, temp_results[l][j]);
+                if (i == 0)
+                    evaluator->add(ct1_l, ct1_r, temp_results1[l][k]);
                 else {
                     Ciphertext temp_add_ct;
                     evaluator->add(ct1_l, ct1_r, temp_add_ct);
-                    evaluator->add_inplace(temp_results[l][j], temp_add_ct);
+                    evaluator->add_inplace(temp_results1[l][k], temp_add_ct);
                 }
             }
         }
+    }
+
+    #pragma omp parallel for
+    for (int j = 0; j < n2; j++) {
+        for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
+            for (int l = 0; l < data.image_size * data.filter_w / data.slot_count * 2; l++) {
+                if (ct_i == 0)
+                    temp_results[l][j] = temp_results1[l][j * cts.size() + ct_i];
+                else
+                    evaluator->add_inplace(temp_results[l][j], temp_results1[l][j * cts.size() + ct_i]);
+            }
+        }
+        
     }
 
     #ifdef HE_DEBUG

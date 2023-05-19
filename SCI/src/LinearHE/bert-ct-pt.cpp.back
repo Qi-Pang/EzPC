@@ -599,17 +599,17 @@ void BECTPT::matrix_multiplication(int32_t input_dim,
         auto HE_result = bert_efficient_postprocess(enc_result, data);
 
         // HACK
-        // for (int i = 0; i < 3; i++) {
-        //     for (int j = 0; j < 64; j++)
-        //         cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-        //     cout << endl;
-        // }
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 64; j++)
+                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            cout << endl;
+        }
 
-        // for (int i = 0; i < 3; i++) {
-        //     for (int j = 128; j < 128 + 64; j++)
-        //         cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-        //     cout << endl;
-        // }
+        for (int i = 0; i < 3; i++) {
+            for (int j = 128; j < 128 + 64; j++)
+                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            cout << endl;
+        }
         
         // for (int i = 0; i < num_rows; i++) {
         //   C[i][0] = HE_result[i];

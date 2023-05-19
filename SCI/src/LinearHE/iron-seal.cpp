@@ -139,27 +139,37 @@ Ciphertext IRONFC::preprocess_noise(const uint64_t *secret_share, const FCMetada
   return enc_noise;
 }
 
-vector<Ciphertext> IRONFC::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
+vector<Ciphertext> IRONFC::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<vector<Plaintext>>> &enc_mats1, vector<vector<vector<Plaintext>>> &enc_mats2, vector<vector<vector<Plaintext>>> &enc_mats3, const FCMetadata &data) {
     cout << "[Server] Online Start" << endl;
     int nw = 16;
     int kw = 2;
 
-    vector<Ciphertext> result(data.filter_w / kw * 2);
+    vector<Ciphertext> result(data.filter_w / kw * 3 * 12);
 
-    #pragma omp parallel for
-    for (int j = 0; j < data.filter_w / kw; j++) {
-        for (int i = 0; i < data.filter_h / nw; i++) {
-            Ciphertext temp_ct1;
-            Ciphertext temp_ct2;
-            evaluator->multiply_plain(cts[i], enc_mat1[i][j], temp_ct1);
-            evaluator->multiply_plain(cts[i], enc_mat2[i][j], temp_ct2);
-            if (i == 0) {
-                result[j] = temp_ct1;
-                result[j + data.filter_w / kw] = temp_ct2;
-            }
-            else {
-                evaluator->add_inplace(result[j], temp_ct1);
-                evaluator->add_inplace(result[j + data.filter_w / kw], temp_ct2);
+    for (int packing_index = 0; packing_index < 12; packing_index++) {
+        vector<vector<Plaintext>> enc_mat1 = enc_mats1[packing_index];
+        vector<vector<Plaintext>> enc_mat2 = enc_mats2[packing_index];
+        vector<vector<Plaintext>> enc_mat3 = enc_mats3[packing_index];
+
+        #pragma omp parallel for
+        for (int j = 0; j < data.filter_w / kw; j++) {
+            for (int i = 0; i < data.filter_h / nw; i++) {
+                Ciphertext temp_ct1;
+                Ciphertext temp_ct2;
+                Ciphertext temp_ct3;
+                evaluator->multiply_plain(cts[i], enc_mat1[i][j], temp_ct1);
+                evaluator->multiply_plain(cts[i], enc_mat2[i][j], temp_ct2);
+                evaluator->multiply_plain(cts[i], enc_mat3[i][j], temp_ct3);
+                if (i == 0) {
+                    result[j + data.filter_w / kw * 3 * packing_index] = temp_ct1;
+                    result[j + data.filter_w / kw + data.filter_w / kw * 3 * packing_index] = temp_ct2;
+                    result[j + data.filter_w / kw * 2 + data.filter_w / kw * 3 * packing_index] = temp_ct3;
+                }
+                else {
+                    evaluator->add_inplace(result[j + data.filter_w / kw * 3 * packing_index], temp_ct1);
+                    evaluator->add_inplace(result[j + data.filter_w / kw + data.filter_w / kw * 3 * packing_index], temp_ct2);
+                    evaluator->add_inplace(result[j + data.filter_w / kw * 2 + data.filter_w / kw * 3 * packing_index], temp_ct3);
+                }
             }
         }
     }
@@ -172,6 +182,7 @@ vector<Ciphertext> IRONFC::bert_cipher_plain(vector<Ciphertext> &cts, vector<vec
         }
     }
     std::sort(used_indices.begin(), used_indices.end());
+
     for (int i = 0; i < result.size(); i++) {
         for (int j = 0; j < data.slot_count; j++) {
             if (std::binary_search(used_indices.cbegin(), used_indices.cend(), j))
@@ -187,11 +198,11 @@ vector<Ciphertext> IRONFC::bert_cipher_plain(vector<Ciphertext> &cts, vector<vec
 }
 
 uint64_t* IRONFC::bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
-    uint64_t *result = new uint64_t[data.image_size * data.filter_w * 2];
+    uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3];
     int nw = 16;
     int kw = 2;
     
-    for (int ct_ind = 0; ct_ind < cts.size() / 2; ct_ind++) {
+    for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
         Plaintext pt;
         decryptor->decrypt(cts[ct_ind], pt);
         for (int i = 0; i < data.image_size; i++) {
@@ -201,12 +212,22 @@ uint64_t* IRONFC::bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &da
         }
     }
 
-    for (int ct_ind = 0; ct_ind < cts.size() / 2; ct_ind++) {
+    for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
         Plaintext pt;
-        decryptor->decrypt(cts[ct_ind + cts.size() / 2], pt);
+        decryptor->decrypt(cts[ct_ind + cts.size() / 3], pt);
         for (int i = 0; i < data.image_size; i++) {
             for (int j = 0; j < kw; j++) {
                 result[i + (j + ct_ind * kw) * data.image_size + data.image_size * data.filter_w] = pt[i * nw * kw + (j + 1) * nw - 1];
+            }
+        }
+    }
+
+    for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
+        Plaintext pt;
+        decryptor->decrypt(cts[ct_ind + cts.size() / 3 * 2], pt);
+        for (int i = 0; i < data.image_size; i++) {
+            for (int j = 0; j < kw; j++) {
+                result[i + (j + ct_ind * kw) * data.image_size + data.image_size * data.filter_w * 2] = pt[i * nw * kw + (j + 1) * nw - 1];
             }
         }
     }
@@ -291,7 +312,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         cout << "[Client] Input cts sent" << endl;
         cout << "[Client] Size of cts (Bytes): " << sizeof(Ciphertext) << " " << sizeof(Ciphertext) * cts.size() << endl;
 
-        vector<Ciphertext> enc_result(32 * 2);
+        vector<Ciphertext> enc_result(32 * 3 * 12);
         recv_encrypted_vector(context, io, enc_result);
         cout << "[Client] Output cts received" << endl;
         cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
@@ -370,9 +391,19 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         PRG128 prg;
         uint64_t *secret_share = new uint64_t[input_dim*output_dim];
         prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
-        auto encoded_mat1 = preprocess_matrix(matrix_mod_p1.data(), data);
-        auto encoded_mat2 = preprocess_matrix(matrix_mod_p2.data(), data);
 
+        vector<vector<vector<Plaintext>>> encoded_mats1(12);
+        vector<vector<vector<Plaintext>>> encoded_mats2(12);
+        vector<vector<vector<Plaintext>>> encoded_mats3(12);
+        for (int i = 0; i < 12; i++) {
+            auto encoded_mat1 = preprocess_matrix(matrix_mod_p1.data(), data);
+            auto encoded_mat2 = preprocess_matrix(matrix_mod_p2.data(), data);
+            auto encoded_mat3 = preprocess_matrix(matrix_mod_p2.data(), data);
+            encoded_mats1[i] = encoded_mat1;
+            encoded_mats2[i] = encoded_mat2;
+            encoded_mats3[i] = encoded_mat3;
+        }
+        
         // Ciphertext enc_noise = bert_efficient_preprocess_noise(secret_share, data, cryptoContext_, keyPair_);
         // cout << "[Server] Noise processed" << endl;
         #ifdef HE_TIMING
@@ -389,7 +420,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         auto t1_cipher_plain = high_resolution_clock::now();
         #endif 
 
-        auto Cipher_plain_results = bert_cipher_plain(cts, encoded_mat1, encoded_mat2, data);
+        auto Cipher_plain_results = bert_cipher_plain(cts, encoded_mats1, encoded_mats2, encoded_mats3, data);
 
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();

@@ -75,7 +75,7 @@ public:
 
   Ciphertext preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
-  vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
+  vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<vector<Plaintext>>> &enc_mats1, vector<vector<vector<Plaintext>>> &enc_mats2, vector<vector<vector<Plaintext>>> &enc_mats3, const FCMetadata &data);
 
   uint64_t* bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 
