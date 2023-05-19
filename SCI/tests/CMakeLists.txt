@@ -96,5 +96,11 @@ target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
 add_executable(BERT-HE-IRON "test_bert_iron.cpp")
 target_link_libraries(BERT-HE-IRON SCI-HE)
 
+add_executable(BERT-HE-IRON-INTER1 "test_bert_iron_inter1.cpp")
+target_link_libraries(BERT-HE-IRON-INTER1 SCI-HE)
+
 add_executable(BERT-HE-CTPT "test_bert_ctpt.cpp")
 target_link_libraries(BERT-HE-CTPT SCI-HE)
+
+add_executable(BERT-HE-CTPT-INTER1 "test_bert_ctpt_inter1.cpp")
+target_link_libraries(BERT-HE-CTPT-INTER1 SCI-HE)
