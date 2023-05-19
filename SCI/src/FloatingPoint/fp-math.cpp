@@ -1364,17 +1364,17 @@ vector<FixArray> FPMath::softmax_fix_iron_1(const vector<FixArray>& x) {
     }
     sum_e_x = tmp[0];
   }
-  // FixArray sum_e_x_replicated(party, N*n, signed_, ell, s);
-  // for(int i = 0; i < N; i++) {
-  //   for (int j = 0; j < n; j++) {
-  //     sum_e_x_replicated.data[i*n + j] = sum_e_x.data[i];
-  //   }
-  // }
-  // sum_e_x_replicated.signed_ = false;
-  // FixArray ret_flat = fix->div(e_x_flat, sum_e_x_replicated, ell, s);
+  FixArray sum_e_x_replicated(party, N*n, signed_, ell, s);
+  for(int i = 0; i < N; i++) {
+    for (int j = 0; j < n; j++) {
+      sum_e_x_replicated.data[i*n + j] = sum_e_x.data[i];
+    }
+  }
+  sum_e_x_replicated.signed_ = false;
+  FixArray ret_flat = fix->div(e_x_flat, sum_e_x_replicated, ell, s);
   
-  sum_e_x.signed_ = false;
-  FixArray ret_flat = fix->div_batch(e_x_flat, sum_e_x, n ,ell, s);
+  // sum_e_x.signed_ = false;
+  // FixArray ret_flat = fix->div_batch(e_x_flat, sum_e_x, n ,ell, s);
 
   // FixArray ret_flat = x_max_flat;
   vector<FixArray> ret(N);
