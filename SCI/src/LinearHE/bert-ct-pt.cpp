@@ -346,8 +346,9 @@ vector<Ciphertext> BECTPT::bert_cipher_plain(vector<Ciphertext> &cts, vector<vec
 }
 
 
-vector<Ciphertext> BECTPT::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats, vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single, const FCMetadata &data) {
+void BECTPT::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result) {
 
+    auto t1 = high_resolution_clock::now();
     vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1;
     int n2;
@@ -360,9 +361,8 @@ vector<Ciphertext> BECTPT::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vecto
         n2 = 4;
     }
     int num_diag = data.slot_count / data.image_size / 2;
-    vector<Ciphertext> result(data.image_size * data.filter_w / data.slot_count * 3 * 12);
+    // vector<Ciphertext> result(data.image_size * data.filter_w / data.slot_count * 3 * 12);
     cout << "[Server] Online Start" << endl;
-    auto t1 = high_resolution_clock::now();
     #pragma omp parallel for
     for (int i = 0; i < cts.size(); i++)
     {   
@@ -479,7 +479,7 @@ vector<Ciphertext> BECTPT::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vecto
     ms_double = (t2 - t1)/1e+9;
     cout << "[Server] Online Done " << ms_double.count() << endl;
 
-    return result;
+    // return result;
 }
 
 
@@ -699,13 +699,16 @@ void BECTPT::matrix_multiplication(int32_t input_dim,
             print_noise_budget_vec(cts);
         #endif
 
+
+        vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count * 3 * 12);
         #ifdef HE_TIMING
         auto t1_cipher_plain = high_resolution_clock::now();
         #endif 
 
         // auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
         // auto Cipher_plain_results = bert_cipher_plain(cts, cross_mat.first, cross_mat.second, data);
-        auto Cipher_plain_results = bert_cipher_plain_bsgs(cts, cross_mats, cross_mats_single, data);
+
+        bert_cipher_plain_bsgs(cts, cross_mats, cross_mats_single, data, Cipher_plain_results);
 
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();

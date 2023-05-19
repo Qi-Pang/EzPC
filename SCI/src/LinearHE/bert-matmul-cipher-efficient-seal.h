@@ -71,9 +71,9 @@ public:
   vector<Plaintext> generate_depth3_masks(const FCMetadata &data);
   vector<Plaintext> generate_cross_packing_masks(const FCMetadata &data);
 
-  Ciphertext rotation_by_one(const FCMetadata &data,  Ciphertext ct, int k, vector<vector< Plaintext>> rotation_masks);
+  Ciphertext rotation_by_one(const FCMetadata &data, const Ciphertext &ct, int k, const vector<vector<Plaintext>> &rotation_masks);
 
-  vector<Ciphertext> rotation_by_one_depth3(const FCMetadata &data, Ciphertext ct, int k);
+  vector<Ciphertext> rotation_by_one_depth3(const FCMetadata &data, const Ciphertext &ct, int k);
 
   vector<Ciphertext> bert_efficient_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
 
@@ -85,17 +85,17 @@ public:
 
   Ciphertext bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
-  vector<Ciphertext> bert_efficient_online(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<vector<Plaintext>> & rotation_masks);
+  vector<Ciphertext> bert_efficient_online(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, const vector<vector<Plaintext>> & rotation_masks);
 
-  vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
+  vector<Ciphertext> bert_cipher_plain(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
 
-  vector<Ciphertext> bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
+  void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result);
 
   vector<Ciphertext> bert_efficient_cipher(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<vector<Plaintext>>& rotation_masks, vector<Plaintext>& cipher_masks);
 
   vector<Ciphertext> bert_efficient_cipher_depth3(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& depth3_masks);
 
-  vector<Ciphertext> bert_cipher_cipher_cross_packing(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& cross_masks);
+  void bert_cipher_cipher_cross_packing(const FCMetadata &data, const vector<Ciphertext> &Cipher_plain_result, const vector<Plaintext> &cross_masks, vector<Ciphertext> &results);
 
   uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 

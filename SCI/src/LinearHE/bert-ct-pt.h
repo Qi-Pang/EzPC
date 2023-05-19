@@ -78,7 +78,7 @@ public:
   vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
 
   // vector<Ciphertext> bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, vector<vector<Plaintext>> &enc_mat3, vector<vector<Plaintext>> &enc_mat4, const FCMetadata &data);
-  vector<Ciphertext> bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats, vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single, const FCMetadata &data);
+  void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result);
 
   uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 

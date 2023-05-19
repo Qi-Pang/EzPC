@@ -139,7 +139,7 @@ Ciphertext IRONFC::preprocess_noise(const uint64_t *secret_share, const FCMetada
   return enc_noise;
 }
 
-vector<Ciphertext> IRONFC::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<vector<Plaintext>>> &enc_mats1, vector<vector<vector<Plaintext>>> &enc_mats2, vector<vector<vector<Plaintext>>> &enc_mats3, const FCMetadata &data) {
+vector<Ciphertext> IRONFC::bert_cipher_plain(const vector<Ciphertext> &cts, const vector<vector<vector<Plaintext>>> &enc_mats1, const vector<vector<vector<Plaintext>>> &enc_mats2, const vector<vector<vector<Plaintext>>> &enc_mats3, const FCMetadata &data) {
     cout << "[Server] Online Start" << endl;
     int nw = 16;
     int kw = 2;

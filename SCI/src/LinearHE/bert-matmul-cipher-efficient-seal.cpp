@@ -263,7 +263,7 @@ vector<Plaintext> BEFCField::generate_cross_packing_masks(const FCMetadata &data
     return result;
 }
 
-Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, Ciphertext ct, int k, vector<vector<Plaintext>> rotation_masks) {
+Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, const Ciphertext &ct, int k, const vector<vector<Plaintext>> &rotation_masks) {
 
     int m = -(128 - k);
     Ciphertext ct1;
@@ -282,7 +282,7 @@ Ciphertext BEFCField::rotation_by_one(const FCMetadata &data, Ciphertext ct, int
     return add;
 }
 
-vector<Ciphertext> BEFCField::rotation_by_one_depth3(const FCMetadata &data, Ciphertext ct, int k) {
+vector<Ciphertext> BEFCField::rotation_by_one_depth3(const FCMetadata &data, const Ciphertext &ct, int k) {
 
     int m = -(128 - k);
     Ciphertext ct1;
@@ -592,7 +592,7 @@ Ciphertext BEFCField::bert_efficient_preprocess_noise(const uint64_t *secret_sha
   return enc_noise;
 }
 
-vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<vector<Plaintext>> & rotation_masks) {
+vector<Ciphertext> BEFCField::bert_efficient_online(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, const vector<vector<Plaintext>> &rotation_masks) {
 
     //prepare rotated intermediate representation
     cout << "[Server] Online Start" << endl;
@@ -717,7 +717,7 @@ vector<Ciphertext> BEFCField::bert_efficient_online(vector<Ciphertext> &cts, vec
     return result;
 }
 
-vector<Ciphertext> BEFCField::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
+vector<Ciphertext> BEFCField::bert_cipher_plain(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
 
     vector<vector<Ciphertext>> rotatedIR(cts.size());
 
@@ -793,7 +793,7 @@ vector<Ciphertext> BEFCField::bert_cipher_plain(vector<Ciphertext> &cts, vector<
     return result;
 }
 
-vector<Ciphertext> BEFCField::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
+void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result) {
 
     vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1;
@@ -883,8 +883,6 @@ vector<Ciphertext> BEFCField::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, ve
         print_noise_budget_vec(temp_results[0]);
     #endif
 
-    vector<Ciphertext> result(data.image_size * data.filter_w / data.slot_count * 2);
-
     t1_rotation = high_resolution_clock::now();
     #pragma omp parallel for
     for (int l = 0; l < data.image_size * data.filter_w / data.slot_count * 2; l++) {
@@ -905,7 +903,6 @@ vector<Ciphertext> BEFCField::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, ve
     internal_rotation += (t2_rotation - t1_rotation)/1e+9;
     cout << "[Server] Ct-Pt Rotation takes " << internal_rotation.count() << endl;
 
-    return result;
 }
 
 // 1. rotate rhs for 128 x 1-step rotations
@@ -1110,7 +1107,7 @@ vector<Ciphertext> BEFCField::bert_efficient_cipher_depth3(const FCMetadata &dat
     return results;
 }
 
-vector<Ciphertext> BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<Plaintext>& cross_masks)
+void BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, const vector<Ciphertext> &Cipher_plain_result, const vector<Plaintext> &cross_masks, vector<Ciphertext> &results)
 {
     Ciphertext HE_result_1_left = Cipher_plain_result[0];
     Ciphertext HE_result_2_left = Cipher_plain_result[1];
@@ -1167,7 +1164,6 @@ vector<Ciphertext> BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata 
     std::cout << "[Server] Cipher-Cipher Rotation 2 " << ms_double.count() << std::endl;
     // Packing
     t1 = high_resolution_clock::now();
-    vector<Ciphertext> results(2);
     
     evaluator->add(rotation_results[0], rotation_results[65], results[0]);
     evaluator->add(rotation_results[32], rotation_results[32 + 65], results[1]);
@@ -1187,7 +1183,6 @@ vector<Ciphertext> BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata 
     ms_double = (t2 - t1)/1e+9;
     std::cout << "[Server] Cipher-Cipher Packing " << ms_double.count() << std::endl;
 
-    return results;
 }
 
 int omp_thread_count() {
@@ -1414,7 +1409,8 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
         // auto Cipher_plain_results = bert_cipher_plain(cts, cross_mat.first, cross_mat.second, data);
-        auto Cipher_plain_results = bert_cipher_plain_bsgs(cts, cross_mat.first, cross_mat.second, data);
+        vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count * 2);
+        bert_cipher_plain_bsgs(cts, cross_mat.first, cross_mat.second, data, Cipher_plain_results);
 
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();
@@ -1426,7 +1422,8 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // auto HE_result = bert_efficient_cipher(data, Cipher_plain_results, rotation_masks, cipher_masks);
         // auto HE_result = bert_efficient_cipher_depth3(data, Cipher_plain_results, depth3_masks);
-        auto HE_result = bert_cipher_cipher_cross_packing(data, Cipher_plain_results, cross_masks);
+        vector<Ciphertext> HE_result(2);
+        bert_cipher_cipher_cross_packing(data, Cipher_plain_results, cross_masks, HE_result);
 
         #ifdef HE_TIMING
         auto t2_cipher_cipher = high_resolution_clock::now();

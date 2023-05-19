@@ -346,7 +346,7 @@ vector<Ciphertext> BECTPTINTER1::bert_cipher_plain(vector<Ciphertext> &cts, vect
 }
 
 
-vector<Ciphertext> BECTPTINTER1::bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
+void BECTPTINTER1::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result) {
 
     vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1;
@@ -438,8 +438,6 @@ vector<Ciphertext> BECTPTINTER1::bert_cipher_plain_bsgs(vector<Ciphertext> &cts,
         print_noise_budget_vec(temp_results[0]);
     #endif
 
-    vector<Ciphertext> result(data.image_size * data.filter_w / data.slot_count);
-
     #pragma omp parallel for
     for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
         Ciphertext ct;
@@ -459,7 +457,6 @@ vector<Ciphertext> BECTPTINTER1::bert_cipher_plain_bsgs(vector<Ciphertext> &cts,
     ms_double = (t2 - t1)/1e+9;
     cout << "[Server] Online Done " << ms_double.count() << endl;
 
-    return result;
 }
 
 
@@ -635,7 +632,8 @@ void BECTPTINTER1::matrix_multiplication(int32_t input_dim,
 
         // auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
         // auto Cipher_plain_results = bert_cipher_plain(cts, cross_mat.first, cross_mat.second, data);
-        auto Cipher_plain_results = bert_cipher_plain_bsgs(cts, cross_mat_single.first, cross_mat_single.second, data);
+        vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count);
+        bert_cipher_plain_bsgs(cts, cross_mat_single.first, cross_mat_single.second, data, Cipher_plain_results);
 
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();
