@@ -1393,3 +1393,40 @@ FixArray FPMath::lookup_table_exp(const FixArray& x){
   math->lookup_table_exp(x.size, x.data, ret.data, x.ell, x.ell, x.s, x.s);
   return ret;
 }
+
+// double gelu_y = 0.5*dbl_x*(1+tanh(sqrt(2/M_PI)*(dbl_x+0.044715*dbl_x*dbl_x*dbl_x)));
+FixArray FPMath::gelu_iron(const FixArray& x){
+  int N = x.size;
+  int ell = x.ell;
+  int s = x.s;
+
+  // Constants
+
+  FixArray cons_half = fix->input(PUBLIC, x.size, uint64_t(0.5 * pow(2, s)), false, ell, s);
+  FixArray cons_less_half = fix->input(PUBLIC, x.size, uint64_t(0.044715 * pow(2, s)), false, ell, s);
+  FixArray cons_some_pi = fix->input(PUBLIC, x.size, uint64_t((sqrt(2/M_PI)) * (1ULL << s)), false, ell, s);
+
+  FixArray x_square = fix->mul(x, x, ell+s);
+  x_square = fix->truncate_reduce(x_square, s);
+
+  FixArray x_cube = fix->mul(x_square, x, ell+s);
+  x_cube = fix->truncate_reduce(x_cube, s);
+
+  FixArray x_cube_less_half = fix->mul(x_cube, cons_less_half, ell+s);
+  x_cube_less_half = fix->truncate_reduce(x_cube_less_half, s);
+  x_cube_less_half = fix->add(x_cube_less_half, x);
+
+  FixArray x_cube_pi = fix->mul(x_cube_less_half, cons_some_pi, ell+s);
+  x_cube_pi = fix->truncate_reduce(x_cube_pi, s);
+
+  FixArray post_tanh = fix->tanh(x_cube_pi, ell, s);
+  post_tanh = fix->add(post_tanh, 1 << s);
+
+  FixArray half_x = fix->mul(x, cons_half, ell+s);
+  half_x = fix->truncate_reduce(half_x, s);
+
+  FixArray ret = fix->mul(half_x, post_tanh, ell+s);
+  ret = fix->truncate_reduce(ret, s);
+
+  return ret;
+}

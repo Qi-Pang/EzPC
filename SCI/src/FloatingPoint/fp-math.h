@@ -79,6 +79,10 @@ public:
   
   FixArray lookup_table_exp(const FixArray& x);
 
+  FixArray gelu_iron(const FixArray& x);
+
+  FixArray tanh_fix(const FixArray& x);
+
   // FixArray recip_approx(const FixArray& x);
   
   // vector<FixArray> softmax_fix_iron_2(const vector<FixArray>& x);
