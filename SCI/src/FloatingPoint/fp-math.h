@@ -33,7 +33,7 @@ public:
   BoolOp *bool_op;
   FixOp *fix;
   FPOp *fp_op;
-  // MathFunctions *math;
+  MathFunctions *math;
 
   FPMath(int party, sci::IOPack *iopack, sci::OTPack *otpack) {
     this->party = party;
@@ -42,7 +42,7 @@ public:
     this->bool_op = new BoolOp(party, iopack, otpack);
     this->fix = new FixOp(party, iopack, otpack);
     this->fp_op = new FPOp(party, iopack, otpack);
-    // this->math = new MathFunctions(party, iopack, otpack);
+    this->math = new MathFunctions(party, iopack, otpack);
   }
 
   ~FPMath() {
@@ -76,6 +76,8 @@ public:
   vector<FixArray> softmax_fix(const vector<FixArray>& x);
 
   vector<FixArray> softmax_fix_iron_1(const vector<FixArray>& x);
+  
+  FixArray lookup_table_exp(const FixArray& x);
 
   // FixArray recip_approx(const FixArray& x);
   

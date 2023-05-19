@@ -1333,7 +1333,8 @@ vector<FixArray> FPMath::softmax_fix_iron_1(const vector<FixArray>& x) {
   FixArray x_flat = concat(x);
   FixArray shifted_x_flat = fix->sub(x_flat, x_max_flat);
 
-  FixArray e_x_flat = fix->exp(shifted_x_flat, ell, s);
+  // FixArray e_x_flat = fix->exp(shifted_x_flat, ell, s);
+  FixArray e_x_flat = lookup_table_exp(shifted_x_flat);
 
   vector<FixArray> e_x_tr(n);
   for (int i = 0; i < n; i++) {
@@ -1384,5 +1385,11 @@ vector<FixArray> FPMath::softmax_fix_iron_1(const vector<FixArray>& x) {
   // for (int i = 0; i < N; i++){
   //   print_fix(ret[i]);
   // }
+  return ret;
+}
+
+FixArray FPMath::lookup_table_exp(const FixArray& x){
+  FixArray ret(party, x.size, x.signed_, x.ell, x.s);
+  math->lookup_table_exp(x.size, x.data, ret.data, x.ell, x.ell, x.s, x.s);
   return ret;
 }
