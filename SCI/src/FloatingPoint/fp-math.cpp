@@ -1321,7 +1321,7 @@ vector<FixArray> FPMath::softmax_fix_iron_1(const vector<FixArray>& x) {
     assert(x[i].s == s);
     assert(x[i].size == n);
   }
-  FixArray x_max = fix->max(x);
+  FixArray x_max = fix->max_iron(x);
   // print_fix(x_max);
   FixArray x_max_flat(party, N*n, signed_, ell, s);
   for (int i = 0; i < N; i++) {

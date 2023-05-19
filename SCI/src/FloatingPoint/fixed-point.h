@@ -392,6 +392,8 @@ public:
   // Finds max element in x[i], forall i
   FixArray max(const std::vector<FixArray>& x);
 
+  FixArray max_iron(const std::vector<FixArray>& x);
+
   // SIRNN's math functions
 
   // Exponentiation: returns y = e^{-x} in an l_y-bit fixed-point representation with scale s_y

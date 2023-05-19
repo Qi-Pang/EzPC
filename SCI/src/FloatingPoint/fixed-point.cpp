@@ -882,6 +882,62 @@ FixArray FixOp::max(const vector<FixArray>& x) {
   return x_tr[0];
 }
 
+FixArray FixOp::max_iron(const vector<FixArray>& x) {
+  int N = x.size();
+  int n = x[0].size;
+  int party = x[0].party;
+  int signed_ = x[0].signed_;
+  int ell = x[0].ell;
+  int s = x[0].s;
+  for (int i = 1; i < N; i++) {
+    assert(x[i].party == party);
+    assert(x[i].signed_ == signed_);
+    assert(x[i].ell == ell);
+    assert(x[i].s == s);
+  }
+
+  vector<FixArray> x_tr(n);
+  for (int i = 0; i < n; i++) {
+    x_tr[i] = FixArray(party, N, signed_, ell, s);
+    for (int j = 0; j < N; j++) {
+      x_tr[i].data[j] = x[j].data[i];
+    }
+  }
+  int num_cmps_old = n; int num_cmps_curr = n/2;
+  uint64_t* lhs = new uint64_t[N*num_cmps_curr];
+  uint64_t* rhs = new uint64_t[N*num_cmps_curr];
+  while(num_cmps_old > 1) {
+    int odd_num_cmps = num_cmps_old & 1;
+    for (int j = odd_num_cmps; j < num_cmps_old && j + 1 < num_cmps_old; j += 2) {
+      memcpy(lhs + (j/2)*N, x_tr[j].data, N*sizeof(uint64_t));
+      memcpy(rhs + (j/2)*N, x_tr[j + 1].data, N*sizeof(uint64_t));
+    }
+    FixArray lhs_fp = fix->input(this->party, N*num_cmps_curr, lhs, signed_, ell, s);
+    FixArray rhs_fp = fix->input(this->party, N*num_cmps_curr, rhs, signed_, ell, s);
+
+    // IRON Implementation
+    BoolArray cond = fix->GT(lhs_fp, rhs_fp);
+    FixArray cmp = fix->B2A(cond, false, ell);
+    FixArray l_r = fix->sub(lhs_fp, rhs_fp);
+    FixArray lr_cmp = fix->mul(l_r, cmp, ell);
+    // print_fix(lr_cmp);
+    // print_fix(rhs_fp);
+    // assert(0);
+    lhs_fp = fix->add(lr_cmp, rhs_fp);
+
+    for (int j = 0; j < num_cmps_old && j + 1 < num_cmps_old; j += 2) {
+      memcpy(x_tr[odd_num_cmps + (j/2)].data, lhs_fp.data + (j/2)*N, N*sizeof(uint64_t));
+    }
+    num_cmps_old = num_cmps_curr + odd_num_cmps;
+    num_cmps_curr = num_cmps_old/2;
+    // print_fix(x_tr[0]);
+  }
+  delete[] lhs;
+  delete[] rhs;
+
+  return x_tr[0];
+}
+
 // A0 \in (1/4, 1)
 inline uint64_t recp_lookup_c0(uint64_t index, int m) {
   uint64_t k = 1ULL << m;
