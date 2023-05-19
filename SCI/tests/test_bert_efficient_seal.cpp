@@ -68,13 +68,13 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
         C[i].resize(output_dim);
     }
 
-    // A = read_data("./X_quantize_0.txt");
-    // B1 = read_data("./Q_quantize_0.txt");
-    // B2 = read_data("./K_quantize_0.txt");
+    // A = read_data("./bin/txt/X_quantize_0.txt");
+    // B1 = read_data("./bin/txt/Q_quantize_0.txt");
+    // B2 = read_data("./bin/txt/K_quantize_0.txt");
 
-    A = read_data("./random_X.txt");
-    B1 = read_data("./random_Y.txt");
-    B2 = read_data("./random_Z.txt");
+    A = read_data("./bin/txt/random_X.txt");
+    B1 = read_data("./bin/txt/random_Y.txt");
+    B2 = read_data("./bin/txt/random_Z.txt");
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;

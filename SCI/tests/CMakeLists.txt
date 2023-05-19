@@ -87,14 +87,14 @@ add_subdirectory(activation)
 # add_executable(BERT-HE-CIPHER-EFFICIENT "test_bert_efficient.cpp")
 # target_link_libraries(BERT-HE-CIPHER-EFFICIENT SCI-HE)
 
-# add_executable(BERT-HE-CIPHER-EFFICIENT-BFV "test_bert_efficient_seal.cpp")
-# target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
+add_executable(BERT-HE-CIPHER-EFFICIENT-BFV "test_bert_efficient_seal.cpp")
+target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
 
 # add_executable(BERT-HE-CIPHER-EFFICIENT-CKKS "test_bert_efficient_seal_ckks.cpp")
 # target_link_libraries(BERT-HE-CIPHER-EFFICIENT-CKKS SCI-HE)
 
-# add_executable(BERT-HE-IRON "test_bert_iron.cpp")
-# target_link_libraries(BERT-HE-IRON SCI-HE)
+add_executable(BERT-HE-IRON "test_bert_iron.cpp")
+target_link_libraries(BERT-HE-IRON SCI-HE)
 
-# add_executable(BERT-HE-CTPT "test_bert_ctpt.cpp")
-# target_link_libraries(BERT-HE-CTPT SCI-HE)
+add_executable(BERT-HE-CTPT "test_bert_ctpt.cpp")
+target_link_libraries(BERT-HE-CTPT SCI-HE)
