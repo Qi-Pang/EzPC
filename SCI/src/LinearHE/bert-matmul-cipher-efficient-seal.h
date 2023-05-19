@@ -116,11 +116,5 @@ public:
                              vector<vector<uint64_t>> &C,
                              bool verify_output = false);
 
-              
-  
-
-
-
-
 };
 #endif
