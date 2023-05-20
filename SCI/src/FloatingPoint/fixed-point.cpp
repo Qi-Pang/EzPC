@@ -166,6 +166,7 @@ FixArray FixOp::if_else(const BoolArray &cond, const FixArray &x,
   if (diff.party == PUBLIC) {
     FixArray cond_fix = this->B2A(cond, x.signed_, x.ell);
     cond_fix.s = x.s;
+    // Something wrong here
     ret = this->mul(cond_fix, diff, x.ell);
   } else {
     aux->multiplexer(cond.data, diff.data, ret.data, x.size, x.ell, x.ell);
@@ -1232,9 +1233,9 @@ FixArray FixOp::tanh(const FixArray& x, int l_y, int s_y) {
   return ret;
 }
 
-FixArray FixOp::sqrt(const FixArray& x, int l_y, int s_y, bool recp_sqrt) {
-  assert(x.party != PUBLIC);
-}
+// FixArray FixOp::sqrt(const FixArray& x, int l_y, int s_y, bool recp_sqrt) {
+//   assert(x.party != PUBLIC);
+// }
 
 // 0.3585*((p + 1.353)**2) + 0.344
 // arg1         arg2         arg3
@@ -1265,4 +1266,54 @@ FixArray FixOp::poly1(const FixArray& p){
   // print_fix(arg1_p_arg2);
 
   return this->add(arg1_p_arg2, arg3);
+}
+
+FixArray FixOp::tree_sum(const vector<FixArray>& x) {
+  int N = x.size();
+  int n = x[0].size;
+  int party = x[0].party;
+  int signed_ = x[0].signed_;
+  int ell = x[0].ell;
+  int s = x[0].s;
+
+  vector<FixArray> x_tr(n);
+  for (int i = 0; i < n; i++) {
+    x_tr[i] = FixArray(party, N, signed_, ell, s);
+    for (int j = 0; j < N; j++) {
+      x_tr[i].data[j] = x[j].data[i];
+    }
+  }
+  int num_cmps_old = n; int num_cmps_curr = n/2;
+  uint64_t* lhs = new uint64_t[N*num_cmps_curr];
+  uint64_t* rhs = new uint64_t[N*num_cmps_curr];
+  while(num_cmps_old > 1) {
+    int odd_num_cmps = num_cmps_old & 1;
+    for (int j = odd_num_cmps; j < num_cmps_old && j + 1 < num_cmps_old; j += 2) {
+      memcpy(lhs + (j/2)*N, x_tr[j].data, N*sizeof(uint64_t));
+      memcpy(rhs + (j/2)*N, x_tr[j + 1].data, N*sizeof(uint64_t));
+    }
+    FixArray lhs_fp = fix->input(this->party, N*num_cmps_curr, lhs, signed_, ell, s);
+    FixArray rhs_fp = fix->input(this->party, N*num_cmps_curr, rhs, signed_, ell, s);
+
+    lhs_fp = fix->add(lhs_fp, rhs_fp);
+    for (int j = 0; j < num_cmps_old && j + 1 < num_cmps_old; j += 2) {
+      memcpy(x_tr[odd_num_cmps + (j/2)].data, lhs_fp.data + (j/2)*N, N*sizeof(uint64_t));
+    }
+    num_cmps_old = num_cmps_curr + odd_num_cmps;
+    num_cmps_curr = num_cmps_old/2;
+    // print_fix(x_tr[0]);
+  }
+  delete[] lhs;
+  delete[] rhs;
+
+  return x_tr[0];
+}
+
+FixArray FixOp::abs(const FixArray& x){
+  BoolArray msb_x = MSB(x);
+  FixArray msb_fix_x = B2A(msb_x, false, x.ell);
+  FixArray double_x = mul(x, 2);
+  FixArray double_x_or_not = mul(double_x, msb_fix_x, x.ell);
+  // double_x_or_not = truncate_reduce(double_x_or_not, x.s);
+  return sub(x, double_x_or_not);
 }

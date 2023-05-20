@@ -394,6 +394,8 @@ public:
 
   FixArray max_iron(const std::vector<FixArray>& x);
 
+  FixArray tree_sum(const std::vector<FixArray>& x);
+
   // SIRNN's math functions
 
   // Exponentiation: returns y = e^{-x} in an l_y-bit fixed-point representation with scale s_y
@@ -409,13 +411,15 @@ public:
   // Optimization: 
   FixArray div_batch(const FixArray& nm, const FixArray& dn, int batch_dn_size, int l_out, int s_out, bool normalized_dn = false);
 
-  FixArray sqrt(const FixArray& x, int l_y, int s_y, bool recp_sqrt = false);
+  // FixArray sqrt(const FixArray& x, int l_y, int s_y, bool recp_sqrt = false);
 
   FixArray sigmoid(const FixArray& x, int l_y, int s_y);
 
   FixArray tanh(const FixArray& x, int l_y, int s_y);
 
   FixArray poly1(const FixArray& x);
+
+  FixArray abs(const FixArray& x);
 };
 
 #endif // FIXED_POINT_H__

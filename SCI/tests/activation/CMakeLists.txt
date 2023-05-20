@@ -13,7 +13,10 @@ endmacro()
 add_test_IRON(layer_norm)
 add_test_IRON(softmax)
 add_test_IRON(gelu)
+add_test_IRON(tanh)
 
 add_test_PPNLP(softmax)
 add_test_PPNLP(gelu)
+add_test_PPNLP(tanh)
+add_test_PPNLP(layer_norm)
 

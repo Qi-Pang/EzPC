@@ -81,7 +81,15 @@ public:
 
   FixArray gelu_iron(const FixArray& x);
 
-  FixArray tanh_fix(const FixArray& x);
+  FixArray gelu_approx(const FixArray& x);
+
+  FixArray tanh_inner(const FixArray& x);
+
+  FixArray tanh_approx(const FixArray& x);
+
+  vector<FixArray> layer_norm_iron(const vector<FixArray>& x);
+
+  FixArray sqrt(const FixArray& x, bool recp_sqrt);
 
   // FixArray recip_approx(const FixArray& x);
   

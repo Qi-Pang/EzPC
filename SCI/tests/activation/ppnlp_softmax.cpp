@@ -34,7 +34,7 @@ using namespace std;
 #define MAX_THREADS 12
 
 int party, port = 32000;
-int num_threads = 12;
+int num_threads = 4;
 string address = "127.0.0.1";
 
 int32_t dim = num_threads*128;

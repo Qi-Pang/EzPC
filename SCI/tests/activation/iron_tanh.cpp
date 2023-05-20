@@ -19,12 +19,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "FloatingPoint/fp-math.h"
-#include "BuildingBlocks/aux-protocols.h"
+#include "Math/math-functions.h"
 #include <fstream>
 #include <iostream>
 #include <thread>
-#include <math.h>
 
 using namespace sci;
 using namespace std;
@@ -35,7 +33,7 @@ int party, port = 32000;
 int num_threads = 12;
 string address = "127.0.0.1";
 
-int dim =  128*3072;
+int dim = 768;
 int bw_x = 37;
 int bw_y = 37;
 int s_x = 12;
@@ -56,19 +54,16 @@ uint64_t computeULPErr(double calc, double actual, int SCALE) {
   return ulp_err;
 }
 
-void operation_thread(int tid, uint64_t *x, uint64_t *y, int num_ops) {
-  FPMath *fpmath;
-  int this_party;
+void tanh_thread(int tid, uint64_t *x, uint64_t *y, int num_ops) {
+  MathFunctions *math;
   if (tid & 1) {
-    this_party = 3 - party;
+    math = new MathFunctions(3 - party, iopackArr[tid], otpackArr[tid]);
   } else {
-    this_party = party;
+    math = new MathFunctions(party, iopackArr[tid], otpackArr[tid]);
   }
-  fpmath = new FPMath(this_party, iopackArr[tid], otpackArr[tid]);
-  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, bw_x, s_x);
-  FixArray output = fpmath->gelu_iron(input);
-  memcpy(y, output.data, num_ops*sizeof(uint64_t));
-  delete fpmath;
+  math->tanh(num_ops, x, y, bw_x, bw_y, s_x, s_y);
+
+  delete math;
 }
 
 int main(int argc, char **argv) {
@@ -77,7 +72,7 @@ int main(int argc, char **argv) {
   ArgMapping amap;
   amap.arg("r", party, "Role of party: ALICE = 1; BOB = 2");
   amap.arg("p", port, "Port Number");
-  amap.arg("N", dim, "Number of operation operations");
+  amap.arg("N", dim, "Number of tanh operations");
   amap.arg("nt", num_threads, "Number of threads");
   amap.arg("ip", address, "IP Address of server (ALICE)");
 
@@ -119,7 +114,7 @@ int main(int argc, char **argv) {
   }
 
   auto start = clock_start();
-  std::thread operation_threads[num_threads];
+  std::thread tanh_threads[num_threads];
   int chunk_size = dim / num_threads;
   for (int i = 0; i < num_threads; ++i) {
     int offset = i * chunk_size;
@@ -129,11 +124,11 @@ int main(int argc, char **argv) {
     } else {
       lnum_ops = chunk_size;
     }
-    operation_threads[i] =
-        std::thread(operation_thread, i, x + offset, y + offset, lnum_ops);
+    tanh_threads[i] =
+        std::thread(tanh_thread, i, x + offset, y + offset, lnum_ops);
   }
   for (int i = 0; i < num_threads; ++i) {
-    operation_threads[i].join();
+    tanh_threads[i].join();
   }
   long long t = time_from(start);
 
@@ -158,14 +153,10 @@ int main(int argc, char **argv) {
     for (int i = 0; i < dim; i++) {
       double dbl_x = (signed_val(x0[i] + x[i], bw_x)) / double(1LL << s_x);
       double dbl_y = (signed_val(y0[i] + y[i], bw_y)) / double(1LL << s_y);
-  
-
-      // GELU function for verification
-      double gelu_y = 0.5*dbl_x*(1+tanh(sqrt(2/M_PI)*(dbl_x+0.044715*dbl_x*dbl_x*dbl_x)));
-
-      uint64_t err = computeULPErr(dbl_y, gelu_y, s_y);
-      // cout << "ULP Error: " << dbl_x << "," << dbl_y << "," << gelu_y << ","<< err << endl;
-      //cout << "ULP Error: " << dbl_y << "," << gelu_y << ","<< err << endl;
+      double tanh_x = tanh(dbl_x);
+      uint64_t err = computeULPErr(dbl_y, tanh_x, s_y);
+      // cout << "ULP Error: " << dbl_x << "," << dbl_y << "," << tanh_x << ","
+      // << err << endl;
       total_err += err;
       max_ULP_err = std::max(max_ULP_err, err);
     }
@@ -178,9 +169,9 @@ int main(int argc, char **argv) {
     delete[] y0;
   }
 
-  cout << "Number of operation/s:\t" << (double(dim) / t) * 1e6 << std::endl;
-  cout << "operation Time\t" << t / (1000.0) << " ms" << endl;
-  cout << "operation Bytes Sent\t" << total_comm << " bytes" << endl;
+  cout << "Number of tanh/s:\t" << (double(dim) / t) * 1e6 << std::endl;
+  cout << "Tanh Time\t" << t / (1000.0) << " ms" << endl;
+  cout << "Tanh Bytes Sent\t" << total_comm << " bytes" << endl;
 
   /******************* Cleanup ****************/
   /********************************************/
