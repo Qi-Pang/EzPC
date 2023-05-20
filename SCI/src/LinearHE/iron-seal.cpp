@@ -416,7 +416,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         #ifdef CTPT
         vector<vector<uint64_t>> result(12, vector<uint64_t>(data.image_size * data.image_size));
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(12)
         for (int i = 0; i < 12; i++) {
             int tid = i % num_threads;
             uint64_t* inA = new uint64_t[data.image_size * data.filter_w];
@@ -554,7 +554,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         #ifdef CTPT
         vector<vector<uint64_t>> result(12, vector<uint64_t>(data.image_size * data.image_size));
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(12)
         for (int i = 0; i < 12; i++) {
             int tid = i % num_threads;
             uint64_t* inA = new uint64_t[data.image_size * data.filter_w];
