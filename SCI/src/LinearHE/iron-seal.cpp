@@ -35,6 +35,7 @@ using namespace seal;
 using namespace sci;
 
 #define HE_TIMING
+// #define CTPT
 // #define HE_DEBUG
 
 void IRONFC::print_noise_budget_vec(vector<Ciphertext> v) {
@@ -357,9 +358,9 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
     data.filter_w = output_dim;
     data.image_size = input_dim;
     this->slot_count = 4096;
-    int bwA = 37;
-    int bwB = 37;
-    int bwC = 37;
+    int bwA = ceil(log2(prime_mod));
+    int bwB = ceil(log2(prime_mod));
+    int bwC = ceil(log2(prime_mod));
     bool signed_arithmetic = true;
     bool signed_B = true;
     bool accumulate = true;
@@ -412,6 +413,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         //     cout << endl;
         // }
 
+        #ifdef CTPT
         vector<vector<uint64_t>> result(12, vector<uint64_t>(data.image_size * data.image_size));
 
         #pragma omp parallel for
@@ -427,6 +429,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
             vector<uint64_t> vec(outC, outC + data.image_size*data.image_size);
             result[i] = vec;
         }
+        #endif
 
         // prod->matrix_multiplication(dim1, dim2, dim3, inA, inB, outC, bwA, bwB, bwC,
         //                       signed_arithmetic, signed_B, ::accumulate, mode,
@@ -548,6 +551,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         cout << "[Server] Result sent" << endl;
         cout << "[Server] size of result (Bytes): " << io->counter - io_start << endl;
 
+        #ifdef CTPT
         vector<vector<uint64_t>> result(12, vector<uint64_t>(data.image_size * data.image_size));
 
         #pragma omp parallel for
@@ -563,6 +567,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
             vector<uint64_t> vec(outC, outC + data.image_size*data.image_size);
             result[i] = vec;
         }
+        #endif
 
         for (int i = 0; i < common_dim; i++) {
             delete[] matrix_mod_p1[i];

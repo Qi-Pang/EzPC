@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
 
     // 37 bits
     // prime_mod = 137439010817;
-    prime_mod = (uint64_t) pow(2, 37);
+    prime_mod = (uint64_t) pow(2, 29);
 
     // 28bits
     // prime_mod = 268582913;
