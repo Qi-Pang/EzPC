@@ -1310,10 +1310,13 @@ FixArray FixOp::tree_sum(const vector<FixArray>& x) {
 }
 
 FixArray FixOp::abs(const FixArray& x){
+  // BoolArray msb_x = MSB(x);
+  // FixArray msb_fix_x = B2A(msb_x, false, x.ell);
+  // FixArray double_x = mul(x, 2);
+  // FixArray double_x_or_not = mul(double_x, msb_fix_x, x.ell);
+  // // double_x_or_not = truncate_reduce(double_x_or_not, x.s);
+  // return sub(x, double_x_or_not);
   BoolArray msb_x = MSB(x);
-  FixArray msb_fix_x = B2A(msb_x, false, x.ell);
-  FixArray double_x = mul(x, 2);
-  FixArray double_x_or_not = mul(double_x, msb_fix_x, x.ell);
-  // double_x_or_not = truncate_reduce(double_x_or_not, x.s);
-  return sub(x, double_x_or_not);
+  FixArray neg_x = mul(x, -1);
+  return if_else(msb_x, neg_x, x);
 }

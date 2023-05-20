@@ -1436,38 +1436,50 @@ FixArray FPMath::gelu_approx(const FixArray& x){
   int ell = x.ell;
   int s = x.s;
 
+  BoolArray all_0 = bool_op->input(ALICE, N, uint8_t(0));
+  BoolArray all_1 = bool_op->input(ALICE, N, 1);
+
   // Get y = abs(x)
+  // BoolArray msb_x = fix->MSB(x);
+  // FixArray msb_fix_x = fix->B2A(msb_x, false, x.ell);
+  // FixArray double_x = fix->mul(x, 2);
+  // FixArray double_x_or_not = fix->mul(double_x, msb_fix_x, x.ell);
+  // FixArray y = fix->sub(x, double_x_or_not);
   FixArray y = fix->abs(x);
 
-  // z(y):= y * (y + (-4.901373660634577))
+  // z(y):= y * (y + (-4.901373660634577)) \in [-6.006, 0]
   FixArray cons_1 = fix->input(PUBLIC, N, uint64_t((-4.901373660634577) * (1 << s)), true, ell, s);
   FixArray z_y = fix->add(y, cons_1);
-  z_y = fix->mul(z_y, y, ell+s);
-  z_y = fix->truncate_reduce(z_y, s);
+
+  // y > 0, z_y < 0
+  z_y = fix->mul(z_y, y, ell+s, all_1.data, all_0.data);
+  z_y = fix->truncate_reduce(z_y, s, all_0.data);
 
   // p(y):= (z(y)+y+(-24.822721454603112))*(z(y)+(31.65224017185284))+(785.77248299658)
   FixArray cons_2 = fix->input(PUBLIC, N, uint64_t((-24.822721454603112) * (1 << s)), true, ell, s);
   FixArray cons_3 = fix->input(PUBLIC, N, uint64_t((31.65224017185284) * (1 << s)), true, ell, s);
   FixArray cons_4 = fix->input(PUBLIC, N, uint64_t((785.77248299658) * (1 << s)), true, ell, s);
 
+  // Negative
   FixArray lmul = fix->add(z_y, y);
   lmul = fix->add(lmul, cons_2);
 
+  // Positive
   FixArray rmul = fix->add(z_y, cons_3);
 
-  FixArray ladd = fix->mul(lmul, rmul, ell+s);
-  ladd = fix->truncate_reduce(ladd, s);
+  FixArray ladd = fix->mul(lmul, rmul, ell+s, all_1.data, all_0.data);
+  ladd = fix->truncate_reduce(ladd, s, all_0.data);
 
   FixArray sum = fix->add(ladd, cons_4);
 
   FixArray cons_7 = fix->input(PUBLIC, N, uint64_t((0.02084861175412759) * (1 << s)), true, ell, s);
-  FixArray p_y = fix->mul(sum, cons_7, ell+s);
-  p_y = fix->truncate_reduce(p_y, s);
+  FixArray p_y = fix->mul(sum, cons_7, ell+s, nullptr, all_0.data);
+  p_y = fix->truncate_reduce(p_y, s, all_0.data);
 
   // 0.5x
   FixArray cons_5 = fix->input(PUBLIC, N, uint64_t((0.5) * (1 << s)), true, ell, s);
-  FixArray half_x = fix->mul(x, cons_5, ell+s);
-  half_x = fix->truncate_reduce(half_x, s);
+  FixArray half_x = fix->mul(x, cons_5, ell+s, nullptr, all_0.data);
+  half_x = fix->truncate_reduce(half_x, s, all_0.data);
 
   // 0.5x + p(y)
   FixArray gelu_y = fix->add(half_x, p_y);
@@ -1476,13 +1488,22 @@ FixArray FPMath::gelu_approx(const FixArray& x){
   // If x < -2.7 -> 0
   // Else 0.5x + p(y)
 
-  BoolArray gt27 = fix->GT(x, 2.7*(1 << s));
-  BoolArray lt_neg_27 = fix->LT(x, -2.7*(1 << s));
+  // BoolArray gt27 = fix->GT(x, 2.7*(1 << s));
+  // BoolArray lt_neg_27 = fix->LT(x, -2.7*(1 << s));
 
-  FixArray cons_6 = fix->input(PUBLIC, N, uint64_t(0 * (1 << s)), true, ell, s);
+  // FixArray cons_6 = fix->input(PUBLIC, N, uint64_t(0 * (1 << s)), true, ell, s);
 
-  FixArray ret = fix->if_else(lt_neg_27, cons_6, gelu_y);
-  ret = fix->if_else(gt27, x, ret);
+  // FixArray ret = fix->if_else(lt_neg_27, cons_6, gelu_y);
+  // ret = fix->if_else(gt27, x, ret);
+
+  BoolArray gt27 = fix->GT(y, 2.7*(1 << s));
+
+
+  FixArray x_plus_y = fix->add(x, y);
+  FixArray half_x_plus_y = fix->right_shift(x_plus_y, 1, all_0.data);
+  half_x_plus_y.s = s;
+
+  FixArray ret = fix->if_else(gt27, half_x_plus_y, gelu_y);
 
   return ret;
 }
