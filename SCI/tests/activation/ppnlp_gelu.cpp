@@ -32,7 +32,7 @@ using namespace std;
 #define MAX_THREADS 12
 
 int party, port = 32000;
-int num_threads = 1;
+int num_threads = 12;
 string address = "127.0.0.1";
 
 int dim =  128*3072;
@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
       double gelu_y = 0.5*dbl_x*(1+tanh(sqrt(2/M_PI)*(dbl_x+0.044715*dbl_x*dbl_x*dbl_x)));
 
       uint64_t err = computeULPErr(dbl_y, gelu_y, s_y);
-      cout << "ULP Error: " << dbl_x << "," << dbl_y << "," << gelu_y << ","<< err << endl;
+      // cout << "ULP Error: " << dbl_x << "," << dbl_y << "," << gelu_y << ","<< err << endl;
       //cout << "ULP Error: " << dbl_y << "," << gelu_y << ","<< err << endl;
       total_err += err;
       max_ULP_err = std::max(max_ULP_err, err);
