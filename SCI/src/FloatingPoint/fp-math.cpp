@@ -1598,11 +1598,14 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x){
   int s = x[0].s;
   bool signed_ = x[0].signed_;
 
+  BoolArray all_0 = bool_op->input(ALICE, N*n, uint8_t(0));
+  BoolArray all_1 = bool_op->input(ALICE, N*n, 1);
+
   FixArray sum = fix->tree_sum(x);
 
   FixArray dn = fix->input(PUBLIC, sum.size, uint64_t(((1.0 / n) * pow(2, 2*s))), true, ell, 2*s);
-  FixArray avg = fix->mul(sum, dn, ell+2*s);
-  avg = fix->truncate_reduce(avg, 2*s);
+  FixArray avg = fix->mul(sum, dn, ell+2*s, nullptr, all_0.data);
+  avg = fix->truncate_reduce(avg, 2*s, all_0.data);
 
   FixArray avg_flat(party, N*n, sum.signed_, ell, s);
   for(int i = 0; i < N; i++){
@@ -1614,7 +1617,7 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x){
   FixArray x_flat = concat(x);
   FixArray x_flat_avg = fix->sub(x_flat, avg_flat);
   FixArray x_flat_avg_square = fix->mul(x_flat_avg, x_flat_avg, ell + s);
-  x_flat_avg_square = fix->truncate_reduce(x_flat_avg_square, s);
+  x_flat_avg_square = fix->truncate_reduce(x_flat_avg_square, s, all_0.data);
 
   vector<FixArray> square_group(N);
   for(int i = 0; i < N; i++){
@@ -1632,8 +1635,8 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x){
     }
   }
 
-  FixArray x_avg_sigma = fix->mul(x_flat_avg, sigma_flat, ell+s);
-  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s);
+  FixArray x_avg_sigma = fix->mul(x_flat_avg, sigma_flat, ell+s, nullptr, all_0.data);
+  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s, all_0.data);
 
   vector<FixArray> ret(N);
   for(int i = 0; i < N; i++){
