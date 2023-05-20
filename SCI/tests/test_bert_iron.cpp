@@ -2,6 +2,8 @@
 Authors: Qi Pang
 */
 #include "LinearHE/iron-seal.h"
+#include "LinearOT/linear-ot.h"
+#include "utils/emp-tool.h"
 #include <fstream>
 
 using namespace std;
@@ -10,13 +12,15 @@ using namespace sci;
 
 int party = 0;
 int bitlength = 32;
-int num_threads = 16;
+int num_threads = 12;
 int port = 8000;
 string address = "127.0.0.1";
 int input_dim = 128;
 int common_dim = 768;
 int output_dim = 64;
 int filter_precision = 15;
+
+#define MAX_THREADS 12
 
 std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
     std::ifstream input_file(filename);
@@ -68,13 +72,13 @@ void MatMul(IRONFC &befc, int32_t input_dim, int32_t common_dim, int32_t output_
         C[i].resize(output_dim);
     }
 
-    A = read_data("./bin/txt/X_quantize_0.txt");
-    B1 = read_data("./bin/txt/Q_quantize_0.txt");
-    B2 = read_data("./bin/txt/K_quantize_0.txt");
+    // A = read_data("./bin/txt/X_quantize_0.txt");
+    // B1 = read_data("./bin/txt/Q_quantize_0.txt");
+    // B2 = read_data("./bin/txt/K_quantize_0.txt");
 
-    // A = read_data("./random_X.txt");
-    // B1 = read_data("./random_Y.txt");
-    // B2 = read_data("./random_Z.txt");
+    A = read_data("./bin/txt/random_X.txt");
+    B1 = read_data("./bin/txt/random_Y.txt");
+    B2 = read_data("./bin/txt/random_Z.txt");
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
@@ -106,7 +110,8 @@ int main(int argc, char **argv) {
     // prime_mod = 536903681;
 
     // 37 bits
-    prime_mod = 137439010817;
+    // prime_mod = 137439010817;
+    prime_mod = (uint64_t) pow(2, 37);
 
     // 28bits
     // prime_mod = 268582913;
@@ -124,15 +129,40 @@ int main(int argc, char **argv) {
     cout << "===================================================================="
         << endl;
 
-    NetIO *io = new NetIO(party == 1 ? nullptr : address.c_str(), port);
+
+    uint64_t thread_comm[num_threads + 1];
+    uint64_t total_comm = 0;
+
+    // NetIO *io = new NetIO(party == 1 ? nullptr : address.c_str(), port);
+    IOPack *iopackArr[MAX_THREADS];
+    OTPack *otpackArr[MAX_THREADS];
+
+    for (int i = 0; i < num_threads; i++) {
+        iopackArr[i] = new IOPack(party, port + i, address.c_str());
+        otpackArr[i] = new OTPack(iopackArr[i], party);
+    }
+
+    // IOPack *iopack = new IOPack(party, port, address.c_str());
+    NetIO *io = new NetIO(party == 1 ? nullptr : address.c_str(), port+num_threads);
 
     auto io_start = io->counter;
 
-    IRONFC befc(party, io);
-    cout << "Before MatMul" << endl;
+    for (int i = 0; i < num_threads; i++) {
+        thread_comm[i] = iopackArr[i]->get_comm();
+    }
+    thread_comm[num_threads] = io_start;
+
+    IRONFC befc(party, io, iopackArr, otpackArr);
     MatMul(befc, input_dim, common_dim, output_dim);
 
-    cout << "Communication Round: " << io->num_rounds << endl;
+    for (int i = 0; i < num_threads; i++) {
+        thread_comm[i] = iopackArr[i]->get_comm() - thread_comm[i];
+        total_comm += thread_comm[i];
+    }
+    thread_comm[num_threads] = io->counter - io_start;
+    total_comm += thread_comm[num_threads];
+    cout << "Communication Sent\t" << total_comm << " bytes" << endl;
+    // cout << "Communication Round: " << io->num_rounds << endl;
 
     io->flush();
     return 0;

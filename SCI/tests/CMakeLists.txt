@@ -1,10 +1,10 @@
 # find_package(OpenFHE)
 # set(CMAKE_CXX_FLAGS "${OpenFHE_CXX_FLAGS} -Wno-error")
 
-# macro (add_test_OT _name)
-# 	add_executable(${_name}-OT "test_ring_${_name}.cpp")
-#     target_link_libraries(${_name}-OT SCI-OT) 
-# endmacro()
+macro (add_test_OT _name)
+	add_executable(${_name}-OT "test_ring_${_name}.cpp")
+    target_link_libraries(${_name}-OT SCI-OT) 
+endmacro()
 
 # macro (add_test_HE _name)
 #     add_executable(${_name}-HE "test_field_${_name}.cpp")
@@ -16,7 +16,7 @@
 #     target_link_libraries(${_name}-float SCI-FloatingPoint) 
 # endmacro()
 
-# add_test_OT(matmul)
+add_test_OT(matmul)
 # add_test_OT(value_extension)
 # add_test_OT(truncation)
 # add_test_OT(relu)
@@ -94,7 +94,7 @@ target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
 # target_link_libraries(BERT-HE-CIPHER-EFFICIENT-CKKS SCI-HE)
 
 add_executable(BERT-HE-IRON "test_bert_iron.cpp")
-target_link_libraries(BERT-HE-IRON SCI-HE)
+target_link_libraries(BERT-HE-IRON SCI-HE SCI-OT)
 
 add_executable(BERT-HE-IRON-INTER1 "test_bert_iron_inter1.cpp")
 target_link_libraries(BERT-HE-IRON-INTER1 SCI-HE)
