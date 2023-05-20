@@ -83,13 +83,17 @@ public:
 
   pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_matrix_bsgs(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
 
+  pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
+
   Ciphertext bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
   vector<Ciphertext> bert_efficient_online(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, const vector<vector<Plaintext>> & rotation_masks);
 
   vector<Ciphertext> bert_cipher_plain(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
 
-  void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result);
+  // void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result);
+
+  void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result);
 
   vector<Ciphertext> bert_efficient_cipher(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<vector<Plaintext>>& rotation_masks, vector<Plaintext>& cipher_masks);
 

@@ -795,7 +795,8 @@ void LinearOT::matrix_multiplication(int32_t dim1, int32_t dim2, int32_t dim3,
     }
   }
   if (accumulate) {
-    trunc->truncate_and_reduce(dim1 * dim3, tmpC, outC, extra_bits, bwC);
+    // trunc->truncate_and_reduce(dim1 * dim3, tmpC, outC, extra_bits, bwC);
+    memcpy(outC, tmpC, dim * sizeof(uint64_t));
   } else {
     memcpy(outC, tmpC, dim * sizeof(uint64_t));
   }

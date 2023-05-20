@@ -136,7 +136,23 @@ void free_keys(int party, Encryptor *&encryptor_, Decryptor *&decryptor_,
 #ifdef HE_DEBUG
     delete decryptor_;
 #endif
-    delete gal_keys_;
+    // delete gal_keys_;
+    delete zero_;
+  }
+}
+
+void free_keys_iron(int party, Encryptor *&encryptor_, Decryptor *&decryptor_,
+               Evaluator *&evaluator_, BatchEncoder *&encoder_, Ciphertext *&zero_) {
+  delete encoder_;
+  delete evaluator_;
+  delete encryptor_;
+  if (party == BOB) {
+    delete decryptor_;
+  } else // party ==ALICE
+  {
+#ifdef HE_DEBUG
+    delete decryptor_;
+#endif
     delete zero_;
   }
 }
@@ -144,9 +160,8 @@ void free_keys(int party, Encryptor *&encryptor_, Decryptor *&decryptor_,
 void generate_new_keys_iron(int party, NetIO *io, int slot_count,
                        SEALContext *&context_,
                        Encryptor *&encryptor_, Decryptor *&decryptor_,
-                       Evaluator *&evaluator_, BatchEncoder *&encoder_,
-                       GaloisKeys *&gal_keys_, RelinKeys *&relin_keys_, Ciphertext *&zero_,
-                       bool verbose) {
+                       Evaluator *&evaluator_, BatchEncoder *&encoder_, 
+                       Ciphertext *&zero_, bool verbose) {
   EncryptionParameters parms(scheme_type::bfv);
   parms.set_poly_modulus_degree(slot_count);
   // parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {36, 36, 36, 36, 37, 37}));
@@ -156,31 +171,32 @@ void generate_new_keys_iron(int party, NetIO *io, int slot_count,
   parms.set_plain_modulus(prime_mod);
   // auto context = SEALContext::Create(parms, true, sec_level_type::none);
   context_ = new SEALContext(parms, true, seal::sec_level_type::tc128);
-  encoder_ = new BatchEncoder(*context_);
+  // encoder_ = new BatchEncoder(*context_);
+  encoder_ = nullptr;
   evaluator_ = new Evaluator(*context_);
   if (party == BOB) {
     KeyGenerator keygen(*context_);
     SecretKey sec_key = keygen.secret_key();
     PublicKey pub_key;
     keygen.create_public_key(pub_key);
-    GaloisKeys gal_keys_;
-    keygen.create_galois_keys(gal_keys_);
-    RelinKeys relin_keys_;
-    keygen.create_relin_keys(relin_keys_);
+    // GaloisKeys gal_keys_;
+    // keygen.create_galois_keys(gal_keys_);
+    // RelinKeys relin_keys_;
+    // keygen.create_relin_keys(relin_keys_);
 
     stringstream os;
     pub_key.save(os);
     uint64_t pk_size = os.tellp();
-    gal_keys_.save(os);
-    uint64_t gk_size = (uint64_t)os.tellp() - pk_size;
-    relin_keys_.save(os);
-    uint64_t rk_size = (uint64_t)os.tellp() - pk_size - gk_size;
+    // gal_keys_.save(os);
+    // uint64_t gk_size = (uint64_t)os.tellp() - pk_size;
+    // relin_keys_.save(os);
+    // uint64_t rk_size = (uint64_t)os.tellp() - pk_size - gk_size;
 
     string keys_ser = os.str();
     io->send_data(&pk_size, sizeof(uint64_t));
-    io->send_data(&gk_size, sizeof(uint64_t));
-    io->send_data(&rk_size, sizeof(uint64_t));
-    io->send_data(keys_ser.c_str(), pk_size + gk_size + rk_size);
+    // io->send_data(&gk_size, sizeof(uint64_t));
+    // io->send_data(&rk_size, sizeof(uint64_t));
+    io->send_data(keys_ser.c_str(), pk_size);
 
     
 
@@ -200,20 +216,20 @@ void generate_new_keys_iron(int party, NetIO *io, int slot_count,
     uint64_t gk_size;
     uint64_t rk_size;
     io->recv_data(&pk_size, sizeof(uint64_t));
-    io->recv_data(&gk_size, sizeof(uint64_t));
-    io->recv_data(&rk_size, sizeof(uint64_t));
-    char *key_share = new char[pk_size + gk_size + rk_size];
-    io->recv_data(key_share, pk_size + gk_size + rk_size);
+    // io->recv_data(&gk_size, sizeof(uint64_t));
+    // io->recv_data(&rk_size, sizeof(uint64_t));
+    char *key_share = new char[pk_size];
+    io->recv_data(key_share, pk_size);
     stringstream is;
     PublicKey pub_key;
     is.write(key_share, pk_size);
     pub_key.load(*context_, is);
-    gal_keys_ = new GaloisKeys();
-    is.write(key_share + pk_size, gk_size);
-    gal_keys_->load(*context_, is);
-    relin_keys_ = new RelinKeys();
-    is.write(key_share + pk_size + gk_size, rk_size);
-    relin_keys_->load(*context_, is);
+    // gal_keys_ = nullptr;
+    // is.write(key_share + pk_size, gk_size);
+    // gal_keys_->load(*context_, is);
+    // relin_keys_ = new RelinKeys();
+    // is.write(key_share + pk_size + gk_size, rk_size);
+    // relin_keys_->load(*context_, is);
     delete[] key_share;
 
 #ifdef HE_DEBUG
@@ -229,9 +245,9 @@ void generate_new_keys_iron(int party, NetIO *io, int slot_count,
     decryptor_ = new Decryptor(*context_, sec_key);
 #endif
     encryptor_ = new Encryptor(*context_, pub_key);
-    vector<uint64_t> pod_matrix(slot_count, 0ULL);
+    // vector<uint64_t> pod_matrix(slot_count, 0ULL);
     Plaintext tmp;
-    encoder_->encode(pod_matrix, tmp);
+    // encoder_->encode(pod_matrix, tmp);
     zero_ = new Ciphertext;
     encryptor_->encrypt(tmp, *zero_);
   }

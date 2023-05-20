@@ -25,7 +25,10 @@ Modified by Deevashwer Rathee
 
 #include "LinearHE/iron-seal.h"
 #include "seal/util/polyarithsmallmod.h"
+#include "LinearOT/linear-ot.h"
+#include "utils/emp-tool.h"
 #include <omp.h>
+#include <fstream>
 
 using namespace std;
 using namespace seal;
@@ -42,6 +45,45 @@ void IRONFC::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << RESET << endl;
 }
 
+void IRONFC::load_noise(const std::string& filename, uint64_t *data) {
+    int count = 0; // This will hold the actual number of integers read from the file
+    std::ifstream inFile;
+
+    inFile.open(filename);
+    if (!inFile) {
+        std::cerr << "Unable to open file numbers.txt";
+        exit(1);
+    }
+    std::string line;
+    while (std::getline(inFile, line)) {
+        std::stringstream ss(line);
+        uint64_t i;
+        while (ss >> i) {
+            data[count] = i;
+            count++;
+            if (ss.peek() == ',')
+                ss.ignore();
+        }
+    }
+    inFile.close();
+}
+
+void matrix_transpose_iron(uint64_t *A, int32_t m, int32_t n, int d = 1) {
+  uint64_t *tmpA = new uint64_t[m * n * d];
+  memcpy(tmpA, A, m * n * d * sizeof(uint64_t));
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      if (d == 1) {
+        A[j * m + i] = tmpA[i * n + j];
+      } else {
+        memcpy(A + (j * m + i) * d, tmpA + (i * n + j) * d,
+               d * sizeof(uint64_t));
+      }
+    }
+  }
+  delete[] tmpA;
+}
+
 Plaintext IRONFC::encode_vector(const uint64_t *vec, const FCMetadata &data) {
     Plaintext pt;
     pt.resize(data.slot_count);
@@ -53,29 +95,6 @@ Plaintext IRONFC::encode_vector(const uint64_t *vec, const FCMetadata &data) {
 // vector<Ciphertext> IRONFC::removeUnusedCoeffs(Ciphertext &cts, const Meta &meta, double *density) {
     
 // }
-
-void IRONFC::print_ct(Ciphertext &ct, int len){
-    Plaintext pt;
-    decryptor->decrypt(ct, pt);
-    print_pt(pt, len);
-}
-
-void IRONFC::print_pt(Plaintext &pt, int len) {
-    vector<int64_t> dest(len, 0ULL);
-    encoder->decode(pt, dest);
-    cout << "Decode first 5 rows: ";
-    int non_zero_count;
-    for(int i = 0; i < 5; i++){
-        for (int j = 0; j < 64; j++)
-            cout << dest[i + j * 128] << " ";
-        cout << endl;
-        // if(dest[i] != 0){
-        //     non_zero_count += 1;
-        // }
-    }
-    // cout << "Non zero count: " << non_zero_count;
-    cout << endl;
-}
 
 // column-wise packing
 vector<Ciphertext> IRONFC::preprocess_vec(vector<uint64_t> &input, const FCMetadata &data) {
@@ -124,19 +143,22 @@ vector<vector<Plaintext>> IRONFC::preprocess_matrix(const uint64_t *const *matri
 
 /* Generates a masking vector of random noise that will be applied to parts of
  * the ciphertext that contain leakage */
-Ciphertext IRONFC::preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
-  // Sample randomness into vector
-  vector<int64_t> noise(data.slot_count, 0ULL);
+vector<Plaintext> IRONFC::preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
+    // Sample randomness into vector
+    int nw = 16;
+    int kw = 2;
+    vector<Plaintext> enc_noise(data.filter_w / kw * 3 * 12);
+    for (int ct_index = 0; ct_index < enc_noise.size(); ct_index++) {
+        vector<uint64_t> noise(data.slot_count, 0ULL);
+        for (int i = 0; i < data.slot_count; i++)
+            noise[i] = secret_share[i + ct_index * data.slot_count];
 
-  for (int i = 0; i < data.slot_count; i++)
-    noise[i] = secret_share[i];
-
-  Plaintext pt;
-  encoder->encode(noise, pt);
-  Ciphertext enc_noise;
-  encryptor->encrypt(pt, enc_noise);
-
-  return enc_noise;
+        Plaintext pt = encode_vector(noise.data(), data);
+        // Ciphertext ct;
+        // encryptor->encrypt(pt, ct);
+        enc_noise[ct_index] = pt;
+    }
+    return enc_noise;
 }
 
 vector<Ciphertext> IRONFC::bert_cipher_plain(const vector<Ciphertext> &cts, const vector<vector<vector<Plaintext>>> &enc_mats1, const vector<vector<vector<Plaintext>>> &enc_mats2, const vector<vector<vector<Plaintext>>> &enc_mats3, const FCMetadata &data) {
@@ -197,54 +219,106 @@ vector<Ciphertext> IRONFC::bert_cipher_plain(const vector<Ciphertext> &cts, cons
     return result;
 }
 
-uint64_t* IRONFC::bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
-    uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3];
+vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+    // uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3 * 12];
+    vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>>(3, vector<uint64_t>(data.image_size * data.filter_w)));
     int nw = 16;
     int kw = 2;
     
-    for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
-        Plaintext pt;
-        decryptor->decrypt(cts[ct_ind], pt);
-        for (int i = 0; i < data.image_size; i++) {
-            for (int j = 0; j < kw; j++) {
-                result[i + (j + ct_ind * kw) * data.image_size] = pt[i * nw * kw + (j + 1) * nw - 1];
+    for (int packing_index = 0; packing_index < 12; packing_index++) {
+        for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
+            Plaintext pt;
+            decryptor->decrypt(cts[ct_ind + packing_index * cts.size() / 12], pt);
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < kw; j++) {
+                    result[packing_index][0][i + (j + ct_ind * kw) * data.image_size] = pt[i * nw * kw + (j + 1) * nw - 1];
+                    // result[i + (j + ct_ind * kw) * data.image_size + data.image_size * data.filter_w * 3 * packing_index] = pt[i * nw * kw + (j + 1) * nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
+            Plaintext pt;
+            decryptor->decrypt(cts[ct_ind + cts.size() / 3 / 12 + packing_index * cts.size() / 12], pt);
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < kw; j++) {
+                    result[packing_index][1][i + (j + ct_ind * kw) * data.image_size] = pt[i * nw * kw + (j + 1) * nw - 1];
+                    // result[i + (j + ct_ind * kw) * data.image_size + data.image_size * data.filter_w + data.image_size * data.filter_w * 3 * packing_index] = pt[i * nw * kw + (j + 1) * nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
+            Plaintext pt;
+            decryptor->decrypt(cts[ct_ind + cts.size() / 3 / 12 * 2 + packing_index * cts.size() / 12], pt);
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < kw; j++) {
+                    result[packing_index][2][i + (j + ct_ind * kw) * data.image_size] = pt[i * nw * kw + (j + 1) * nw - 1];
+                    // result[i + (j + ct_ind * kw) * data.image_size + data.image_size * data.filter_w * 2 + data.image_size * data.filter_w * 3 * packing_index] = pt[i * nw * kw + (j + 1) * nw - 1];
+                }
             }
         }
     }
 
-    for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
-        Plaintext pt;
-        decryptor->decrypt(cts[ct_ind + cts.size() / 3 / 12], pt);
-        for (int i = 0; i < data.image_size; i++) {
-            for (int j = 0; j < kw; j++) {
-                result[i + (j + ct_ind * kw) * data.image_size + data.image_size * data.filter_w] = pt[i * nw * kw + (j + 1) * nw - 1];
-            }
-        }
-    }
-
-    for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
-        Plaintext pt;
-        decryptor->decrypt(cts[ct_ind + cts.size() / 3 / 12 * 2], pt);
-        for (int i = 0; i < data.image_size; i++) {
-            for (int j = 0; j < kw; j++) {
-                result[i + (j + ct_ind * kw) * data.image_size + data.image_size * data.filter_w * 2] = pt[i * nw * kw + (j + 1) * nw - 1];
-            }
-        }
-    }
     return result;
 }
 
-IRONFC::IRONFC(int party, NetIO *io) {
+vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data) {
+    // uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3 * 12];
+    vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>>(3, vector<uint64_t>(data.image_size * data.filter_w)));
+    int nw = 16;
+    int kw = 2;
+    
+    for (int packing_index = 0; packing_index < 12; packing_index++) {
+        for (int ct_ind = 0; ct_ind < enc_noise.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind + packing_index * enc_noise.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < kw; j++) {
+                    result[packing_index][0][i + (j + ct_ind * kw) * data.image_size] = prime_mod - pt[i * nw * kw + (j + 1) * nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < enc_noise.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind + enc_noise.size() / 3 / 12 + packing_index * enc_noise.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < kw; j++) {
+                    result[packing_index][1][i + (j + ct_ind * kw) * data.image_size] = prime_mod - pt[i * nw * kw + (j + 1) * nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < enc_noise.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind + enc_noise.size() / 3 / 12 * 2 + packing_index * enc_noise.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < kw; j++) {
+                    result[packing_index][2][i + (j + ct_ind * kw) * data.image_size] = prime_mod - pt[i * nw * kw + (j + 1) * nw - 1];
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+IRONFC::IRONFC(int party, NetIO *io, IOPack *iopack[MAX_THREADS], OTPack *otpack[MAX_THREADS]) {
     this->party = party;
     this->io = io;
     this->slot_count = 4096;
+    
 
     generate_new_keys_iron(party, io, slot_count, context, encryptor, decryptor,
-                    evaluator, encoder, gal_keys, relin_keys, zero, true);
+                    evaluator, encoder, zero, true);
+    // this->otpack = new OTPack(iopack, party);
+    for (int i = 0; i < num_threads; i++) {
+        this->iopack[i] = iopack[i];
+        this->otpack[i] = otpack[i];
+        this->prod[i] = new LinearOT(party, iopack[i], otpack[i]);
+    }
 }
 
 IRONFC::~IRONFC() {
-    free_keys(party, encryptor, decryptor, evaluator, encoder, gal_keys, zero);
+    free_keys_iron(party, encryptor, decryptor, evaluator, encoder, zero);
 }
 
 void IRONFC::configure() {
@@ -283,6 +357,15 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
     data.filter_w = output_dim;
     data.image_size = input_dim;
     this->slot_count = 4096;
+    int bwA = 37;
+    int bwB = 37;
+    int bwC = 37;
+    bool signed_arithmetic = true;
+    bool signed_B = true;
+    bool accumulate = true;
+    uint8_t *msbA = nullptr;
+    uint8_t *msbB = nullptr;
+    MultMode mode = MultMode::None;
     configure();
 
     
@@ -323,11 +406,31 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         auto HE_result = bert_postprocess(enc_result, data);
 
         // HACK
-        for (int i = 0; i < 3; i++) {
-            for (int j = 64; j < 128; j++)
-                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-            cout << endl;
+        // for (int i = 0; i < 3; i++) {
+        //     for (int j = 0; j < 64; j++)
+        //         cout << ((int64_t) HE_result[0][0][i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        //     cout << endl;
+        // }
+
+        vector<vector<uint64_t>> result(12, vector<uint64_t>(data.image_size * data.image_size));
+
+        #pragma omp parallel for
+        for (int i = 0; i < 12; i++) {
+            int tid = i % num_threads;
+            uint64_t* inA = new uint64_t[data.image_size * data.filter_w];
+            uint64_t* inB = new uint64_t[data.image_size * data.filter_w];
+            std::copy(HE_result[i][0].begin(), HE_result[i][0].end(), inA);
+            std::copy(HE_result[i][1].begin(), HE_result[i][1].end(), inB);
+            matrix_transpose_iron(inA, data.filter_w, data.image_size);
+            uint64_t* outC = new uint64_t[data.image_size * data.image_size];
+            prod[tid]->matrix_multiplication(data.image_size, data.filter_w, data.image_size, inA, inB, outC, bwA, bwB, bwC, signed_arithmetic, signed_B, accumulate, mode, nullptr, nullptr);
+            vector<uint64_t> vec(outC, outC + data.image_size*data.image_size);
+            result[i] = vec;
         }
+
+        // prod->matrix_multiplication(dim1, dim2, dim3, inA, inB, outC, bwA, bwB, bwC,
+        //                       signed_arithmetic, signed_B, ::accumulate, mode,
+        //                       msbA, msbB);
 
         #ifdef HE_DEBUG
         for (int i = 0; i < 3; i++) {
@@ -343,7 +446,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         // if (verify_output)
         //   verify(&vec, nullptr, C);
 
-        delete[] HE_result;
+        // delete[] HE_result;
     } else {
         // Server
         #ifdef HE_TIMING
@@ -388,9 +491,13 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
             }
         }
 
+        int nw = 16;
+        int kw = 2;
         PRG128 prg;
-        uint64_t *secret_share = new uint64_t[input_dim*output_dim];
-        prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
+        uint64_t *secret_share = new uint64_t[data.slot_count * data.filter_w / kw * 3 * 12];
+
+        // prg.random_mod_p<uint64_t>(secret_share, data.slot_count * data.filter_w / kw * 3 * 12, prime_mod);
+        load_noise("./bin/txt/Iron_random_noise.txt", secret_share);
 
         vector<vector<vector<Plaintext>>> encoded_mats1(12);
         vector<vector<vector<Plaintext>>> encoded_mats2(12);
@@ -404,7 +511,9 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
             encoded_mats3[i] = encoded_mat3;
         }
         
-        // Ciphertext enc_noise = bert_efficient_preprocess_noise(secret_share, data, cryptoContext_, keyPair_);
+        vector<Plaintext> enc_noise = preprocess_noise(secret_share, data);
+
+        auto post_process_share = bert_postprocess_noise(enc_noise, data);
         // cout << "[Server] Noise processed" << endl;
         #ifdef HE_TIMING
         auto t2_preprocess = high_resolution_clock::now();
@@ -422,6 +531,10 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
 
         auto Cipher_plain_results = bert_cipher_plain(cts, encoded_mats1, encoded_mats2, encoded_mats3, data);
 
+        for (int ct_index = 0; ct_index < Cipher_plain_results.size(); ct_index++) {
+            evaluator->add_plain_inplace(Cipher_plain_results[ct_index], enc_noise[ct_index]);
+        }
+
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();
         interval = (t2_cipher_plain - t1_cipher_plain)/1e+9;
@@ -434,6 +547,22 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
 
         cout << "[Server] Result sent" << endl;
         cout << "[Server] size of result (Bytes): " << io->counter - io_start << endl;
+
+        vector<vector<uint64_t>> result(12, vector<uint64_t>(data.image_size * data.image_size));
+
+        #pragma omp parallel for
+        for (int i = 0; i < 12; i++) {
+            int tid = i % num_threads;
+            uint64_t* inA = new uint64_t[data.image_size * data.filter_w];
+            uint64_t* inB = new uint64_t[data.image_size * data.filter_w];
+            std::copy(post_process_share[i][0].begin(), post_process_share[i][0].end(), inA);
+            std::copy(post_process_share[i][1].begin(), post_process_share[i][1].end(), inB);
+            matrix_transpose_iron(inA, data.filter_w, data.image_size);
+            uint64_t* outC = new uint64_t[data.image_size * data.image_size];
+            prod[tid]->matrix_multiplication(data.image_size, data.filter_w, data.image_size, inA, inB, outC, bwA, bwB, bwC, signed_arithmetic, signed_B, accumulate, mode, nullptr, nullptr);
+            vector<uint64_t> vec(outC, outC + data.image_size*data.image_size);
+            result[i] = vec;
+        }
 
         for (int i = 0; i < common_dim; i++) {
             delete[] matrix_mod_p1[i];

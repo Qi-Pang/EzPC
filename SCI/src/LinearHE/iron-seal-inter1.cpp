@@ -206,11 +206,11 @@ IRONINT1::IRONINT1(int party, NetIO *io) {
     this->slot_count = 4096;
 
     generate_new_keys_iron(party, io, slot_count, context, encryptor, decryptor,
-                    evaluator, encoder, gal_keys, relin_keys, zero, true);
+                    evaluator, encoder, zero, true);
 }
 
 IRONINT1::~IRONINT1() {
-    free_keys(party, encryptor, decryptor, evaluator, encoder, gal_keys, zero);
+    free_keys_iron(party, encryptor, decryptor, evaluator, encoder, zero);
 }
 
 void IRONINT1::configure() {

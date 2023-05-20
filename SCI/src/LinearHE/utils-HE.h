@@ -48,8 +48,6 @@ void generate_new_keys_iron(int party, sci::NetIO *io, int slot_count,
                        seal::Decryptor *&decryptor_,
                        seal::Evaluator *&evaluator_,
                        seal::BatchEncoder *&encoder_,
-                       seal::GaloisKeys *&gal_keys_, 
-                       seal::RelinKeys *&relin_keys_, 
                        seal::Ciphertext *&zero_,
                        bool verbose = false);
 
@@ -68,6 +66,10 @@ void free_keys(int party, seal::Encryptor *&encryptor_,
                seal::Decryptor *&decryptor_, seal::Evaluator *&evaluator_,
                seal::BatchEncoder *&encoder_, seal::GaloisKeys *&gal_keys_,
                seal::Ciphertext *&zero_);
+
+void free_keys_iron(int party, seal::Encryptor *&encryptor_,
+               seal::Decryptor *&decryptor_, seal::Evaluator *&evaluator_,
+               seal::BatchEncoder *&encoder_, seal::Ciphertext *&zero_);
 
 void send_encrypted_vector(sci::NetIO *io, std::vector<seal::Ciphertext> &ct_vec);
 
