@@ -1521,33 +1521,36 @@ FixArray FPMath::tanh_inner(const FixArray& x){
   FixArray e = fix->input(PUBLIC, x.size, uint64_t((1.0542492677156243) * (1 << s)), true, ell, s);
   FixArray f = fix->input(PUBLIC, x.size, uint64_t((-0.0024920889620412097) * (1 << s)), true, ell, s);
 
+  BoolArray all_0 = bool_op->input(ALICE, N, uint8_t(0));
+  BoolArray all_1 = bool_op->input(ALICE, N, 1);
+
   // 
-  FixArray x_square = fix->mul(x, x, ell+s);
-  x_square = fix->truncate_reduce(x_square, s);
+  FixArray x_square = fix->mul(x, x, ell+s, all_0.data, all_0.data);
+  x_square = fix->truncate_reduce(x_square, s, all_0.data);
 
-  FixArray x_cube = fix->mul(x_square, x, ell+s);
-  x_cube = fix->truncate_reduce(x_cube, s);
+  FixArray x_cube = fix->mul(x_square, x, ell+s, all_0.data, all_0.data);
+  x_cube = fix->truncate_reduce(x_cube, s, all_0.data);
 
-  FixArray x_four = fix->mul(x_square, x_square, ell+s);
-  x_four = fix->truncate_reduce(x_four, s);
+  FixArray x_four = fix->mul(x_square, x_square, ell+s, all_0.data, all_0.data);
+  x_four = fix->truncate_reduce(x_four, s, all_0.data);
 
-  FixArray x_five = fix->mul(x_four, x, ell+s);
-  x_five = fix->truncate_reduce(x_five, s);
+  FixArray x_five = fix->mul(x_four, x, ell+s, all_0.data, all_0.data);
+  x_five = fix->truncate_reduce(x_five, s, all_0.data);
 
-  FixArray x_five_a = fix->mul(x_five, a, ell+s);
-  x_five_a = fix->truncate_reduce(x_five_a, s);
+  FixArray x_five_a = fix->mul(x_five, a, ell+s, all_0.data, all_1.data);
+  x_five_a = fix->truncate_reduce(x_five_a, s, all_0.data);
 
-  FixArray x_four_b = fix->mul(x_four, b, ell+s);
-  x_four_b = fix->truncate_reduce(x_four_b, s);
+  FixArray x_four_b = fix->mul(x_four, b, ell+s, all_0.data, all_0.data);
+  x_four_b = fix->truncate_reduce(x_four_b, s, all_0.data);
 
-  FixArray x_cube_c = fix->mul(x_cube, c, ell+s);
-  x_cube_c = fix->truncate_reduce(x_cube_c, s);
+  FixArray x_cube_c = fix->mul(x_cube, c, ell+s, all_0.data, all_1.data);
+  x_cube_c = fix->truncate_reduce(x_cube_c, s, all_0.data);
 
-  FixArray x_square_d = fix->mul(x_square, d, ell+s);
-  x_square_d = fix->truncate_reduce(x_square_d, s);
+  FixArray x_square_d = fix->mul(x_square, d, ell+s, all_0.data, all_1.data);
+  x_square_d = fix->truncate_reduce(x_square_d, s, all_0.data);
 
-  FixArray x_e = fix->mul(x, e, ell+s);
-  x_e = fix->truncate_reduce(x_e, s);
+  FixArray x_e = fix->mul(x, e, ell+s, all_0.data, all_0.data);
+  x_e = fix->truncate_reduce(x_e, s, all_0.data);
 
   f = fix->add(f, x_e);
   f = fix->add(f, x_square_d);
@@ -1563,6 +1566,9 @@ FixArray FPMath::tanh_approx(const FixArray& x){
   int ell = x.ell;
   int s = x.s;
 
+  BoolArray all_0 = bool_op->input(ALICE, N, uint8_t(0));
+  BoolArray all_1 = bool_op->input(ALICE, N, 1);
+
   FixArray cons_2 = fix->input(PUBLIC, x.size, uint64_t((2 << s)), true, ell, s);
   FixArray cons_1 = fix->input(PUBLIC, x.size, uint64_t((1 << s)), true, ell, s);
   FixArray cons_neg_1 = fix->input(PUBLIC, x.size, uint64_t((-1 << s)), true, ell, s);
@@ -1570,16 +1576,17 @@ FixArray FPMath::tanh_approx(const FixArray& x){
   BoolArray pos = fix->GT(x, 0);
   FixArray neg_x = fix->mul(x, -1);
   FixArray abs_x = fix->if_else(pos, x, neg_x);
+
   FixArray cond_fix = fix->B2A(pos, true, ell);
   cond_fix = fix->scale_up(cond_fix, ell, s);
-  FixArray sign_x = fix->mul(cond_fix, cons_2, ell + s);
-  sign_x = fix->truncate_reduce(sign_x, s);
+  FixArray sign_x = fix->mul(cond_fix, cons_2, ell + s, all_0.data, all_0.data);
+  sign_x = fix->truncate_reduce(sign_x, s, all_0.data);
   sign_x = fix->add(sign_x, cons_neg_1);
 
   BoolArray gt3 = fix->GT(abs_x, 3 << s);
   FixArray abs_tanh = fix->if_else(gt3, cons_1, tanh_inner(abs_x));
-  FixArray ret = fix->mul(abs_tanh, sign_x, ell+s);
-  ret = fix->truncate_reduce(ret, s);
+  FixArray ret = fix->mul(abs_tanh, sign_x, ell+s, all_0.data);
+  ret = fix->truncate_reduce(ret, s, all_0.data);
 
   return ret;
 }
