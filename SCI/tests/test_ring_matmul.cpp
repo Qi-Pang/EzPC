@@ -22,6 +22,7 @@ SOFTWARE.
 #include "LinearOT/linear-ot.h"
 #include "utils/emp-tool.h"
 #include <iostream>
+#include <fstream>
 
 using namespace sci;
 using namespace std;
@@ -32,12 +33,12 @@ IOPack *iopack;
 OTPack *otpack;
 LinearOT *prod;
 
-int dim1 = 1;
-int dim2 = 100;
-int dim3 = 35;
-int bwA = 8;
-int bwB = 8;
-int bwC = bwA + bwB;
+int dim1 = 128;
+int dim2 = 64;
+int dim3 = 128;
+int bwA = 37;
+int bwB = 37;
+int bwC = 37;
 bool signed_B = true;
 bool accumulate = true;
 bool precomputed_MSBs = false;
@@ -46,6 +47,32 @@ MultMode mode = MultMode::None;
 uint64_t maskA = (bwA == 64 ? -1 : ((1ULL << bwA) - 1));
 uint64_t maskB = (bwB == 64 ? -1 : ((1ULL << bwB) - 1));
 uint64_t maskC = (bwC == 64 ? -1 : ((1ULL << bwC) - 1));
+
+std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
+    std::ifstream input_file(filename);
+    std::vector<std::vector<uint64_t>> data;
+
+    if (!input_file.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return data;
+    }
+
+    std::string line;
+    while (std::getline(input_file, line)) {
+        std::vector<uint64_t> row;
+        std::istringstream line_stream(line);
+        std::string cell;
+
+        while (std::getline(line_stream, cell, ',')) {
+            row.push_back(std::stoll(cell));
+        }
+
+        data.push_back(row);
+    }
+
+    input_file.close();
+    return data;
+}
 
 void test_matrix_multiplication(uint64_t *inA, uint64_t *inB,
                                 bool signed_arithmetic = true) {
@@ -129,14 +156,32 @@ void test_matrix_multiplication(uint64_t *inA, uint64_t *inB,
         }
       }
     }
+    cout << "debug " << signed_val(outC[0] + outC0[0], bwC) << endl;
+    for (int i = 0; i < dim2; i++) {
+      cout << inA0[i] << " ";
+    }
+    cout << endl;
+    for (int i = 0; i < dim2; i++) {
+      cout << inB0[i * dim1] << " ";
+    }
+    cout << endl;
     prod->matmul_cleartext(dim1, dim2, dim3, inA0, inB0, res, ::accumulate);
+    for (int i = 0; i < dim3; i++) {
+      auto temp = signed_val(outC[i] + outC0[i], bwC);
+      cout << temp << " ";
+    }
+    cout << endl;
 
     for (int i = 0; i < dim; i++) {
       if (signed_arithmetic) {
-        assert(signed_val(res[i] >> extra_bits, bwC) ==
+        // assert(signed_val(res[i] >> extra_bits, bwC) ==
+        //        signed_val(outC[i] + outC0[i], bwC));
+          assert(signed_val(res[i], bwC) ==
                signed_val(outC[i] + outC0[i], bwC));
       } else {
-        assert(unsigned_val(res[i] >> extra_bits, bwC) ==
+        // assert(unsigned_val(res[i] >> extra_bits, bwC) ==
+        //        unsigned_val(outC[i] + outC0[i], bwC));
+        assert(unsigned_val(res[i], bwC) ==
                unsigned_val(outC[i] + outC0[i], bwC));
       }
     }
@@ -175,11 +220,25 @@ int main(int argc, char **argv) {
   prg.random_data(inA, dim1 * dim2 * sizeof(uint64_t));
   prg.random_data(inB, dim2 * dim3 * sizeof(uint64_t));
 
+  vector<vector<uint64_t>> tempA = read_data("./bin/txt/random_ct1.txt");
+  vector<vector<uint64_t>> tempB = read_data("./bin/txt/random_ct2.txt");
+
   for (int i = 0; i < dim1 * dim2; i++) {
     inA[i] &= maskA;
   }
   for (int i = 0; i < dim2 * dim3; i++) {
     inB[i] &= maskB;
+  }
+
+  for (int i = 0; i < dim1; i++) {
+    for (int j = 0; j < dim2; j++) {
+      inA[i * dim2 + j] = tempA[i][j] * 4;
+    }
+  }
+  for (int i = 0; i < dim2; i++) {
+    for (int j = 0; j < dim3; j++) {
+      inB[i * dim3 + j] = tempB[i][j] * 4;
+    }
   }
 
   cout << "Precomputed MSBs: " << precomputed_MSBs << endl;
@@ -188,22 +247,22 @@ int main(int argc, char **argv) {
   cout << "Mode: None" << endl;
   test_matrix_multiplication(inA, inB, false);
   test_matrix_multiplication(inA, inB, true);
-  mode = MultMode::Alice_has_A;
-  cout << "Mode: Alice_has_A" << endl;
-  test_matrix_multiplication(inA, inB, false);
-  test_matrix_multiplication(inA, inB, true);
-  mode = MultMode::Alice_has_B;
-  cout << "Mode: Alice_has_B" << endl;
-  test_matrix_multiplication(inA, inB, false);
-  test_matrix_multiplication(inA, inB, true);
-  mode = MultMode::Bob_has_A;
-  cout << "Mode: Bob_has_A" << endl;
-  test_matrix_multiplication(inA, inB, false);
-  test_matrix_multiplication(inA, inB, true);
-  mode = MultMode::Bob_has_B;
-  cout << "Mode: Bob_has_B" << endl;
-  test_matrix_multiplication(inA, inB, false);
-  test_matrix_multiplication(inA, inB, true);
+  // mode = MultMode::Alice_has_A;
+  // cout << "Mode: Alice_has_A" << endl;
+  // test_matrix_multiplication(inA, inB, false);
+  // test_matrix_multiplication(inA, inB, true);
+  // mode = MultMode::Alice_has_B;
+  // cout << "Mode: Alice_has_B" << endl;
+  // test_matrix_multiplication(inA, inB, false);
+  // test_matrix_multiplication(inA, inB, true);
+  // mode = MultMode::Bob_has_A;
+  // cout << "Mode: Bob_has_A" << endl;
+  // test_matrix_multiplication(inA, inB, false);
+  // test_matrix_multiplication(inA, inB, true);
+  // mode = MultMode::Bob_has_B;
+  // cout << "Mode: Bob_has_B" << endl;
+  // test_matrix_multiplication(inA, inB, false);
+  // test_matrix_multiplication(inA, inB, true);
 
   delete[] inA;
   delete[] inB;

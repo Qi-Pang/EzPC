@@ -1,7 +1,7 @@
 /*
 Authors: Qi Pang
 */
-#include "LinearHE/bert-matmul-cipher-efficient-seal.h"
+#include "LinearHE/iron-seal-inter1.h"
 #include <fstream>
 
 using namespace std;
@@ -14,8 +14,8 @@ int num_threads = 16;
 int port = 8000;
 string address = "127.0.0.1";
 int input_dim = 128;
-int common_dim = 768;
-int output_dim = 64;
+int common_dim = 3072;
+int output_dim = 768;
 int filter_precision = 15;
 
 std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
@@ -44,22 +44,18 @@ std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
     return data;
 }
 
-void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
+void MatMul(IRONINT1 &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
     vector<vector<uint64_t>> A(input_dim);   // Inputs
-    vector<vector<uint64_t>> B1(common_dim);  // Weights
-    vector<vector<uint64_t>> B2(common_dim);  // Weights
+    vector<vector<uint64_t>> B(common_dim);  // Weights
     vector<vector<uint64_t>> C(input_dim);   // Outputs
     PRG128 prg;
     for (int i = 0; i < common_dim; i++) {
-        B1[i].resize(output_dim);
-        B2[i].resize(output_dim);
+        B[i].resize(output_dim);
         // C[i].resize(output_dim);
         if (party == ALICE) {  // Server
-            prg.random_data(B1[i].data(), output_dim * sizeof(uint64_t));
-            prg.random_data(B2[i].data(), output_dim * sizeof(uint64_t));
+            prg.random_data(B[i].data(), output_dim * sizeof(uint64_t));
             for (int j = 0; j < output_dim; j++) {
-                B1[i][j] = ((int64_t)B1[i][j]) >> (64 - filter_precision);
-                B2[i][j] = ((int64_t)B2[i][j]) >> (64 - filter_precision);
+                B[i][j] = ((int64_t)B[i][j]) >> (64 - filter_precision);
             }
         }
     }
@@ -69,17 +65,15 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
     }
 
     // A = read_data("./bin/txt/X_quantize_0.txt");
-    // B1 = read_data("./bin/txt/Q_quantize_0.txt");
-    // B2 = read_data("./bin/txt/K_quantize_0.txt");
+    // B = read_data("./bin/txt/Q_quantize_0.txt");
 
-    A = read_data("./bin/txt/random_X.txt");
-    B1 = read_data("./bin/txt/random_Y.txt");
-    B2 = read_data("./bin/txt/random_Z.txt");
+    A = read_data("./bin/txt/random_X_inter1.txt");
+    B = read_data("./bin/txt/random_Y_inter1.txt");
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
     START_TIMER;
-    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, B1, B2, C, true);
+    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, B, C, true);
     STOP_TIMER("Total Time for FC");
 }
 
@@ -103,7 +97,10 @@ int main(int argc, char **argv) {
     // prime_mod = 1073872897; 
 
     // 29 bits 
-    prime_mod = 536903681;
+    // prime_mod = 536903681;
+
+    // 37 bits
+    prime_mod = 137439010817;
 
     // 28bits
     // prime_mod = 268582913;
@@ -125,7 +122,7 @@ int main(int argc, char **argv) {
 
     auto io_start = io->counter;
 
-    BEFCField befc(party, io);
+    IRONINT1 befc(party, io);
     cout << "Before MatMul" << endl;
     MatMul(befc, input_dim, common_dim, output_dim);
 

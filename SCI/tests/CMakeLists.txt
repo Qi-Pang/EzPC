@@ -16,7 +16,7 @@ macro (add_test_float _name)
     target_link_libraries(${_name}-float SCI-FloatingPoint) 
 endmacro()
 
-# add_test_OT(matmul)
+add_test_OT(matmul)
 # add_test_OT(value_extension)
 # add_test_OT(truncation)
 # add_test_OT(relu)
@@ -87,14 +87,20 @@ add_subdirectory(activation)
 # add_executable(BERT-HE-CIPHER-EFFICIENT "test_bert_efficient.cpp")
 # target_link_libraries(BERT-HE-CIPHER-EFFICIENT SCI-HE)
 
-# add_executable(BERT-HE-CIPHER-EFFICIENT-BFV "test_bert_efficient_seal.cpp")
-# target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
+add_executable(BERT-HE-CIPHER-EFFICIENT-BFV "test_bert_efficient_seal.cpp")
+target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
 
 # add_executable(BERT-HE-CIPHER-EFFICIENT-CKKS "test_bert_efficient_seal_ckks.cpp")
 # target_link_libraries(BERT-HE-CIPHER-EFFICIENT-CKKS SCI-HE)
 
-# add_executable(BERT-HE-IRON "test_bert_iron.cpp")
-# target_link_libraries(BERT-HE-IRON SCI-HE)
+add_executable(BERT-HE-IRON "test_bert_iron.cpp")
+target_link_libraries(BERT-HE-IRON SCI-HE SCI-OT)
 
-# add_executable(BERT-HE-CTPT "test_bert_ctpt.cpp")
-# target_link_libraries(BERT-HE-CTPT SCI-HE)
+add_executable(BERT-HE-IRON-INTER1 "test_bert_iron_inter1.cpp")
+target_link_libraries(BERT-HE-IRON-INTER1 SCI-HE)
+
+add_executable(BERT-HE-CTPT "test_bert_ctpt.cpp")
+target_link_libraries(BERT-HE-CTPT SCI-HE)
+
+add_executable(BERT-HE-CTPT-INTER1 "test_bert_ctpt_inter1.cpp")
+target_link_libraries(BERT-HE-CTPT-INTER1 SCI-HE)

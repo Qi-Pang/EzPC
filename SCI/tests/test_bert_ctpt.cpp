@@ -72,9 +72,9 @@ void MatMul(BECTPT &befc, int32_t input_dim, int32_t common_dim, int32_t output_
     // B1 = read_data("./Q_quantize_0.txt");
     // B2 = read_data("./K_quantize_0.txt");
 
-    A = read_data("./random_X.txt");
-    B1 = read_data("./random_Y.txt");
-    B2 = read_data("./random_Z.txt");
+    A = read_data("./bin/txt/random_X.txt");
+    B1 = read_data("./bin/txt/random_Y.txt");
+    B2 = read_data("./bin/txt/random_Z.txt");
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;

@@ -27,13 +27,10 @@ Modified by Deevashwer Rathee
 #define BERTFC_FIELD_H__
 
 #include "utils-HE.h"
-#include "LinearOT/linear-ot.h"
 
 using namespace std;
 using namespace sci;
 using namespace seal;
-
-#define MAX_THREADS 12
 
 struct FCMetadata {
   int slot_count;
@@ -47,13 +44,10 @@ struct FCMetadata {
   int32_t image_size;
 };
 
-class IRONFC {
+class IRONINT1 {
 public:
   int party;
   NetIO *io;
-  LinearOT *prod[MAX_THREADS];
-  OTPack *otpack[MAX_THREADS];
-  IOPack *iopack[MAX_THREADS];
   FCMetadata data;
   SEALContext *context;
   Encryptor *encryptor;
@@ -65,15 +59,13 @@ public:
   Ciphertext *zero;
   size_t slot_count;
 
-  IRONFC(int party, NetIO *io, IOPack *iopack[MAX_THREADS], OTPack *otpack[MAX_THREADS]);
+  IRONINT1(int party, NetIO *io);
 
-  ~IRONFC();
+  ~IRONINT1();
 
   void configure();
 
   Plaintext encode_vector(const uint64_t *vec, const FCMetadata &data);
-
-  void load_noise(const std::string& filename, uint64_t *data);
 
   vector<Ciphertext> preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
 
@@ -81,13 +73,12 @@ public:
 
   pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
 
-  vector<Plaintext> preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
+  Ciphertext preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
-  vector<vector<vector<uint64_t>>> bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data);
+//   vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<vector<Plaintext>>> &enc_mats1, vector<vector<vector<Plaintext>>> &enc_mats2, vector<vector<vector<Plaintext>>> &enc_mats3, const FCMetadata &data);
+  vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &encoded_mat1, const FCMetadata &data);
 
-  vector<Ciphertext> bert_cipher_plain(const vector<Ciphertext> &cts, const vector<vector<vector<Plaintext>>> &enc_mats1, const vector<vector<vector<Plaintext>>> &enc_mats2, const vector<vector<vector<Plaintext>>> &enc_mats3, const FCMetadata &data);
-
-  vector<vector<vector<uint64_t>>> bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
+  uint64_t* bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 
   vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 
@@ -99,8 +90,7 @@ public:
   void matrix_multiplication(int32_t input_dim, int32_t common_dim,
                              int32_t output_dim,
                              vector<vector<uint64_t>> &A,
-                             vector<vector<uint64_t>> &B1,
-                             vector<vector<uint64_t>> &B2,
+                             vector<vector<uint64_t>> &B,
                              vector<vector<uint64_t>> &C,
                              bool verify_output = false);
 
