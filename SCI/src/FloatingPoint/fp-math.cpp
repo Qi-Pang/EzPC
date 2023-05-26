@@ -1221,10 +1221,6 @@ vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
   int ell = x[0].ell;
   int s = x[0].s;
 
-  // for (int i = 0; i < N; i++){
-  //   print_fix(x[i]);
-  // }
-
   bool signed_ = x[0].signed_;
   // assert(m_bits > 0);
   for(int i = 1; i < N; i++) {
@@ -1233,24 +1229,25 @@ vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
     assert(x[i].s == s);
     assert(x[i].size == n);
   }
-  // FixArray x_max = fix->max(x);
-  // x_max = fix->add(x_max, 1);
-  // FixArray x_max_flat(party, N*n, signed_, ell, s);
-  // for (int i = 0; i < N; i++) {
-  //   for (int j = 0; j < n; j++) {
-  //     x_max_flat.data[i*n + j] = x_max.data[i];
-  //   }
-  // }
+  FixArray x_max = fix->max(x);
+  x_max = fix->add(x_max, 1);
+  FixArray x_max_flat(party, N*n, signed_, ell, s);
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < n; j++) {
+      x_max_flat.data[i*n + j] = x_max.data[i];
+    }
+  }
 
-  FixArray x_max_flat = fix->input(PUBLIC, N*n, 10<<s, signed_, ell, s);
-  // print_fix(x_max_flat);
+  // FixArray x_max_flat = fix->input(PUBLIC, N*n, 10<<s, signed_, ell, s);
   // assert(0);
 
   FixArray x_flat = concat(x);
   FixArray shifted_x_flat = fix->sub(x_flat, x_max_flat);
 
+  // print_fix(shifted_x_flat);
   FixArray e_x_flat = exp4(shifted_x_flat);
   // FixArray e_x_flat = shifted_x_flat;
+  // print_fix(e_x_flat);
 
   vector<FixArray> e_x_tr(n);
   for (int i = 0; i < n; i++) {
