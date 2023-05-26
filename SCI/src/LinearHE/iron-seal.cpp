@@ -35,7 +35,7 @@ using namespace seal;
 using namespace sci;
 
 #define HE_TIMING
-// #define CTPT
+#define CTPT
 // #define HE_DEBUG
 
 void IRONFC::print_noise_budget_vec(vector<Ciphertext> v) {

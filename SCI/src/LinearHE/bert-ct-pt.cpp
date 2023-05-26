@@ -531,7 +531,7 @@ uint64_t* BECTPT::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMe
 BECTPT::BECTPT(int party, NetIO *io) {
     this->party = party;
     this->io = io;
-    this->slot_count = 4096;
+    this->slot_count = 8192;
 
     generate_new_keys_ctpt(party, io, slot_count, context, encryptor, decryptor,
                     evaluator, encoder, gal_keys, relin_keys, zero);
@@ -542,7 +542,7 @@ BECTPT::~BECTPT() {
 }
 
 void BECTPT::configure() {
-  data.slot_count = 4096;
+  data.slot_count = 8192;
   // Only works with a ciphertext that fits in a single ciphertext
   assert(data.slot_count >= data.image_size);
 
@@ -576,7 +576,7 @@ void BECTPT::matrix_multiplication(int32_t input_dim,
     data.filter_h = common_dim;
     data.filter_w = output_dim;
     data.image_size = input_dim;
-    this->slot_count = 4096;
+    this->slot_count = 8192;
     configure();
 
     if (party == BOB) {  
@@ -606,14 +606,14 @@ void BECTPT::matrix_multiplication(int32_t input_dim,
         auto HE_result = bert_efficient_postprocess(enc_result, data);
 
         // HACK
-        // for (int i = 0; i < 3; i++) {
-        //     for (int j = 0; j < 64; j++)
-        //         cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-        //     cout << endl;
-        // }
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 64; j++)
+                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            cout << endl;
+        }
 
         // for (int i = 0; i < 3; i++) {
-        //     for (int j = 128; j < 128 + 64; j++)
+        //     for (int j = 64; j < 64 + 64; j++)
         //         cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
         //     cout << endl;
         // }
