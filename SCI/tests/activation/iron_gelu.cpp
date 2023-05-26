@@ -20,7 +20,6 @@ SOFTWARE.
 */
 
 #include "FloatingPoint/fp-math.h"
-#include "BuildingBlocks/aux-protocols.h"
 #include <fstream>
 #include <iostream>
 #include <thread>
