@@ -85,6 +85,8 @@ public:
 
   pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
 
+  vector<Plaintext> bert_cross_packing_bias(const uint64_t *matrix1, const uint64_t *matrix2, const uint64_t *matrix3, const FCMetadata &data);
+
   Ciphertext bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
   vector<Ciphertext> bert_efficient_online(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, const vector<vector<Plaintext>> & rotation_masks);
@@ -93,7 +95,7 @@ public:
 
   // void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result);
 
-  void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result);
+  void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<vector<Plaintext>> &Bias, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result);
 
   vector<Ciphertext> bert_efficient_cipher(const FCMetadata &data, vector<Ciphertext> Cipher_plain_result, vector<vector<Plaintext>>& rotation_masks, vector<Plaintext>& cipher_masks);
 
@@ -113,12 +115,16 @@ public:
   void print_pt(Plaintext &pt, int len);
 
   void matrix_multiplication(int32_t input_dim, int32_t common_dim,
-                             int32_t output_dim,
-                             vector<vector<uint64_t>> &A,
-                             vector<vector<uint64_t>> &B1,
-                             vector<vector<uint64_t>> &B2,
-                             vector<vector<uint64_t>> &C,
-                             bool verify_output = false);
+                            int32_t output_dim,
+                            vector<vector<uint64_t>> &A, 
+                            vector<vector<uint64_t>> &B1, 
+                            vector<vector<uint64_t>> &B2, 
+                            vector<vector<uint64_t>> &B3, 
+                            vector<uint64_t> &Bias1, 
+                            vector<uint64_t> &Bias2, 
+                            vector<uint64_t> &Bias3, 
+                            vector<vector<uint64_t>> &C, 
+                            bool verify_output = false);
 
 };
 #endif
