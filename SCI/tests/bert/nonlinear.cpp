@@ -6,179 +6,321 @@ NonLinear::NonLinear(int party, string address, int port){
     this->port = port;
 
     for(int i = 0; i < MAX_THREADS; ++i){
-        iopackArr[i] = new IOPack(party, port + i, address);
+        this->iopackArr[i] = new IOPack(party, port + i, address);
         if (i & 1) {
-            otpackArr[i] = new OTPack(iopackArr[i], 3 - party);
-            fpmath[i] = new FPMath(3 - party, iopackArr[i], otpackArr[i]);
+            this->otpackArr[i] = new OTPack(iopackArr[i], 3 - party);
+            this->fpmath[i] = new FPMath(3 - party, iopackArr[i], otpackArr[i]);
         } else {
-            otpackArr[i] = new OTPack(iopackArr[i], party);
-            fpmath[i] = new FPMath(party, iopackArr[i], otpackArr[i]);
+            this->otpackArr[i] = new OTPack(iopackArr[i], party);
+            this->fpmath[i] = new FPMath(party, iopackArr[i], otpackArr[i]);
         }
     }
 }
+
+NonLinear::NonLinear(){}
 
 NonLinear::~NonLinear(){
-    delete[] fpmath;
-    delete[] iopackArr;
-    delete[] otpackArr;   
+  // for (int i = 0; i < MAX_THREADS; i++) {
+  //   delete this->iopackArr[i];
+  //   delete this->otpackArr[i];
+  //   delete this->fpmath[i];
+  // }
 }
 
-vector<FixArray> NonLinear::softmax(vector<FixArray> input, int nthreads){
-    std::thread operation_threads[nthreads];
-    vector<vector<FixArray>> output_tmp;
-    vector<FixArray> output;
-    int dim = input.size();
+void softmax_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  vector<FixArray> input_array;
+  for(int i = 0; i < num_ops; i++){
+    input_array.push_back(fpmath->fix->input(this_party, array_size, &x[i*array_size], true, ell, s));
+  }
+  vector<FixArray> output_array = fpmath->softmax_fix(input_array);
+  for(int i = 0; i < num_ops; i++){
+    memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
+  }
+}
+
+void NonLinear::softmax(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s){
+    std::thread threads[nthreads];
     int chunk_size = dim / nthreads;
-    for (int i = 0; i < nthreads; ++i){
+    for (int i = 0; i < nthreads; ++i) {
         int offset = i * chunk_size;
-        int nops;
+        int lnum_ops;
         if (i == (nthreads - 1)) {
-            nops = dim - offset;
+        lnum_ops = dim - offset;
         } else {
-            nops = chunk_size;
+        lnum_ops = chunk_size;
         }
-        vector<FixArray> in = {input.begin() + offset, input.begin() + offset + nops};
-        vector<FixArray> out(nops);
-        output_tmp.push_back(out);
-        operation_threads[i] = thread(
-            non_linear_thread_vector, i, &in, &output_tmp[i], FPMath::softmax_fix
-        );
+        threads[i] =
+            std::thread(
+                softmax_thread, 
+                i, 
+                party, 
+                &input[offset*array_size], 
+                &output[offset*array_size], 
+                lnum_ops,
+                array_size,
+                ell,
+                s,
+                this->fpmath[i]);
     }
     for (int i = 0; i < nthreads; ++i) {
-        operation_threads[i].join();
-        output.insert(output.end(), output_tmp[i].begin(), output_tmp[i].end());
+        threads[i].join();
     }
-    return output;
 }
 
-vector<FixArray> NonLinear::softmax_iron(vector<FixArray> input, int nthreads){
-    return {};
+void softmax_irons_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  vector<FixArray> input_array;
+  for(int i = 0; i < num_ops; i++){
+    input_array.push_back(fpmath->fix->input(this_party, array_size, &x[i*array_size], true, ell, s));
+  }
+  vector<FixArray> output_array = fpmath->softmax_fix_iron_1(input_array);
+  for(int i = 0; i < num_ops; i++){
+    memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
+  }
 }
 
-vector<FixArray> NonLinear::layer_norm(vector<FixArray> input, int nthreads){
-    return {};
-}
-
-vector<FixArray> NonLinear::layer_norm_iron(vector<FixArray> input, int nthreads){
-    return layer_norm(input, nthreads);
-}
-
-FixArray NonLinear::gelu(FixArray input, int nthreads){
-    std::thread operation_threads[nthreads];
-    int n = input.size;
-    int s = input.s;
-    int ell = input.ell;
-    int signed_ = input.signed_;
-
-    FixArray output(party, n, signed_, ell, s);
-
-    int chunk_size = n / nthreads;
-    for (int i = 0; i < nthreads; ++i){
+void NonLinear::softmax_iron(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = dim / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
         int offset = i * chunk_size;
-        int nops;
+        int lnum_ops;
         if (i == (nthreads - 1)) {
-            nops = n - offset;
+        lnum_ops = dim - offset;
         } else {
-            nops = chunk_size;
+        lnum_ops = chunk_size;
         }
-
-        operation_threads[i] = thread(
-            non_linear_thread, i, &input.data[offset], &output.data[offset], nops, FPMath::gelu_approx
-        );
+        threads[i] =
+            std::thread(
+                softmax_irons_thread, 
+                i, 
+                party, 
+                &input[offset*array_size], 
+                &output[offset*array_size], 
+                lnum_ops,
+                array_size,
+                ell,
+                s,
+                this->fpmath[i]);
     }
     for (int i = 0; i < nthreads; ++i) {
-        operation_threads[i].join();
+        threads[i].join();
     }
-    return output;
 }
 
-FixArray NonLinear::gelu_iron(FixArray input, int nthreads){
-    std::thread operation_threads[nthreads];
-    int n = input.size;
-    int s = input.s;
-    int ell = input.ell;
-    int signed_ = input.signed_;
+void layer_norm_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  vector<FixArray> input_array;
+  for(int i = 0; i < num_ops; i++){
+    input_array.push_back(fpmath->fix->input(this_party, array_size, &x[i*array_size], true, ell, s));
+  }
+  vector<FixArray> output_array = fpmath->layer_norm_iron(input_array);
+  for(int i = 0; i < num_ops; i++){
+    memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
+  }
+}
 
-    FixArray output(party, n, signed_, ell, s);
-
-    int chunk_size = n / nthreads;
-    for (int i = 0; i < nthreads; ++i){
+void NonLinear::layer_norm(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = dim / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
         int offset = i * chunk_size;
-        int nops;
+        int lnum_ops;
         if (i == (nthreads - 1)) {
-            nops = n - offset;
+        lnum_ops = dim - offset;
         } else {
-            nops = chunk_size;
+        lnum_ops = chunk_size;
         }
-
-        operation_threads[i] = thread(
-            non_linear_thread, i, &input.data[offset], &output.data[offset], nops, FPMath::gelu_iron
-        );
+        threads[i] =
+            std::thread(
+                layer_norm_thread, 
+                i, 
+                party, 
+                &input[offset*array_size], 
+                &output[offset*array_size], 
+                lnum_ops,
+                array_size,
+                ell,
+                s,
+                this->fpmath[i]);
     }
     for (int i = 0; i < nthreads; ++i) {
-        operation_threads[i].join();
+        threads[i].join();
     }
-    return output;
 }
 
-FixArray NonLinear::tanh(FixArray input, int nthreads){
-    std::thread operation_threads[nthreads];
-    int n = input.size;
-    int s = input.s;
-    int ell = input.ell;
-    int signed_ = input.signed_;
+void gelu_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray output = fpmath->gelu_approx(input);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
 
-    FixArray output(party, n, signed_, ell, s);
-
-    int chunk_size = n / nthreads;
-    for (int i = 0; i < nthreads; ++i){
+void NonLinear::gelu(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
         int offset = i * chunk_size;
-        int nops;
+        int lnum_ops;
         if (i == (nthreads - 1)) {
-            nops = n - offset;
+        lnum_ops = size - offset;
         } else {
-            nops = chunk_size;
+        lnum_ops = chunk_size;
         }
-
-        operation_threads[i] = thread(
-            non_linear_thread, i, &input.data[offset], &output.data[offset], nops, FPMath::tanh_approx
-        );
+        threads[i] =
+            std::thread(
+                gelu_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
     }
     for (int i = 0; i < nthreads; ++i) {
-        operation_threads[i].join();
+        threads[i].join();
     }
-    return output;
 }
 
-FixArray NonLinear::tanh_iron(FixArray input, int nthreads){
-    std::thread operation_threads[nthreads];
-    int n = input.size;
-    int s = input.s;
-    int ell = input.ell;
-    int signed_ = input.signed_;
+void gelu_iron_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray output = fpmath->gelu_iron(input);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
 
-    FixArray output(party, n, signed_, ell, s);
-
-    int chunk_size = n / nthreads;
-    for (int i = 0; i < nthreads; ++i){
+void NonLinear::gelu_iron(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
         int offset = i * chunk_size;
-        int nops;
+        int lnum_ops;
         if (i == (nthreads - 1)) {
-            nops = n - offset;
+        lnum_ops = size - offset;
         } else {
-            nops = chunk_size;
+        lnum_ops = chunk_size;
         }
-
-        operation_threads[i] = thread(
-            non_linear_thread, i, &input.data[offset], &output.data[offset], nops, FPMath::tanh_approx
-        );
+        threads[i] =
+            std::thread(
+                gelu_iron_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
     }
     for (int i = 0; i < nthreads; ++i) {
-        operation_threads[i].join();
+        threads[i].join();
     }
-    return output;
 }
 
-void NonLinear::non_linear_thread_vector(int tid, vector<FixArray>& input, vector<FixArray>& output, vector<FixArray> (FPMath::*func)(const vector<FixArray>& x)){
-    output = (fpmath[tid]->*func)(input);
+void tanh_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray output = fpmath->tanh_approx(input);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+void NonLinear::tanh(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                tanh_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
+}
+
+void tanh_iron_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray output = fpmath->tanh_iron(input);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+void NonLinear::tanh_iron(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                tanh_iron_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
 }

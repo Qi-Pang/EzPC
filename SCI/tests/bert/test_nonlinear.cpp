@@ -19,9 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "FloatingPoint/fp-math.h"
-#include "BuildingBlocks/aux-protocols.h"
-#include "NonLinear/argmax.h"
+#include "nonlinear.h"
 #include <fstream>
 #include <iostream>
 #include <thread>
@@ -34,11 +32,11 @@ using namespace std;
 #define MAX_THREADS 12
 
 int party, port = 32000;
-int num_threads = 12;
+int num_threads = 2;
 string address = "127.0.0.1";
 
-int32_t dim = num_threads*128;
-int32_t array_size = 128;
+int32_t dim = num_threads*2;
+int32_t array_size = 2;
 int32_t bw_x = 37;
 int32_t bw_y = 37;
 int32_t s_x = 12;
@@ -49,9 +47,6 @@ bool signed_ = true;
 
 uint64_t mask_x = (bw_x == 64 ? -1 : ((1ULL << 14) - 1));
 uint64_t mask_y = (bw_y == 64 ? -1 : ((1ULL << 14) - 1));
-
-IOPack *iopackArr[MAX_THREADS];
-OTPack *otpackArr[MAX_THREADS];
 
 void softmax_double(const double* input, double* output, int dim, int array_size) {
   
@@ -80,26 +75,6 @@ uint64_t computeULPErr(double calc, double actual, int SCALE) {
   return ulp_err;
 }
 
-void operation_thread(int tid, uint64_t *x, uint64_t *y, int num_ops) {
-  FPMath *fpmath;
-  // ArgMaxProtocol<uint64_t> *argmax_oracle;
-  int this_party;
-  if (tid & 1) {
-    this_party = 3 - party;
-  } else {
-    this_party = party;
-  }
-  fpmath = new FPMath(this_party, iopackArr[tid], otpackArr[tid]);
-  vector<FixArray> input_array;
-  for(int i = 0; i < num_ops; i++){
-    input_array.push_back(fpmath->fix->input(this_party, array_size, &x[i*array_size], true, bw_x, s_x));
-  }
-  vector<FixArray> output_array = fpmath->softmax_fix(input_array);
-  for(int i = 0; i < num_ops; i++){
-    memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
-  }
-  delete fpmath;
-}
 
 int main(int argc, char **argv) {
   /************* Argument Parsing  ************/
@@ -117,14 +92,8 @@ int main(int argc, char **argv) {
 
   /********** Setup IO and Base OTs ***********/
   /********************************************/
-  for (int i = 0; i < num_threads; i++) {
-    iopackArr[i] = new IOPack(party, port + i, address);
-    if (i & 1) {
-      otpackArr[i] = new OTPack(iopackArr[i], 3 - party);
-    } else {
-      otpackArr[i] = new OTPack(iopackArr[i], party);
-    }
-  }
+
+  NonLinear nl(party, address, port);
   std::cout << "All Base OTs Done" << std::endl;
 
   /************ Generate Test Data ************/
@@ -141,52 +110,29 @@ int main(int argc, char **argv) {
   prg.random_data(x, dim * array_size * sizeof(uint64_t));
 
   for (int i = 0; i < dim; i++) {
+    // FixArray tmp(party, array_size, true, bw_x, s_x);
     for(int j=0;j < array_size;j++)
        x[i*array_size+j] &= mask_x;
   }
 
+  std::cout << "All data done" << std::endl;
   /************** Fork Threads ****************/
   /********************************************/
-  uint64_t total_comm = 0;
-  uint64_t thread_comm[num_threads];
-  for (int i = 0; i < num_threads; i++) {
-    thread_comm[i] = iopackArr[i]->get_comm();
-  }
+  nl.softmax(num_threads, x, y, dim, array_size, bw_x, s_x);
 
-  auto start = clock_start();
-  std::thread operation_threads[num_threads];
-  int chunk_size = dim / num_threads;
-  for (int i = 0; i < num_threads; ++i) {
-    int offset = i * chunk_size;
-    int lnum_ops;
-    if (i == (num_threads - 1)) {
-      lnum_ops = dim - offset;
-    } else {
-      lnum_ops = chunk_size;
-    }
-    operation_threads[i] =
-        std::thread(operation_thread, i, &x[offset*array_size], &y[offset*array_size], lnum_ops);
-  }
-  for (int i = 0; i < num_threads; ++i) {
-    operation_threads[i].join();
-  }
-  long long t = time_from(start);
+  std::cout << "Nonlinear computation done" << std::endl;
 
-  for (int i = 0; i < num_threads; i++) {
-    thread_comm[i] = iopackArr[i]->get_comm() - thread_comm[i];
-    total_comm += thread_comm[i];
-  }
 
   /************** Verification ****************/
   /********************************************/
   if (party == ALICE) {
-    iopackArr[0]->io->send_data(x, input_size * sizeof(uint64_t));
-    iopackArr[0]->io->send_data(y, input_size * sizeof(uint64_t));
+    nl.iopackArr[0]->io->send_data(x, input_size * sizeof(uint64_t));
+    nl.iopackArr[0]->io->send_data(y, input_size * sizeof(uint64_t));
   } else { // party == BOB
     uint64_t *x0 = new uint64_t[input_size];
     uint64_t *y0 = new uint64_t[input_size];
-    iopackArr[0]->io->recv_data(x0, input_size * sizeof(uint64_t));
-    iopackArr[0]->io->recv_data(y0, input_size * sizeof(uint64_t));
+    nl.iopackArr[0]->io->recv_data(x0, input_size * sizeof(uint64_t));
+    nl.iopackArr[0]->io->recv_data(y0, input_size * sizeof(uint64_t));
 
     uint64_t total_err = 0;
     uint64_t max_ULP_err = 0;
@@ -205,31 +151,31 @@ int main(int argc, char **argv) {
     for (int i = 0; i < input_size; i++) {
       uint64_t err = computeULPErr(dbl_y[i], dbl_ref[i], s_y);
       if (err > 10){
-        cout << "ULP Error: " << dbl_x[i] << "," << dbl_y[i] << "," << dbl_ref[i] << ","
+        std::cout << "ULP Error: " << dbl_x[i] << "," << dbl_y[i] << "," << dbl_ref[i] << ","
       << err << endl;
       }
       
       total_err += err;
       max_ULP_err = std::max(max_ULP_err, err);
     }
-    cerr << "Average ULP error: " << total_err / input_size << endl;
-    cerr << "Max ULP error: " << max_ULP_err << endl;
-    cerr << "Number of tests: " << input_size << endl;
+    std::cerr << "Average ULP error: " << total_err / input_size << endl;
+    std::cerr << "Max ULP error: " << max_ULP_err << endl;
+    std::cerr << "Number of tests: " << input_size << endl;
 
     delete[] x0;
     delete[] y0;
   }
 
-  cout << "Number of operation/s:\t" << (double(dim) / t) * 1e6 << std::endl;
-  cout << "operation Time\t" << t / (1000.0) << " ms" << endl;
-  cout << "operation Bytes Sent\t" << total_comm << " bytes" << endl;
+//   std::cout << "Number of operation/s:\t" << (double(dim) / t) * 1e6 << std::endl;
+//   std::cout << "operation Time\t" << t / (1000.0) << " ms" << endl;
+//   std::cout << "operation Bytes Sent\t" << total_comm << " bytes" << endl;
 
   /******************* Cleanup ****************/
   /********************************************/
   delete[] x;
   delete[] y;
-  for (int i = 0; i < num_threads; i++) {
-    delete iopackArr[i];
-    delete otpackArr[i];
-  }
+//   for (int i = 0; i < num_threads; i++) {
+//     delete iopackArr[i];
+//     delete otpackArr[i];
+//   }
 }

@@ -1216,6 +1216,7 @@ vector<FPArray> FPMath::softmax_secfloat(const vector<FPArray>& x) {
 }
 
 vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
+  // std::cout << "Entering softmax fix" << std::endl;
   int N = x.size();
   int n = x[0].size;
   int ell = x[0].ell;
@@ -1233,16 +1234,16 @@ vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
     assert(x[i].s == s);
     assert(x[i].size == n);
   }
-  // FixArray x_max = fix->max(x);
-  // x_max = fix->add(x_max, 1);
-  // FixArray x_max_flat(party, N*n, signed_, ell, s);
-  // for (int i = 0; i < N; i++) {
-  //   for (int j = 0; j < n; j++) {
-  //     x_max_flat.data[i*n + j] = x_max.data[i];
-  //   }
-  // }
+  FixArray x_max = fix->max(x);
+  x_max = fix->add(x_max, 1);
+  FixArray x_max_flat(party, N*n, signed_, ell, s);
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < n; j++) {
+      x_max_flat.data[i*n + j] = x_max.data[i];
+    }
+  }
 
-  FixArray x_max_flat = fix->input(PUBLIC, N*n, 10<<s, signed_, ell, s);
+  // FixArray x_max_flat = fix->input(PUBLIC, N*n, 10<<s, signed_, ell, s);
   // print_fix(x_max_flat);
   // assert(0);
 
@@ -1652,3 +1653,8 @@ FixArray FPMath::sqrt(const FixArray& x, bool recp_sqrt){
   return ret;
 }
 
+FixArray FPMath::tanh_iron(const FixArray& x){
+  FixArray ret(party, x.size, x.signed_, x.ell, x.s);
+  math->tanh(x.size, x.data, ret.data, x.ell, x.ell, x.s, x.s);
+  return ret;
+}

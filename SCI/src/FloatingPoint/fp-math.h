@@ -87,6 +87,8 @@ public:
 
   FixArray tanh_approx(const FixArray& x);
 
+  FixArray tanh_iron(const FixArray& x);
+
   vector<FixArray> layer_norm_iron(const vector<FixArray>& x);
 
   FixArray sqrt(const FixArray& x, bool recp_sqrt);

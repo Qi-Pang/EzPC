@@ -103,11 +103,5 @@ public:
                              vector<vector<double>> &C,
                              bool verify_output = false, bool verbose = false);
 
-              
-  
-
-
-
-
 };
 #endif

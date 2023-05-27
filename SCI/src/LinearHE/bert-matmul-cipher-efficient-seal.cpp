@@ -1520,7 +1520,6 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
     data.image_size = input_dim;
     this->slot_count = 8192;
     configure();
-
     
     if (party == BOB) {  
         // Client
@@ -1553,12 +1552,6 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
             cout << endl;
         }
         #endif
-        
-        // for (int i = 0; i < num_rows; i++) {
-        //   C[i][0] = HE_result[i];
-        // }
-        // if (verify_output)
-        //   verify(&vec, nullptr, C);
 
         delete[] HE_result;
     } else {
@@ -1566,11 +1559,6 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         #ifdef HE_TIMING
         auto t1_total = high_resolution_clock::now();
         #endif 
-
-        // vector<uint64_t> vec(common_dim);
-        // for (int i = 0; i < common_dim; i++) {
-        //     vec[i] = B[i][0];
-        // }
 
         auto io_start = io->counter;
         vector<Ciphertext> cts(12);
@@ -1614,14 +1602,10 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
             }
         }
 
-        PRG128 prg;
-        uint64_t *secret_share = new uint64_t[input_dim*output_dim];
-        prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
-        // auto encoded_mat1 = bert_efficient_preprocess_matrix(matrix_mod_p1.data(), data);
-        // auto encoded_mat2 = bert_efficient_preprocess_matrix(matrix_mod_p2.data(), data);
+        // PRG128 prg;
+        // uint64_t *secret_share = new uint64_t[input_dim*output_dim];
+        // prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
 
-        // auto cross_mat = bert_cross_packing_matrix(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
-        // auto cross_mat = bert_cross_packing_matrix_bsgs(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
         vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats(12);
         vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single(12);
 
@@ -1688,7 +1672,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
             delete[] matrix1[i];
             delete[] matrix2[i];
         }
-        delete[] secret_share;
+        // delete[] secret_share;
 
         #ifdef HE_TIMING
         auto t2_total = high_resolution_clock::now();
