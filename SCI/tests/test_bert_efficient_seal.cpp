@@ -44,6 +44,70 @@ std::vector<std::vector<uint64_t>> read_data(const std::string& filename) {
     return data;
 }
 
+vector<vector<vector<uint64_t>>> read_qkv_weights(const string& filename) {
+    std::ifstream input_file(filename);
+    vector<vector<vector<uint64_t>>> data;
+
+    if (!input_file.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return data;
+    }
+
+    std::string line;
+    vector<vector<uint64_t>> sub_mat;
+    int row_counting = 0;
+    while (std::getline(input_file, line)) {
+        vector<uint64_t> row;
+        istringstream line_stream(line);
+        string cell;
+
+        while (std::getline(line_stream, cell, ',')) {
+            row.push_back(std::stoll(cell));
+        }
+        sub_mat.push_back(row);
+        row_counting++;
+        if (row_counting == 768) {
+            data.push_back(sub_mat);
+            sub_mat.clear();
+            row_counting -= 768;
+        }
+    }
+
+    input_file.close();
+    return data;
+}
+
+vector<vector<uint64_t>> read_qkv_bias(const string& filename) {
+    std::ifstream input_file(filename);
+    vector<vector<uint64_t>> data;
+
+    if (!input_file.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return data;
+    }
+
+    std::string line;
+    vector<uint64_t> sub_mat;
+    int row_counting = 0;
+    while (std::getline(input_file, line)) {
+        istringstream line_stream(line);
+        string cell;
+
+        while (std::getline(line_stream, cell, ',')) {
+            sub_mat.push_back(std::stoll(cell));
+        }
+        row_counting++;
+        if (row_counting == 64) {
+            data.push_back(sub_mat);
+            sub_mat.clear();
+            row_counting -= 64;
+        }
+    }
+
+    input_file.close();
+    return data;
+}
+
 void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
     vector<vector<uint64_t>> A(input_dim);   // Inputs
     vector<vector<uint64_t>> B1(common_dim);  // Weights
@@ -86,6 +150,12 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
     B1 = read_data("./bin/txt/random_Y.txt");
     B2 = read_data("./bin/txt/random_Z.txt");
     B3 = read_data("./bin/txt/random_Z.txt");
+
+    // auto temp_w = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.weight.txt");
+    // auto temp_b = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.bias.txt");
+
+    // cout << temp_w.size() << " " << temp_w[0].size() << " " << temp_w[0][1].size() << endl;;
+    // cout << temp_b.size() << " " << temp_b[0].size() << endl;
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
