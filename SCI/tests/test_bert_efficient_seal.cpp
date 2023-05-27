@@ -48,6 +48,10 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
     vector<vector<uint64_t>> A(input_dim);   // Inputs
     vector<vector<uint64_t>> B1(common_dim);  // Weights
     vector<vector<uint64_t>> B2(common_dim);  // Weights
+    vector<vector<uint64_t>> B3(common_dim);  // Weights
+    vector<uint64_t> Bias1(output_dim);  // Weights
+    vector<uint64_t> Bias2(output_dim);  // Weights
+    vector<uint64_t> Bias3(output_dim);  // Weights
     vector<vector<uint64_t>> C(input_dim);   // Outputs
     PRG128 prg;
     for (int i = 0; i < common_dim; i++) {
@@ -68,6 +72,12 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
         C[i].resize(output_dim);
     }
 
+    for(int i = 0; i < output_dim; i++) {
+        Bias1[i] = i;
+        Bias2[i] = 64 - i;
+        Bias3[i] = i;
+    }
+
     // A = read_data("./bin/txt/X_quantize_0.txt");
     // B1 = read_data("./bin/txt/Q_quantize_0.txt");
     // B2 = read_data("./bin/txt/K_quantize_0.txt");
@@ -75,11 +85,12 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
     A = read_data("./bin/txt/random_X.txt");
     B1 = read_data("./bin/txt/random_Y.txt");
     B2 = read_data("./bin/txt/random_Z.txt");
+    B3 = read_data("./bin/txt/random_Z.txt");
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
     START_TIMER;
-    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, B1, B2, C, true);
+    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, B1, B2, B3, Bias1, Bias2, Bias3, C, true);
     STOP_TIMER("Total Time for FC");
 }
 
