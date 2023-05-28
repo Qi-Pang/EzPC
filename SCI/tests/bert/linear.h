@@ -1,12 +1,16 @@
 #ifndef LINEAR_H__
 #define LINEAR_H__
 
-#include "LinearHE/utils-HE.h"
+#include "he.h"
 #include "FloatingPoint/fp-math.h"
 #include <fstream>
 #include <iostream>
 #include <thread>
 #include <math.h>
+
+#define INPUT_DIM 128
+#define COMMON_DIM 768
+#define OUTPUT_DIM 64
 
 using namespace sci;
 using namespace std;
@@ -32,15 +36,9 @@ public:
 	int party;
 	NetIO *io;
 	FCMetadata data;
-	SEALContext *context;
-	Encryptor *encryptor;
-	Decryptor *decryptor;
-	Evaluator *evaluator;
-	BatchEncoder *encoder;
-	GaloisKeys *gal_keys;
-	RelinKeys *relin_keys;
-	Ciphertext *zero;
-	size_t slot_count;
+
+	HE *he_8192;
+	HE *he_4096;
 
 	Linear();
 
@@ -52,69 +50,88 @@ public:
 
 	void generate_new_keys();
 
-	// vector<vector<Plaintext>> generate_rotation_masks();
-  	// vector<Plaintext> generate_cipher_masks();
-  	// vector<Plaintext> generate_packing_masks();
-  	// vector<Plaintext> generate_depth3_masks();
- 	// vector<Plaintext> generate_cross_packing_masks();
+	vector<Ciphertext> linear_1(
+		HE* he,
+		vector<Ciphertext> input_cts, 
+		vector<vector<vector<uint64_t>>> w_q,
+		vector<vector<vector<uint64_t>>> w_k,
+		vector<vector<vector<uint64_t>>> w_v,
+		vector<vector<uint64_t>> b_q,
+		vector<vector<uint64_t>> b_k,
+		vector<vector<uint64_t>> b_v,
+		const FCMetadata &data
+		);
+	
+	// vector<Ciphertext> linear_2(
+	// 	HE* he,
+	// 	vector<Ciphertext> input_cts, 
+	// 	vector<vector<uint64_t>> w_o,
+	// 	vector<vector<uint64_t>> b_o,
+	// 	const FCMetadata &data
+	// 	);
 
-	// vector<Ciphertext> rotation_by_one_depth3(
-	// 	const FCMetadata &data, const Ciphertext &ct, int k);
+	// vector<Ciphertext> linear_inter(
+	// 	HE* he,
+	// 	vector<Ciphertext> input_cts, 
+	// 	vector<vector<uint64_t>> w_i,
+	// 	vector<vector<uint64_t>> b_i,
+	// 	const FCMetadata &data
+	// 	);
 
-	// vector<Ciphertext>
-	// bert_efficient_preprocess_vec(
-	// 	vector<uint64_t> &input,
-	// 	const FCMetadata &data);
 
-	// pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>
-	// bert_cross_packing_matrix(
-	// 	const uint64_t *const *matrix1,
-	// 	const uint64_t *const *matrix2,
-	// 	const FCMetadata &data);
+ 	vector<Plaintext> generate_cross_packing_masks(HE* he, const FCMetadata &data);
 
-	// pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>
-	// bert_cross_packing_single_matrix(
-	// 	const uint64_t *const *matrix1,
-	// 	const uint64_t *const *matrix2,
-	// 	const FCMetadata &data);
+	vector<Ciphertext> rotation_by_one_depth3(
+	HE* he,
+	const FCMetadata &data, 
+	const Ciphertext &ct, 
+	int k);
 
-	// void bert_cipher_plain_bsgs(
-	// 	const vector<Ciphertext> &cts,
-	// 	const vector<pair<vector<vector<Plaintext>>,
-	// 		vector<vector<Plaintext>>>> &cross_mats,
-	// 	const vector<pair<vector<vector<Plaintext>>,
-	// 		vector<vector<Plaintext>>>> &cross_mats_single,
-	// 	const FCMetadata &data,
-	// 	vector<Ciphertext> &result);
+	vector<Ciphertext>
+	bert_efficient_preprocess_vec(
+		HE* he,
+		vector<uint64_t> &input,
+		const FCMetadata &data);
 
-	// void bert_cipher_cipher_cross_packing(
-	// 	const FCMetadata &data,
-	// 	const vector<Ciphertext> &Cipher_plain_result,
-	// 	const vector<Plaintext> &cross_masks,
-	// 	vector<Ciphertext> &results);
+	pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>
+	bert_cross_packing_matrix(
+		HE* he,
+		const uint64_t *const *matrix1,
+		const uint64_t *const *matrix2,
+		const FCMetadata &data);
 
-	// uint64_t *bert_cross_packing_postprocess(
-	// 	vector<Ciphertext> &cts,
-	// 	const FCMetadata &data);
+	pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>
+	bert_cross_packing_single_matrix(
+		HE* he,
+		const uint64_t *const *matrix1,
+		const uint64_t *const *matrix2,
+		const FCMetadata &data);
 
-	// // vector<uint64_t> ideal_functionality(
-	// // 	uint64_t *vec,
-	// // 	uint64_t **matrix);
+	vector<Plaintext> bert_cross_packing_bias(
+		HE* he,
+		const uint64_t *matrix1, 
+		const uint64_t *matrix2, 
+		const uint64_t *matrix3, 
+		const FCMetadata &data);
 
-	// void print_noise_budget_vec(vector<Ciphertext> v);
+	void bert_cipher_plain_bsgs(
+		HE* he,
+		const vector<Ciphertext> &cts, 
+		const vector<pair<vector<vector<Plaintext>>, 
+		vector<vector<Plaintext>>>> &cross_mats, 
+		const vector<vector<Plaintext>> &Bias, 
+		const vector<pair<vector<vector<Plaintext>>, 
+		vector<vector<Plaintext>>>> &cross_mats_single, 
+		const FCMetadata &data, 
+		vector<Ciphertext> &result);
 
-	// void print_ct(Ciphertext &ct, int len);
-	// void print_pt(Plaintext &pt, int len);
+	void bert_cipher_cipher_cross_packing(
+		HE* he,
+		const FCMetadata &data,
+		const vector<Ciphertext> &Cipher_plain_result,
+		const vector<Plaintext> &cross_masks,
+		vector<Ciphertext> &results);
 
-	// void matrix_multiplication(
-	// 	int32_t input_dim,
-	// 	int32_t common_dim,
-	// 	int32_t output_dim,
-	// 	vector<vector<uint64_t>> &A,
-	// 	vector<vector<uint64_t>> &B1,
-	// 	vector<vector<uint64_t>> &B2,
-	// 	vector<vector<uint64_t>> &C,
-	// 	bool verify_output = false);
 };
 
 #endif

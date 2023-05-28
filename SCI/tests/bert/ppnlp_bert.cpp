@@ -11,6 +11,8 @@ using namespace sci;
 int party = 0;
 int port = 8000;
 string address = "127.0.0.1";
+int num_threads = 4;
+int bitlength = 37;
 
 
 int main(int argc, char **argv) {
@@ -28,7 +30,11 @@ int main(int argc, char **argv) {
 
     Bert bt(party, port, address);
 
-    bt.run();
+    if(party == ALICE){
+        bt.run_server();
+    } else{
+        bt.run_client();
+    }
 
     return 0;
 }

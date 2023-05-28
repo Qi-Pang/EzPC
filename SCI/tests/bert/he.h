@@ -31,7 +31,6 @@ public:
 	GaloisKeys *gal_keys;
 	RelinKeys *relin_keys;
 	Ciphertext *zero;
-	size_t slot_count;
 
     HE();
     HE(int party,

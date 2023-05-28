@@ -12,10 +12,10 @@ HE::HE(int party,
     // Generate keys
     EncryptionParameters parms(scheme_type::bfv);
 
-	parms.set_poly_modulus_degree(slot_count);
+	parms.set_poly_modulus_degree(poly_modulus_degree);
 	parms.set_coeff_modulus(
-		CoeffModulus::Create(slot_count, {54, 54, 55, 55}));
-	parms.set_plain_modulus(prime_mod);
+		CoeffModulus::Create(poly_modulus_degree, coeff_bit_sizes));
+	parms.set_plain_modulus(plain_mod);
 
 	context = new SEALContext(parms, true, seal::sec_level_type::tc128);
 	encoder = new BatchEncoder(*context);
@@ -91,7 +91,7 @@ HE::HE(int party,
 		decryptor_ = new Decryptor(*context, sec_key);
 #endif
 		encryptor = new Encryptor(*context, pub_key);
-		vector<uint64_t> pod_matrix(slot_count, 0ULL);
+		vector<uint64_t> pod_matrix(poly_modulus_degree, 0ULL);
 		Plaintext tmp;
 		encoder->encode(pod_matrix, tmp);
 		zero = new Ciphertext;
@@ -99,7 +99,11 @@ HE::HE(int party,
 	}
     cout << "> HE instance initialized: " << endl;
     cout << "-> Poly Mod Degree: " << poly_modulus_degree << endl;
-    cout << "-> Poly Mod Degree: " << poly_modulus_degree << endl;
+    cout << "-> Coeff Mod: " ;
+	for(auto mod: coeff_bit_sizes){
+		cout << mod << " ";
+	}
+	cout << endl;
     cout << "-> Plaintext Mod: " << plain_mod 
         << "(" << int (log2(plain_mod)) << " bits)" << endl;  
     cout << endl;

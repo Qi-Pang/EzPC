@@ -120,8 +120,8 @@ public:
       setvbuf(stream, buffer, _IONBF, NETWORK_BUFFER_SIZE);
     }
     this->FBF_mode = full_buffer;
-    if (!quiet)
-      std::cout << "connected\n";
+    // if (!quiet)
+    //   std::cout << "connected\n";
   }
 
   void sync() {

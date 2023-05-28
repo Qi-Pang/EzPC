@@ -20,11 +20,11 @@ NonLinear::NonLinear(int party, string address, int port){
 NonLinear::NonLinear(){}
 
 NonLinear::~NonLinear(){
-  // for (int i = 0; i < MAX_THREADS; i++) {
-  //   delete this->iopackArr[i];
-  //   delete this->otpackArr[i];
-  //   delete this->fpmath[i];
-  // }
+  for (int i = 0; i < MAX_THREADS; i++) {
+    // delete this->iopackArr[i];
+    // delete this->otpackArr[i];
+    // delete this->fpmath[i];
+  }
 }
 
 void softmax_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
