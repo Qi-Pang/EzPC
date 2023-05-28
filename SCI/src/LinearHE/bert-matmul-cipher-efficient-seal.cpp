@@ -675,6 +675,7 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
 void BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, const vector<Ciphertext> &Cipher_plain_result, const vector<Plaintext> &cross_masks, vector<Ciphertext> &results) {
     int packing_gap = data.image_size * data.filter_w / data.slot_count * 3;
 
+    #pragma omp parallel for num_threads(4)
     for (int packing_index = 0; packing_index < 12; packing_index++) {
         Ciphertext HE_result_1_left = Cipher_plain_result[0 + packing_gap * packing_index];
         Ciphertext HE_result_2_left = Cipher_plain_result[1 + packing_gap * packing_index];
@@ -690,7 +691,7 @@ void BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, const v
         vector<Ciphertext> rotation_results_left(data.image_size + 2);
         vector<Ciphertext> rotation_results_right(data.image_size + 2);
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(8)
         for (int i = 0; i <= data.image_size / 2; i++) {
             vector<Ciphertext> temp_mult = rotation_by_one_depth3(data, HE_result_1_right, i);
 
@@ -720,7 +721,7 @@ void BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, const v
 
         t1 = high_resolution_clock::now();
         int local_rotation = std::ceil(std::log2(32));
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(8)
         for (int i = 0; i < data.image_size + 2; i++) {
             for (int k = 0; k < local_rotation; k++) {
                 Ciphertext temp2;
