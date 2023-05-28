@@ -575,7 +575,7 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
     omp_set_nested(1);
     // #pragma omp parallel 
     // #pragma omp single
-    #pragma omp parallel for num_threads(2)
+    #pragma omp parallel for num_threads(4)
     for (int packing_index = 0; packing_index < 12; packing_index++) {
         //compute matrix multiplication
         vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w / data.slot_count * 3, vector<Ciphertext>(n2));
@@ -585,7 +585,7 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
         vector<vector<Plaintext>> enc_mat3 = cross_mats_single[packing_index].first;
         vector<vector<Plaintext>> enc_mat4 = cross_mats_single[packing_index].second;
 
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for num_threads(8)
         // #pragma omp taskloop
         for (int k = 0; k < cts.size() * n2; k++) {
             int j = k / cts.size();
@@ -624,7 +624,7 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
             }
         }
 
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for num_threads(8)
         // #pragma omp taskloop
         for (int j = 0; j < n2; j++) {
             for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
@@ -643,7 +643,7 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
             print_noise_budget_vec(temp_results[0]);
         #endif
 
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for num_threads(8)
         // #pragma omp taskloop
         for (int l = 0; l < data.image_size * data.filter_w / data.slot_count * 3; l++) {
             Ciphertext ct;
