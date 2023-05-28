@@ -90,6 +90,9 @@ add_subdirectory(activation)
 add_executable(BERT-HE-CIPHER-EFFICIENT-BFV "test_bert_efficient_seal.cpp")
 target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
 
+add_executable(BERT-HE-16384 "test_bert_matmul_16384.cpp")
+target_link_libraries(BERT-HE-16384 SCI-HE)
+
 # add_executable(BERT-HE-CIPHER-EFFICIENT-CKKS "test_bert_efficient_seal_ckks.cpp")
 # target_link_libraries(BERT-HE-CIPHER-EFFICIENT-CKKS SCI-HE)
 

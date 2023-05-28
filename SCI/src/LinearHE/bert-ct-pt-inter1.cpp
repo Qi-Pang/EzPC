@@ -481,7 +481,7 @@ uint64_t* BECTPTINTER1::bert_efficient_postprocess(vector<Ciphertext> &cts, cons
 BECTPTINTER1::BECTPTINTER1(int party, NetIO *io) {
     this->party = party;
     this->io = io;
-    this->slot_count = 4096;
+    this->slot_count = 8192;
 
     generate_new_keys_ctpt(party, io, slot_count, context, encryptor, decryptor,
                     evaluator, encoder, gal_keys, relin_keys, zero);
@@ -492,7 +492,7 @@ BECTPTINTER1::~BECTPTINTER1() {
 }
 
 void BECTPTINTER1::configure() {
-  data.slot_count = 4096;
+  data.slot_count = 8192;
   // Only works with a ciphertext that fits in a single ciphertext
   assert(data.slot_count >= data.image_size);
 
@@ -525,7 +525,7 @@ void BECTPTINTER1::matrix_multiplication(int32_t input_dim,
     data.filter_h = common_dim;
     data.filter_w = output_dim;
     data.image_size = input_dim;
-    this->slot_count = 4096;
+    this->slot_count = 8192;
     configure();
 
     if (party == BOB) {  

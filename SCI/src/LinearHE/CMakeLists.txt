@@ -36,6 +36,7 @@ add_library(SCI-LinearHE
     bert-matmul.cpp
     # bert-matmul-cipher-efficient.cpp
     bert-matmul-cipher-efficient-seal.cpp
+    bert-matmul-16384.cpp
     bert-matmul-cipher-efficient-seal-ckks.cpp
     iron-seal.cpp
     iron-seal-inter1.cpp

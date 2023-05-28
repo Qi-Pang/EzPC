@@ -1,7 +1,7 @@
 /*
 Authors: Qi Pang
 */
-#include "LinearHE/bert-matmul-cipher-efficient-seal.h"
+#include "LinearHE/bert-matmul-16384.h"
 #include <fstream>
 
 using namespace std;
@@ -108,7 +108,7 @@ vector<vector<uint64_t>> read_qkv_bias(const string& filename) {
     return data;
 }
 
-void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
+void MatMul(BEFCFieldLARGE &befc, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
     vector<vector<uint64_t>> A(input_dim);   // Inputs
     vector<vector<uint64_t>> B1(common_dim);  // Weights
     vector<vector<uint64_t>> B2(common_dim);  // Weights
@@ -222,7 +222,7 @@ int main(int argc, char **argv) {
 
     auto io_start = io->counter;
 
-    BEFCField befc(party, io);
+    BEFCFieldLARGE befc(party, io);
     cout << "Before MatMul" << endl;
     MatMul(befc, input_dim, common_dim, output_dim);
 

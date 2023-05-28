@@ -23,7 +23,7 @@ THE SOFTWARE.
 Modified by Qi Pang
 */
 
-#include "LinearHE/bert-matmul-cipher-efficient-seal.h"
+#include "LinearHE/bert-matmul-16384.h"
 #include <omp.h>
 
 using namespace std;
@@ -33,7 +33,7 @@ using namespace seal;
 #define HE_TIMING
 // #define HE_DEBUG
 
-void BEFCField::print_noise_budget_vec(vector<Ciphertext> v) {
+void BEFCFieldLARGE::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << "Noise budget: ";
     for(int i = 0; i < v.size(); i++){
         cout << YELLOW << decryptor->invariant_noise_budget(v[i]) << " ";
@@ -41,13 +41,13 @@ void BEFCField::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << RESET << endl;
 }
 
-void BEFCField::print_ct(Ciphertext &ct, int len){
+void BEFCFieldLARGE::print_ct(Ciphertext &ct, int len){
     Plaintext pt;
     decryptor->decrypt(ct, pt);
     print_pt(pt, len);
 }
 
-void BEFCField::print_pt(Plaintext &pt, int len) {
+void BEFCFieldLARGE::print_pt(Plaintext &pt, int len) {
     vector<int64_t> dest(len, 0ULL);
     encoder->decode(pt, dest);
     cout << "Decode first 5 rows: ";
@@ -64,137 +64,11 @@ void BEFCField::print_pt(Plaintext &pt, int len) {
     cout << endl;
 }
 
-// Generate the masks for 1-step rotation
-vector<vector<Plaintext>> BEFCField::generate_rotation_masks(const FCMetadata &data) {
-    vector<vector<Plaintext>> result;
-    for (int i = 0; i < 128; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        vector<int64_t> mask2(data.slot_count, 0LL);
-        for (int j = 0; j < 128 - i; j++) {
-            for (int k = 0; k < 32; k++) {
-                mask1[j + 128 * k] = 1;
-                mask1[j + 128 * k + data.slot_count / 2] = 1;
-            }
-        }
-        for (int j = 128 - i; j < 128; j++) {
-            for (int k = 0; k < 32; k++) {
-                mask2[j + 128 * k] = 1;
-                mask2[j + 128 * k + data.slot_count / 2] = 1;
-            }
-        }
-        Plaintext pt1;
-        Plaintext pt2;
-        encoder->encode(mask1, pt1);
-        encoder->encode(mask2, pt2);
-        result.push_back({pt1, pt2});
-    }
-    return result;
-}
-
-// Generate cipher_masks: 1111100000..., 0000011111..., ...
-vector<Plaintext> BEFCField::generate_cipher_masks(const FCMetadata &data) {
+vector<Plaintext> BEFCFieldLARGE::generate_cross_packing_masks(const FCMetadata &data) {
     vector<Plaintext> result;
-    for (int i = 0; i < 32; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 0; k < 128; k++)
-            mask1[i * 128 + k] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
+    int diag_num = data.slot_count / data.image_size / 2;
 
-    for (int i = 0; i < 32; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 0; k < 128; k++)
-            mask1[i * 128 + k + data.slot_count / 2] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
-
-    for (int i = 0; i < 32; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 0; k < 128; k++)
-            mask1[i * 128 + k] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
-
-    for (int i = 0; i < 32; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 0; k < 128; k++)
-            mask1[i * 128 + k + data.slot_count / 2] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
-    return result;
-}
-
-// Generate packing_masks: 1111100000, 0000011111
-vector<Plaintext> BEFCField::generate_packing_masks(const FCMetadata &data) {
-    vector<Plaintext> result;
-    vector<int64_t> mask1(data.slot_count, 0LL);
-    vector<int64_t> mask2(data.slot_count, 0LL);
-    for (int i = 0; i < data.slot_count / 2; i++) {
-        mask1[i] = 1;
-        mask2[i + data.slot_count / 2] = 1;
-    }
-    Plaintext pt1;
-    Plaintext pt2;
-    encoder->encode(mask1, pt1);
-    encoder->encode(mask2, pt2);
-    result.push_back(pt1);
-    result.push_back(pt2);
-    return result;
-}
-
-vector<Plaintext> BEFCField::generate_depth3_masks(const FCMetadata &data) {
-    vector<Plaintext> result;
-
-    for (int i = 0; i < 64; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 0; k < 128 - i; k++)
-            mask1[i * 128 + k] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
-
-    for (int i = 0; i < 64; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 0; k < 128 - i - 64; k++)
-            mask1[i * 128 + k] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
-
-    for (int i = 0; i < 64; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 128 - i; k < 128; k++)
-            mask1[i * 128 + k] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
-
-    for (int i = 0; i < 64; i++) {
-        vector<int64_t> mask1(data.slot_count, 0LL);
-        for (int k = 128 - i - 64; k < 128; k++)
-            mask1[i * 128 + k] = 1;
-        Plaintext pt;
-        encoder->encode(mask1, pt);
-        result.push_back(pt);
-    }
-    return result;
-}
-
-vector<Plaintext> BEFCField::generate_cross_packing_masks(const FCMetadata &data) {
-    vector<Plaintext> result;
-
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < diag_num; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
         if (i == 0) {
             for (int k = 0; k < 128 - i; k++)
@@ -211,24 +85,24 @@ vector<Plaintext> BEFCField::generate_cross_packing_masks(const FCMetadata &data
         result.push_back(pt);
     }
 
-    for (int i = 32; i <= 64; i++) {
+    for (int i = diag_num; i <= diag_num * 2; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
-        if (i == 64) {
+        if (i == diag_num * 2) {
             for (int k = 0; k < 128 - i; k++)
                 mask1[k + data.slot_count / 2] = 1;
         }
         else {
             for (int k = 0; k < 128 - i; k++)
-                mask1[(i - 32) * 128 + k] = 1;
+                mask1[(i - diag_num) * 128 + k] = 1;
             for (int k = 0; k < 128 - i; k++)
-                mask1[(i - 32) * 128 + k + data.slot_count / 2] = 1;
+                mask1[(i - diag_num) * 128 + k + data.slot_count / 2] = 1;
         }
         Plaintext pt;
         encoder->encode(mask1, pt);
         result.push_back(pt);
     }
 
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < diag_num; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
         if (i == 0) {
             for (int k = 128 - i; k < 128; k++)
@@ -244,17 +118,17 @@ vector<Plaintext> BEFCField::generate_cross_packing_masks(const FCMetadata &data
         encoder->encode(mask1, pt);
         result.push_back(pt);
     }
-    for (int i = 32; i <= 64; i++) {
+    for (int i = diag_num; i <= diag_num * 2; i++) {
         vector<int64_t> mask1(data.slot_count, 0LL);
-        if (i == 64) {
+        if (i == diag_num * 2) {
             for (int k = 128 - i; k < 128; k++)
                 mask1[k + data.slot_count / 2] = 1;
         }
         else {
             for (int k = 128 - i; k < 128; k++)
-                mask1[(i - 32) * 128 + k] = 1;
+                mask1[(i - diag_num) * 128 + k] = 1;
             for (int k = 128 - i; k < 128; k++)
-                mask1[(i - 32) * 128 + k + data.slot_count / 2] = 1;
+                mask1[(i - diag_num) * 128 + k + data.slot_count / 2] = 1;
         }
         Plaintext pt;
         encoder->encode(mask1, pt);
@@ -263,7 +137,7 @@ vector<Plaintext> BEFCField::generate_cross_packing_masks(const FCMetadata &data
     return result;
 }
 
-vector<Ciphertext> BEFCField::rotation_by_one_depth3(const FCMetadata &data, const Ciphertext &ct, int k) {
+vector<Ciphertext> BEFCFieldLARGE::rotation_by_one_depth3(const FCMetadata &data, const Ciphertext &ct, int k) {
 
     int m = -(128 - k);
     Ciphertext ct1;
@@ -275,7 +149,7 @@ vector<Ciphertext> BEFCField::rotation_by_one_depth3(const FCMetadata &data, con
 }
 
 // column-wise packing
-vector<Ciphertext> BEFCField::bert_efficient_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data) {
+vector<Ciphertext> BEFCFieldLARGE::bert_efficient_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data) {
 
     vector<uint64_t> pod_matrix(data.slot_count, 0ULL);
     vector<Ciphertext> cts;
@@ -291,7 +165,7 @@ vector<Ciphertext> BEFCField::bert_efficient_preprocess_vec(vector<uint64_t> &in
     return cts;
 }
 
-pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
+pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCFieldLARGE::bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
     vector<vector<Plaintext>> weightMatrix1; // 64 x 48
     vector<vector<Plaintext>> weightMatrix2; // 64 x 48
     vector<uint64_t> temp2;
@@ -373,7 +247,7 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross
     return std::make_pair(weightMatrix1, weightMatrix2);
 }
 
-vector<Plaintext> BEFCField::bert_cross_packing_bias(const uint64_t *matrix1, const uint64_t *matrix2, const uint64_t *matrix3, const FCMetadata &data) {
+vector<Plaintext> BEFCFieldLARGE::bert_cross_packing_bias(const uint64_t *matrix1, const uint64_t *matrix2, const uint64_t *matrix3, const FCMetadata &data) {
     vector<Plaintext> cross_bias_packing(3 * data.image_size * data.filter_w / data.slot_count);
     int matrix1_pointer = 0;
     int matrix2_pointer = 0;
@@ -424,7 +298,7 @@ vector<Plaintext> BEFCField::bert_cross_packing_bias(const uint64_t *matrix1, co
     return cross_bias_packing;
 }
 
-pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
+pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCFieldLARGE::bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
     vector<vector<Plaintext>> weightMatrix1; // 64 x 48
     vector<vector<Plaintext>> weightMatrix2; // 64 x 48
     vector<uint64_t> temp2;
@@ -508,7 +382,7 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross
 
 /* Generates a masking vector of random noise that will be applied to parts of
  * the ciphertext that contain leakage */
-Ciphertext BEFCField::bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
+Ciphertext BEFCFieldLARGE::bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
   // Sample randomness into vector
   vector<int64_t> noise(data.slot_count, 0ULL);
 
@@ -524,7 +398,7 @@ Ciphertext BEFCField::bert_efficient_preprocess_noise(const uint64_t *secret_sha
 }
 
 
-void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<vector<Plaintext>> &Bias, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result) {
+void BEFCFieldLARGE::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<vector<Plaintext>> &Bias, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result) {
 
     auto t1 = high_resolution_clock::now();
     vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
@@ -534,9 +408,13 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
         n1 = 4;
         n2 = 4;
     }
-    else {
+    else if (data.slot_count == 8192) {
         n1 = 8;
         n2 = 4;
+    }
+    else {
+        n1 = 8;
+        n2 = 8;
     }
     int num_diag = data.slot_count / data.image_size / 2;
     // vector<Ciphertext> result(data.image_size * data.filter_w / data.slot_count * 3 * 12);
@@ -575,22 +453,22 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
     omp_set_nested(1);
     // #pragma omp parallel 
     // #pragma omp single
-    #pragma omp parallel for num_threads(2)
+    #pragma omp parallel for num_threads(4)
     for (int packing_index = 0; packing_index < 12; packing_index++) {
         //compute matrix multiplication
-        vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w / data.slot_count * 3, vector<Ciphertext>(n2));
-        vector<vector<Ciphertext>> temp_results1(data.image_size * data.filter_w / data.slot_count * 3, vector<Ciphertext>(n2 * cts.size()));
+        vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w * 2 / data.slot_count, vector<Ciphertext>(n2));
+        vector<vector<Ciphertext>> temp_results1(data.image_size * data.filter_w * 2 / data.slot_count, vector<Ciphertext>(n2 * cts.size()));
         vector<vector<Plaintext>> enc_mat1 = cross_mats[packing_index].first;
         vector<vector<Plaintext>> enc_mat2 = cross_mats[packing_index].second;
         vector<vector<Plaintext>> enc_mat3 = cross_mats_single[packing_index].first;
         vector<vector<Plaintext>> enc_mat4 = cross_mats_single[packing_index].second;
 
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for num_threads(8)
         // #pragma omp taskloop
         for (int k = 0; k < cts.size() * n2; k++) {
             int j = k / cts.size();
             int ct_i = k % cts.size();
-            for (int l = 0; l < data.image_size * data.filter_w / data.slot_count * 2; l++) {
+            for (int l = 0; l < data.image_size * data.filter_w * 2 / data.slot_count; l++) {
                 for (int i = 0; i < n1; i++) {
                     Ciphertext ct1_l;
                     Ciphertext ct1_r;
@@ -606,29 +484,29 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
                 }
             }
 
-            int third_index = data.image_size * data.filter_w / data.slot_count * 2;
-            for (int l = third_index; l < data.image_size * data.filter_w / data.slot_count * 3; l++) {
-                for (int i = 0; i < n1; i++) {
-                    Ciphertext ct1_l;
-                    Ciphertext ct1_r;
-                    evaluator->multiply_plain(rotatedIR[ct_i][i], enc_mat3[n1 * j + i + (l - third_index) * num_diag][ct_i], ct1_l);
-                    evaluator->multiply_plain(rotatedIR[ct_i][i + n1], enc_mat4[n1 * j + i + (l - third_index) * num_diag][ct_i], ct1_r);
-                    if (i == 0)
-                        evaluator->add(ct1_l, ct1_r, temp_results1[l][k]);
-                    else {
-                        Ciphertext temp_add_ct;
-                        evaluator->add(ct1_l, ct1_r, temp_add_ct);
-                        evaluator->add_inplace(temp_results1[l][k], temp_add_ct);
-                    }
-                }
-            }
+            // int third_index = data.image_size * data.filter_w / data.slot_count * 2;
+            // for (int l = third_index; l < data.image_size * data.filter_w / data.slot_count * 3; l++) {
+            //     for (int i = 0; i < n1; i++) {
+            //         Ciphertext ct1_l;
+            //         Ciphertext ct1_r;
+            //         evaluator->multiply_plain(rotatedIR[ct_i][i], enc_mat3[n1 * j + i + (l - third_index) * num_diag][ct_i], ct1_l);
+            //         evaluator->multiply_plain(rotatedIR[ct_i][i + n1], enc_mat4[n1 * j + i + (l - third_index) * num_diag][ct_i], ct1_r);
+            //         if (i == 0)
+            //             evaluator->add(ct1_l, ct1_r, temp_results1[l][k]);
+            //         else {
+            //             Ciphertext temp_add_ct;
+            //             evaluator->add(ct1_l, ct1_r, temp_add_ct);
+            //             evaluator->add_inplace(temp_results1[l][k], temp_add_ct);
+            //         }
+            //     }
+            // }
         }
 
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for num_threads(8)
         // #pragma omp taskloop
         for (int j = 0; j < n2; j++) {
             for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
-                for (int l = 0; l < data.image_size * data.filter_w / data.slot_count * 3; l++) {
+                for (int l = 0; l < data.image_size * data.filter_w * 2 / data.slot_count; l++) {
                     if (ct_i == 0)
                         temp_results[l][j] = temp_results1[l][j * cts.size() + ct_i];
                     else
@@ -643,9 +521,9 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
             print_noise_budget_vec(temp_results[0]);
         #endif
 
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for num_threads(8)
         // #pragma omp taskloop
-        for (int l = 0; l < data.image_size * data.filter_w / data.slot_count * 3; l++) {
+        for (int l = 0; l < data.image_size * data.filter_w * 2 / data.slot_count; l++) {
             Ciphertext ct;
             for (int k = 0; k < n2; k++) {
                 if (k == 0)
@@ -656,8 +534,8 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
                     evaluator->add_inplace(ct, temp_rot_ct);
                 }
             }
-            result[l + packing_index * data.image_size * data.filter_w / data.slot_count * 3] = ct;
-            evaluator->add_plain_inplace(result[l + packing_index * data.image_size * data.filter_w / data.slot_count * 3], Bias[packing_index][l]);
+            result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count] = ct;
+            evaluator->add_plain_inplace(result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count], Bias[packing_index][l]);
         }
     }
 
@@ -672,45 +550,45 @@ void BEFCField::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
 // 3. for each of the 128 cts, rotate for log(32) times, sum together + 1 time batch rotation
 // 4. mult masks (1, 0 (x31), 1, 0 (x31), ... ) and sum together (do the first 32 (1st batch) and then the second batch).
 
-void BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, const vector<Ciphertext> &Cipher_plain_result, const vector<Plaintext> &cross_masks, vector<Ciphertext> &results) {
-    int packing_gap = data.image_size * data.filter_w / data.slot_count * 3;
+void BEFCFieldLARGE::bert_cipher_cipher_cross_packing(const FCMetadata &data, const vector<Ciphertext> &Cipher_plain_result, const vector<Plaintext> &cross_masks, vector<Ciphertext> &results) {
+    int packing_gap = data.image_size * data.filter_w * 2 / data.slot_count;
 
     for (int packing_index = 0; packing_index < 12; packing_index++) {
-        Ciphertext HE_result_1_left = Cipher_plain_result[0 + packing_gap * packing_index];
-        Ciphertext HE_result_2_left = Cipher_plain_result[1 + packing_gap * packing_index];
+        Ciphertext HE_result_1_left = Cipher_plain_result[packing_gap * packing_index];
+        // Ciphertext HE_result_2_left = Cipher_plain_result[1 + packing_gap * packing_index];
 
         Ciphertext HE_result_1_right;
-        Ciphertext HE_result_2_right;
+        // Ciphertext HE_result_2_right;
 
         evaluator->rotate_columns(HE_result_1_left, *gal_keys, HE_result_1_right);
-        evaluator->rotate_columns(HE_result_2_left, *gal_keys, HE_result_2_right);
+        // evaluator->rotate_columns(HE_result_2_left, *gal_keys, HE_result_2_right);
 
         vector<Ciphertext> rotation_results(data.image_size + 2);
         auto t1 = high_resolution_clock::now();
-        vector<Ciphertext> rotation_results_left(data.image_size + 2);
-        vector<Ciphertext> rotation_results_right(data.image_size + 2);
+        // vector<Ciphertext> rotation_results_left(data.image_size + 2);
+        // vector<Ciphertext> rotation_results_right(data.image_size + 2);
 
         #pragma omp parallel for
         for (int i = 0; i <= data.image_size / 2; i++) {
             vector<Ciphertext> temp_mult = rotation_by_one_depth3(data, HE_result_1_right, i);
 
-            evaluator->multiply(HE_result_1_left, temp_mult[0], rotation_results_left[i]);
+            evaluator->multiply(HE_result_1_left, temp_mult[0], rotation_results[i]);
             // evaluator->relinearize_inplace(rotation_results_left[i], *relin_keys);
 
-            evaluator->multiply(HE_result_1_left, temp_mult[1], rotation_results_left[i + data.image_size / 2 + 1]);
+            evaluator->multiply(HE_result_1_left, temp_mult[1], rotation_results[i + data.image_size / 2 + 1]);
             // evaluator->relinearize_inplace(rotation_results_left[i + data.image_size / 2 + 1], *relin_keys);
 
-            temp_mult = rotation_by_one_depth3(data, HE_result_2_right, i);
+            // temp_mult = rotation_by_one_depth3(data, HE_result_2_right, i);
 
-            evaluator->multiply(HE_result_2_left, temp_mult[0], rotation_results_right[i]);
+            // evaluator->multiply(HE_result_2_left, temp_mult[0], rotation_results_right[i]);
             // evaluator->relinearize_inplace(rotation_results_right[i], *relin_keys);
 
-            evaluator->multiply(HE_result_2_left, temp_mult[1], rotation_results_right[i + data.image_size / 2 + 1]);
+            // evaluator->multiply(HE_result_2_left, temp_mult[1], rotation_results_right[i + data.image_size / 2 + 1]);
             // evaluator->relinearize_inplace(rotation_results_right[i + data.image_size / 2 + 1], *relin_keys);
 
-            evaluator->add(rotation_results_left[i], rotation_results_right[i], rotation_results[i]);
+            // evaluator->add(rotation_results_left[i], rotation_results_right[i], rotation_results[i]);
             evaluator->relinearize_inplace(rotation_results[i], *relin_keys);
-            evaluator->add(rotation_results_left[i + data.image_size / 2 + 1], rotation_results_right[i + data.image_size / 2 + 1], rotation_results[i + data.image_size / 2 + 1]);
+            // evaluator->add(rotation_results_left[i + data.image_size / 2 + 1], rotation_results_right[i + data.image_size / 2 + 1], rotation_results[i + data.image_size / 2 + 1]);
             evaluator->relinearize_inplace(rotation_results[i + data.image_size / 2 + 1], *relin_keys);
 
         }
@@ -719,7 +597,7 @@ void BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, const v
         // std::cout << "[Server] Cipher-Cipher Rotation 1 " << ms_double.count() << std::endl;
 
         t1 = high_resolution_clock::now();
-        int local_rotation = std::ceil(std::log2(32));
+        int local_rotation = std::ceil(std::log2(data.slot_count / data.image_size / 2));
         #pragma omp parallel for
         for (int i = 0; i < data.image_size + 2; i++) {
             for (int k = 0; k < local_rotation; k++) {
@@ -735,26 +613,26 @@ void BEFCField::bert_cipher_cipher_cross_packing(const FCMetadata &data, const v
         // Packing
         t1 = high_resolution_clock::now();
         
-        evaluator->add(rotation_results[0], rotation_results[65], results[0 + 2 * packing_index]);
-        evaluator->add(rotation_results[32], rotation_results[32 + 65], results[1 + 2 * packing_index]);
+        evaluator->add(rotation_results[0], rotation_results[65], results[0 + data.image_size * data.image_size / data.slot_count * packing_index]);
+        evaluator->add(rotation_results[32], rotation_results[32 + 65], results[0 + data.image_size * data.image_size / data.slot_count * packing_index]);
 
         for (int i = 1; i < 32; i++) {
             Ciphertext temp;
-            evaluator->add_inplace(results[0 + 2 * packing_index], rotation_results[i]);
-            evaluator->add_inplace(results[0 + 2 * packing_index], rotation_results[i + 65]);
-            evaluator->add_inplace(results[1 + 2 * packing_index], rotation_results[i + 32]);
-            evaluator->add_inplace(results[1 + 2 * packing_index], rotation_results[i + 32 + 65]);
+            evaluator->add_inplace(results[packing_index], rotation_results[i]);
+            evaluator->add_inplace(results[packing_index], rotation_results[i + 65]);
+            evaluator->add_inplace(results[packing_index], rotation_results[i + 32]);
+            evaluator->add_inplace(results[packing_index], rotation_results[i + 32 + 65]);
         }
 
-        evaluator->add_inplace(results[0 + 2 * packing_index], rotation_results[64]);
-        evaluator->add_inplace(results[0 + 2 * packing_index], rotation_results[64 + 65]);
+        evaluator->add_inplace(results[packing_index], rotation_results[64]);
+        evaluator->add_inplace(results[packing_index], rotation_results[64 + 65]);
         t2 = high_resolution_clock::now();
         ms_double = (t2 - t1)/1e+9;
         // std::cout << "[Server] Cipher-Cipher Packing " << ms_double.count() << std::endl;
     }
 }
 
-uint64_t* BEFCField::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+uint64_t* BEFCFieldLARGE::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
     uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3];
     int num_cts_first_2 = data.image_size * data.filter_w * 2 / data.slot_count;
     for (int i = 0; i < num_cts_first_2; i++) {
@@ -792,7 +670,7 @@ uint64_t* BEFCField::bert_efficient_postprocess(vector<Ciphertext> &cts, const F
     return result;
 }
 
-uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+uint64_t* BEFCFieldLARGE::bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
     uint64_t *result = new uint64_t[data.image_size*data.image_size*12];
     int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
     for (int packing_num = 0; packing_num < 12; packing_num++) {
@@ -821,23 +699,23 @@ uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, con
     return result;
 }
 
-BEFCField::BEFCField(int party, NetIO *io) {
+BEFCFieldLARGE::BEFCFieldLARGE(int party, NetIO *io) {
     this->party = party;
     this->io = io;
-    this->slot_count = 8192;
+    this->slot_count = 16384;
 
     this->party = party;
     this->io = io;
-    generate_new_keys(party, io, slot_count, context, encryptor, decryptor,
+    generate_new_keys_16384(party, io, slot_count, context, encryptor, decryptor,
                     evaluator, encoder, gal_keys, relin_keys, zero);
 }
 
-BEFCField::~BEFCField() {
+BEFCFieldLARGE::~BEFCFieldLARGE() {
     free_keys(party, encryptor, decryptor, evaluator, encoder, gal_keys, zero);
 }
 
-void BEFCField::configure() {
-  data.slot_count = 8192;
+void BEFCFieldLARGE::configure() {
+  data.slot_count = 16384;
   // Only works with a ciphertext that fits in a single ciphertext
   assert(data.slot_count >= data.image_size);
 
@@ -848,7 +726,7 @@ void BEFCField::configure() {
   data.inp_ct = ceil((float)next_pow2(data.filter_h) / data.pack_num);
 }
 
-void BEFCField::matrix_multiplication(int32_t input_dim, 
+void BEFCFieldLARGE::matrix_multiplication(int32_t input_dim, 
                                       int32_t common_dim, 
                                       int32_t output_dim, 
                                       vector<vector<uint64_t>> &A, 
@@ -864,7 +742,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
     data.filter_h = common_dim;
     data.filter_w = output_dim;
     data.image_size = input_dim;
-    this->slot_count = 8192;
+    this->slot_count = 16384;
     configure();
 
     
@@ -881,12 +759,12 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         cout << "[Client] Input cts sent" << endl;
         cout << "[Client] Size of cts (Bytes): " << sizeof(Ciphertext) << " " << sizeof(Ciphertext) * cts.size() << endl;
 
-        vector<Ciphertext> enc_result(2 * 12);
+        vector<Ciphertext> enc_result(12);
         recv_encrypted_vector(context, io, enc_result);
         cout << "[Client] Output cts received" << endl;
         cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
 
-        print_noise_budget_vec(enc_result);
+        // print_noise_budget_vec(enc_result);
         // print_ct(enc_result[0], data.slot_count);
 
         // auto HE_result = bert_efficient_postprocess(enc_result, data);
@@ -926,7 +804,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         // }
 
         auto io_start = io->counter;
-        vector<Ciphertext> cts(12);
+        vector<Ciphertext> cts(data.image_size * data.filter_h / data.slot_count);
         recv_encrypted_vector(this->context, io, cts);
 
         #ifdef HE_TIMING
@@ -1015,7 +893,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
         // auto Cipher_plain_results = bert_cipher_plain(cts, cross_mat.first, cross_mat.second, data);
-        vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count * 3 * 12);
+        vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w * 2 * 12 / data.slot_count);
         bert_cipher_plain_bsgs(cts, cross_mats, bias_packing, cross_mats_single, data, Cipher_plain_results);
 
         #ifdef HE_DEBUG
@@ -1038,7 +916,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // auto HE_result = bert_efficient_cipher(data, Cipher_plain_results, rotation_masks, cipher_masks);
         // auto HE_result = bert_efficient_cipher_depth3(data, Cipher_plain_results, depth3_masks);
-        vector<Ciphertext> HE_result(2 * 12);
+        vector<Ciphertext> HE_result(12);
         bert_cipher_cipher_cross_packing(data, Cipher_plain_results, cross_masks, HE_result);
 
         #pragma omp parallel for

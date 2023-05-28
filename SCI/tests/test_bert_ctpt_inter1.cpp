@@ -105,12 +105,15 @@ int main(int argc, char **argv) {
     // 17 bits
     // prime_mod = 147457;
 
-    // 28bits
+    // 19 bits
+    prime_mod = 557057;
+
+    // 28 bits
     // prime_mod = 268582913;
 
     // 25 bits
     // prime_mod = 33832961;
-    prime_mod = 65537;
+    // prime_mod = 65537;
 
     cout << "===================================================================="
         << endl;
