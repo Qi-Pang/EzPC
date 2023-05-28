@@ -117,12 +117,12 @@ public:
   void matrix_multiplication(int32_t input_dim, int32_t common_dim,
                             int32_t output_dim,
                             vector<vector<uint64_t>> &A, 
-                            vector<vector<uint64_t>> &B1, 
-                            vector<vector<uint64_t>> &B2, 
-                            vector<vector<uint64_t>> &B3, 
-                            vector<uint64_t> &Bias1, 
-                            vector<uint64_t> &Bias2, 
-                            vector<uint64_t> &Bias3, 
+                            vector<vector<vector<uint64_t>>> &B1, 
+                            vector<vector<vector<uint64_t>>> &B2, 
+                            vector<vector<vector<uint64_t>>> &B3, 
+                            vector<vector<uint64_t>> &Bias1, 
+                            vector<vector<uint64_t>> &Bias2, 
+                            vector<vector<uint64_t>> &Bias3, 
                             vector<vector<uint64_t>> &C, 
                             bool verify_output = false);
 

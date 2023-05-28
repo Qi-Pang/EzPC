@@ -151,6 +151,21 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
     B2 = read_data("./bin/txt/random_Z.txt");
     B3 = read_data("./bin/txt/random_Z.txt");
 
+    vector<vector<vector<uint64_t>>> input_B1;
+    vector<vector<vector<uint64_t>>> input_B2;
+    vector<vector<vector<uint64_t>>> input_B3;
+    vector<vector<uint64_t>> input_Bias1;
+    vector<vector<uint64_t>> input_Bias2;
+    vector<vector<uint64_t>> input_Bias3;
+    for (int i = 0; i < 12; i++) {
+        input_B1.push_back(B1);
+        input_B2.push_back(B2);
+        input_B3.push_back(B3);
+        input_Bias1.push_back(Bias1);
+        input_Bias2.push_back(Bias2);
+        input_Bias3.push_back(Bias3);
+    }
+
     // auto temp_w = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.weight.txt");
     // auto temp_b = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.bias.txt");
 
@@ -160,7 +175,7 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
     START_TIMER;
-    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, B1, B2, B3, Bias1, Bias2, Bias3, C, true);
+    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, input_B1, input_B2, input_B3, input_Bias1, input_Bias2, input_Bias3, C, true);
     STOP_TIMER("Total Time for FC");
 }
 

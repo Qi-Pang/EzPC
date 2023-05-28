@@ -853,12 +853,12 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
                                       int32_t common_dim, 
                                       int32_t output_dim, 
                                       vector<vector<uint64_t>> &A, 
-                                      vector<vector<uint64_t>> &B1, 
-                                      vector<vector<uint64_t>> &B2, 
-                                      vector<vector<uint64_t>> &B3, 
-                                      vector<uint64_t> &Bias1, 
-                                      vector<uint64_t> &Bias2, 
-                                      vector<uint64_t> &Bias3, 
+                                      vector<vector<vector<uint64_t>>> &B1, 
+                                      vector<vector<vector<uint64_t>>> &B2, 
+                                      vector<vector<vector<uint64_t>>> &B3, 
+                                      vector<vector<uint64_t>> &Bias1, 
+                                      vector<vector<uint64_t>> &Bias2, 
+                                      vector<vector<uint64_t>> &Bias3, 
                                       vector<vector<uint64_t>> &C, 
                                       bool verify_output) {
 
@@ -934,44 +934,57 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         auto t1_preprocess = high_resolution_clock::now();
         #endif
 
-        vector<uint64_t *> matrix_mod_p1(common_dim);
-        vector<uint64_t *> matrix_mod_p2(common_dim);
-        vector<uint64_t *> matrix_mod_p3(common_dim);
-        vector<uint64_t *> matrix_mod_p4(common_dim);
-        vector<uint64_t *> matrix1(common_dim);
-        vector<uint64_t *> matrix2(common_dim);
-        for (int i = 0; i < common_dim; i++) {
-            matrix_mod_p1[i] = new uint64_t[output_dim];
-            matrix_mod_p2[i] = new uint64_t[output_dim];
-            matrix_mod_p3[i] = new uint64_t[output_dim / 2];
-            matrix_mod_p4[i] = new uint64_t[output_dim / 2];
-            matrix1[i] = new uint64_t[output_dim];
-            matrix2[i] = new uint64_t[output_dim];
-            for (int j = 0; j < output_dim; j++) {
-                matrix_mod_p1[i][j] = neg_mod((int64_t)B1[i][j], (int64_t)prime_mod);
-                matrix_mod_p2[i][j] = neg_mod((int64_t)B2[i][j], (int64_t)prime_mod);
-                int64_t val = (int64_t)B1[i][j];
-                if (val > int64_t(prime_mod / 2)) {
-                    val = val - prime_mod;
+        vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats(12);
+        vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single(12);
+        vector<vector<Plaintext>> bias_packing(12);
+
+        for (int packing_index = 0; packing_index < 12; packing_index++) {
+            vector<uint64_t *> matrix_mod_p1(common_dim);
+            vector<uint64_t *> matrix_mod_p2(common_dim);
+            vector<uint64_t *> matrix_mod_p3(common_dim);
+            vector<uint64_t *> matrix_mod_p4(common_dim);
+            vector<uint64_t *> matrix1(common_dim);
+            vector<uint64_t *> matrix2(common_dim);
+            for (int i = 0; i < common_dim; i++) {
+                matrix_mod_p1[i] = new uint64_t[output_dim];
+                matrix_mod_p2[i] = new uint64_t[output_dim];
+                matrix_mod_p3[i] = new uint64_t[output_dim / 2];
+                matrix_mod_p4[i] = new uint64_t[output_dim / 2];
+                matrix1[i] = new uint64_t[output_dim];
+                matrix2[i] = new uint64_t[output_dim];
+                for (int j = 0; j < output_dim; j++) {
+                    matrix_mod_p1[i][j] = neg_mod((int64_t)B1[packing_index][i][j], (int64_t)prime_mod);
+                    matrix_mod_p2[i][j] = neg_mod((int64_t)B2[packing_index][i][j], (int64_t)prime_mod);
+                    int64_t val = (int64_t)B1[packing_index][i][j];
+                    if (val > int64_t(prime_mod / 2)) {
+                        val = val - prime_mod;
+                    }
+                    matrix1[i][j] = val;
+                    val = (int64_t)B2[packing_index][i][j];
+                    if (val > int64_t(prime_mod / 2)) {
+                        val = val - prime_mod;
+                    }
+                    matrix2[i][j] = val;
                 }
-                matrix1[i][j] = val;
-                val = (int64_t)B2[i][j];
-                if (val > int64_t(prime_mod / 2)) {
-                    val = val - prime_mod;
+
+                for (int j = 0; j < output_dim / 2; j++) {
+                    matrix_mod_p3[i][j] = neg_mod((int64_t)B3[packing_index][i][j], (int64_t)prime_mod);
+                    matrix_mod_p4[i][j] = neg_mod((int64_t)B3[packing_index][i][j + output_dim / 2], (int64_t)prime_mod);
                 }
-                matrix2[i][j] = val;
             }
 
-            for (int j = 0; j < output_dim / 2; j++) {
-                matrix_mod_p3[i][j] = neg_mod((int64_t)B1[i][j], (int64_t)prime_mod);
-                matrix_mod_p4[i][j] = neg_mod((int64_t)B1[i][j + output_dim / 2], (int64_t)prime_mod);
+            for (int i = 0; i < output_dim; i++) {
+                Bias1[packing_index][i] = neg_mod((int64_t)Bias1[packing_index][i], (int64_t)prime_mod);
+                Bias2[packing_index][i] = neg_mod((int64_t)Bias2[packing_index][i], (int64_t)prime_mod);
+                Bias3[packing_index][i] = neg_mod((int64_t)Bias3[packing_index][i], (int64_t)prime_mod);
             }
-        }
 
-        for (int i = 0; i < output_dim; i++) {
-            Bias1[i] = neg_mod((int64_t)Bias1[i], (int64_t)prime_mod);
-            Bias2[i] = neg_mod((int64_t)Bias2[i], (int64_t)prime_mod);
-            Bias3[i] = neg_mod((int64_t)Bias3[i], (int64_t)prime_mod);
+            auto cross_mat = bert_cross_packing_matrix(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
+            auto cross_mat_single = bert_cross_packing_single_matrix(matrix_mod_p3.data(), matrix_mod_p4.data(), data);
+            auto bias = bert_cross_packing_bias(Bias1[packing_index].data(), Bias2[packing_index].data(), Bias3[packing_index].data(), data);
+            cross_mats[packing_index] = cross_mat;
+            cross_mats_single[packing_index] = cross_mat_single;
+            bias_packing[packing_index] = bias;
         }
 
         PRG128 prg;
@@ -979,21 +992,6 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
         // auto encoded_mat1 = bert_efficient_preprocess_matrix(matrix_mod_p1.data(), data);
         // auto encoded_mat2 = bert_efficient_preprocess_matrix(matrix_mod_p2.data(), data);
-
-        // auto cross_mat = bert_cross_packing_matrix(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
-        // auto cross_mat = bert_cross_packing_matrix_bsgs(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
-        vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats(12);
-        vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single(12);
-        vector<vector<Plaintext>> bias_packing(12);
-
-        for (int i = 0; i < 12; i++) {
-            auto cross_mat = bert_cross_packing_matrix(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
-            auto cross_mat_single = bert_cross_packing_single_matrix(matrix_mod_p3.data(), matrix_mod_p4.data(), data);
-            auto bias = bert_cross_packing_bias(Bias1.data(), Bias2.data(), Bias3.data(), data);
-            cross_mats[i] = cross_mat;
-            cross_mats_single[i] = cross_mat_single;
-            bias_packing[i] = bias;
-        }
 
         // auto rotation_masks = generate_rotation_masks(data);
         // auto cipher_masks = generate_cipher_masks(data);
@@ -1061,12 +1059,12 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         cout << "[Server] Result sent" << endl;
         cout << "[Server] size of result (Bytes): " << io->counter - io_start << endl;
 
-        for (int i = 0; i < common_dim; i++) {
-            delete[] matrix_mod_p1[i];
-            delete[] matrix_mod_p2[i];
-            delete[] matrix1[i];
-            delete[] matrix2[i];
-        }
+        // for (int i = 0; i < common_dim; i++) {
+        //     delete[] matrix_mod_p1[i];
+        //     delete[] matrix_mod_p2[i];
+        //     delete[] matrix1[i];
+        //     delete[] matrix2[i];
+        // }
         delete[] secret_share;
 
         #ifdef HE_TIMING
