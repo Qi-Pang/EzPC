@@ -23,7 +23,7 @@ THE SOFTWARE.
 Modified by Qi Pang
 */
 
-#include "LinearHE/bert-ct-pt-inter1.h"
+#include "LinearHE/bert-ct-pt-inter2.h"
 #include <omp.h>
 
 using namespace std;
@@ -95,12 +95,8 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cr
         n2 = 8;
     }
     else {
-        // For Inter2
-        // n1 = 2;
-        // n2 = 16;
-        // For Inter1
-        n1 = 8;
-        n2 = 4;
+        n1 = 2;
+        n2 = 16;
     }
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
@@ -181,12 +177,8 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cr
         n2 = 8;
     }
     else {
-        // For Inter2
-        // n1 = 2;
-        // n2 = 16;
-        // For Inter1
-        n1 = 8;
-        n2 = 4;
+        n1 = 2;
+        n2 = 16;
     }
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
@@ -364,12 +356,8 @@ void BECTPTINTER1::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const v
         n2 = 8;
     }
     else {
-        // For Inter2
-        // n1 = 2;
-        // n2 = 16;
-        // For Inter1
-        n1 = 8;
-        n2 = 4;
+        n1 = 2;
+        n2 = 16;
     }
     int num_diag = data.slot_count / data.image_size / 2;
     cout << "[Server] Online Start" << endl;
@@ -568,7 +556,7 @@ void BECTPTINTER1::matrix_multiplication(int32_t input_dim,
 
         // HACK
         for (int i = 0; i < 1; i++) {
-            for (int j = 0; j < data.filter_w; j++)
+            for (int j = 0; j < 768; j++)
                 cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }

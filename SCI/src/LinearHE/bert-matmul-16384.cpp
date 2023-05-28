@@ -569,7 +569,7 @@ void BEFCFieldLARGE::bert_cipher_cipher_cross_packing(const FCMetadata &data, co
         // vector<Ciphertext> rotation_results_left(data.image_size + 2);
         // vector<Ciphertext> rotation_results_right(data.image_size + 2);
 
-        #pragma omp parallel for num_threads(16)
+        #pragma omp parallel for num_threads(8)
         for (int i = 0; i <= data.image_size / 2; i++) {
             vector<Ciphertext> temp_mult = rotation_by_one_depth3(data, HE_result_1_right, i);
 

@@ -41,7 +41,9 @@ add_library(SCI-LinearHE
     iron-seal.cpp
     iron-seal-inter1.cpp
     bert-ct-pt.cpp
-    bert-ct-pt-inter1.cpp
+    bert-att-ct-pt.cpp
+    # bert-ct-pt-inter1.cpp
+    # bert-att-output.cpp
     # utils-HE-openfhe.cpp
 )
 

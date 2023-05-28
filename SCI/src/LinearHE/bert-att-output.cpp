@@ -23,7 +23,7 @@ THE SOFTWARE.
 Modified by Qi Pang
 */
 
-#include "LinearHE/bert-ct-pt-inter1.h"
+#include "LinearHE/bert-att-output.h"
 #include <omp.h>
 
 using namespace std;
@@ -33,7 +33,7 @@ using namespace seal;
 #define HE_TIMING
 // #define HE_DEBUG
 
-void BECTPTINTER1::print_noise_budget_vec(vector<Ciphertext> v) {
+void BECTPTAttOut::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << "Noise budget: ";
     for(int i = 0; i < v.size(); i++){
         cout << YELLOW << decryptor->invariant_noise_budget(v[i]) << " ";
@@ -41,13 +41,13 @@ void BECTPTINTER1::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << RESET << endl;
 }
 
-void BECTPTINTER1::print_ct(Ciphertext &ct, int len){
+void BECTPTAttOut::print_ct(Ciphertext &ct, int len){
     Plaintext pt;
     decryptor->decrypt(ct, pt);
     print_pt(pt, len);
 }
 
-void BECTPTINTER1::print_pt(Plaintext &pt, int len) {
+void BECTPTAttOut::print_pt(Plaintext &pt, int len) {
     vector<int64_t> dest(len, 0ULL);
     encoder->decode(pt, dest);
     cout << "Decode first 5 rows: ";
@@ -65,7 +65,7 @@ void BECTPTINTER1::print_pt(Plaintext &pt, int len) {
 }
 
 // column-wise packing
-vector<Ciphertext> BECTPTINTER1::bert_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data) {
+vector<Ciphertext> BECTPTAttOut::bert_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data) {
     vector<int64_t> pod_matrix(data.slot_count, 0ULL);
     vector<Ciphertext> cts;
     for (int i = 0; i < (data.image_size * data.filter_h) / data.slot_count; i++)
@@ -80,7 +80,7 @@ vector<Ciphertext> BECTPTINTER1::bert_preprocess_vec(vector<uint64_t> &input, co
     return cts;
 }
 
-pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
+pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTAttOut::bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
     vector<vector<Plaintext>> weightMatrix1; // 64 x 48
     vector<vector<Plaintext>> weightMatrix2; // 64 x 48
     vector<uint64_t> temp2;
@@ -95,12 +95,8 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cr
         n2 = 8;
     }
     else {
-        // For Inter2
-        // n1 = 2;
-        // n2 = 16;
-        // For Inter1
-        n1 = 8;
-        n2 = 4;
+        n1 = 4;
+        n2 = 8;
     }
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
@@ -166,13 +162,13 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cr
     return std::make_pair(weightMatrix1, weightMatrix2);
 }
 
-pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
+pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTAttOut::bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
     vector<vector<Plaintext>> weightMatrix1; // 64 x 48
     vector<vector<Plaintext>> weightMatrix2; // 64 x 48
     vector<uint64_t> temp2;
-    int num_diag = data.slot_count / data.image_size / 2; // should be 8
-    int num_matrix_per_row = data.filter_h / num_diag; // should be 48
-    int num_matrix_per_col = data.filter_w / num_diag / 2; // should be 8
+    int num_diag = data.slot_count / data.image_size / 2; // should be 32
+    int num_matrix_per_row = data.filter_h / num_diag; // should be 24
+    int num_matrix_per_col = data.filter_w / num_diag / 2; // should be 12
 
     int n1;
     int n2;
@@ -181,12 +177,8 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cr
         n2 = 8;
     }
     else {
-        // For Inter2
-        // n1 = 2;
-        // n2 = 16;
-        // For Inter1
-        n1 = 8;
-        n2 = 4;
+        n1 = 4;
+        n2 = 8;
     }
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
@@ -254,7 +246,7 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPTINTER1::bert_cr
 
 /* Generates a masking vector of random noise that will be applied to parts of
  * the ciphertext that contain leakage */
-Ciphertext BECTPTINTER1::bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
+Ciphertext BECTPTAttOut::bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
   // Sample randomness into vector
   vector<int64_t> noise(data.slot_count, 0ULL);
 
@@ -270,7 +262,7 @@ Ciphertext BECTPTINTER1::bert_efficient_preprocess_noise(const uint64_t *secret_
 }
 
 
-vector<Ciphertext> BECTPTINTER1::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
+vector<Ciphertext> BECTPTAttOut::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data) {
 
     vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
 
@@ -354,7 +346,7 @@ vector<Ciphertext> BECTPTINTER1::bert_cipher_plain(vector<Ciphertext> &cts, vect
 }
 
 
-void BECTPTINTER1::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result) {
+void BECTPTAttOut::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data, vector<Ciphertext> &result) {
 
     vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1;
@@ -364,12 +356,8 @@ void BECTPTINTER1::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const v
         n2 = 8;
     }
     else {
-        // For Inter2
-        // n1 = 2;
-        // n2 = 16;
-        // For Inter1
-        n1 = 8;
-        n2 = 4;
+        n1 = 4;
+        n2 = 8;
     }
     int num_diag = data.slot_count / data.image_size / 2;
     cout << "[Server] Online Start" << endl;
@@ -472,7 +460,7 @@ void BECTPTINTER1::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const v
 }
 
 
-uint64_t* BECTPTINTER1::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+uint64_t* BECTPTAttOut::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
     uint64_t *result = new uint64_t[data.image_size * data.filter_w];
     for (int i = 0; i < data.image_size * data.filter_w / data.slot_count; i++) {
         vector<int64_t> plain(data.slot_count, 0ULL);
@@ -490,7 +478,7 @@ uint64_t* BECTPTINTER1::bert_efficient_postprocess(vector<Ciphertext> &cts, cons
     return result;
 }
 
-BECTPTINTER1::BECTPTINTER1(int party, NetIO *io) {
+BECTPTAttOut::BECTPTAttOut(int party, NetIO *io) {
     this->party = party;
     this->io = io;
     this->slot_count = 8192;
@@ -499,11 +487,11 @@ BECTPTINTER1::BECTPTINTER1(int party, NetIO *io) {
                     evaluator, encoder, gal_keys, relin_keys, zero);
 }
 
-BECTPTINTER1::~BECTPTINTER1() {
+BECTPTAttOut::~BECTPTAttOut() {
     free_keys(party, encryptor, decryptor, evaluator, encoder, gal_keys, zero);
 }
 
-void BECTPTINTER1::configure() {
+void BECTPTAttOut::configure() {
   data.slot_count = 8192;
   // Only works with a ciphertext that fits in a single ciphertext
   assert(data.slot_count >= data.image_size);
@@ -515,7 +503,7 @@ void BECTPTINTER1::configure() {
   data.inp_ct = ceil((float)next_pow2(data.filter_h) / data.pack_num);
 }
 
-vector<uint64_t> BECTPTINTER1::ideal_functionality(uint64_t *vec, uint64_t **matrix) {
+vector<uint64_t> BECTPTAttOut::ideal_functionality(uint64_t *vec, uint64_t **matrix) {
   vector<uint64_t> result(data.filter_h, 0ULL);
   for (int row = 0; row < data.filter_h; row++) {
     for (int idx = 0; idx < data.filter_w; idx++) {
@@ -526,7 +514,7 @@ vector<uint64_t> BECTPTINTER1::ideal_functionality(uint64_t *vec, uint64_t **mat
   return result;
 }
 
-void BECTPTINTER1::matrix_multiplication(int32_t input_dim, 
+void BECTPTAttOut::matrix_multiplication(int32_t input_dim, 
                                     int32_t common_dim, 
                                     int32_t output_dim, 
                                     vector<vector<uint64_t>> &A, 
@@ -567,8 +555,8 @@ void BECTPTINTER1::matrix_multiplication(int32_t input_dim,
         auto HE_result = bert_efficient_postprocess(enc_result, data);
 
         // HACK
-        for (int i = 0; i < 1; i++) {
-            for (int j = 0; j < data.filter_w; j++)
+        for (int i = 64; i < 65; i++) {
+            for (int j = 0; j < 768; j++)
                 cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }
