@@ -324,3 +324,153 @@ void NonLinear::tanh_iron(int nthreads, uint64_t* input, uint64_t* output, int s
         threads[i].join();
     }
 }
+
+void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray p_array = fpmath->fix->input(PUBLIC, num_ops, p, true, ell, s);
+  FixArray output = fpmath->gt_p_sub(input, p_array);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+void NonLinear::gt_p_sub(int nthreads, uint64_t* input, uint64_t p, uint64_t* output, int size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                gt_p_sub_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                p,
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
+}
+
+void mul_thread(int tid, int party, uint64_t *x, uint64_t* z, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
+  FixArray input_x = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray input_y = fpmath->fix->input(this_party, num_ops, z, true, ell, s);
+  // FixArray output = fpmath->fix->mul(input_x, input_y, ell + s);
+  // output = fpmath->fix->truncate_reduce(output, s, all_0.data);
+  // memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+void  NonLinear::n_matrix_mul(
+  int nthreads, 
+  uint64_t* input_1,
+  uint64_t* input_2, 
+  uint64_t* output, 
+  int n, 
+  int dim1, 
+  int dim2, 
+  int dim3, 
+  int ell, 
+  int s){
+
+  // dim3 x dim2
+  uint64_t* input_2_trans = new uint64_t[n*dim2*dim3];
+  for(int nm = 0; nm < n; nm++){
+    int matrix_offset = nm*dim2*dim3;
+    for(int j = 0; j < dim3; j ++){
+      for(int i = 0; i < dim2; i++){
+        input_2_trans[j*dim2 + i + matrix_offset] = 
+          input_2[i*dim3 + j + matrix_offset];
+      }
+    }
+  }
+  
+  uint64_t* input_1_dup = new uint64_t[n*dim1*dim2*dim3];
+  uint64_t* input_2_dup = new uint64_t[n*dim1*dim2*dim3];
+  for(int nm = 0; nm < n; nm++){
+    int matrix_offset = nm*dim1*dim2*dim3;
+    int matrix_offset_2 = nm*dim2*dim3;
+    for(int i = 0; i < dim1; i++){
+      memcpy(&input_2_dup[i*dim2*dim3 + matrix_offset], &input_2_trans[matrix_offset_2], dim2*dim3*sizeof(uint64_t));
+    }
+  }
+
+  for(int nm = 0; nm < n; nm++){
+    int matrix_offset = nm*dim1*dim2*dim3;
+    int matrix_offset_2 = nm*dim1*dim2;
+    for(int i = 0; i < dim1; i++){
+      for(int j = 0; j < dim3; j++){
+        memcpy(&input_1_dup[i*dim2*dim3 + j*dim2 + matrix_offset], &input_1[i*dim2 + matrix_offset_2], dim2*sizeof(uint64_t));
+      }
+    }
+  }
+
+  int size = n*dim1*dim2*dim3;
+  uint64_t* output_tmp = new uint64_t[n*dim1*dim2*dim3];
+  std::thread threads[nthreads];
+
+  int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                mul_thread, 
+                i, 
+                party, 
+                &input_1_dup[offset], 
+                &input_2_dup[offset], 
+                &output_tmp[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
+
+    for(int nm = 0; nm < n; nm++){
+    int matrix_offset = nm*dim1*dim2*dim3;
+    int matrix_offset_2 = nm*dim1*dim3;
+      for(int i = 0; i < dim1; i++){
+        for(int k = 0; k < dim3; k++){
+          output[i*dim3 + k + matrix_offset_2] = 0;
+          for(int j = 0; j < dim2; j++){
+            output[i*dim3 + k + matrix_offset_2] += output_tmp[i*dim3*dim2 + k*dim2 + j + matrix_offset];
+          }
+        }
+      }
+    }
+
+    delete[] input_2_trans;
+    delete[] input_1_dup;
+    delete[] input_2_dup;
+    delete[] output_tmp;
+}

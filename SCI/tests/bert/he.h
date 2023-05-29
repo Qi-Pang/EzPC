@@ -23,6 +23,8 @@ public:
     NetIO *io;
 
     size_t poly_modulus_degree;
+    uint64_t plain_mod;
+
     SEALContext *context;
 	Encryptor *encryptor;
 	Decryptor *decryptor;

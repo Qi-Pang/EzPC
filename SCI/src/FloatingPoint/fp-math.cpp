@@ -686,8 +686,12 @@ FixArray FPMath::exp4(const FixArray &x){
   l_short.signed_ = false;
   // Optimization: The polynomial result is within [0, ~0.7)
   // Thus the upper bound of shift is scale + 1
+
+  FixArray bound = fix->input(PUBLIC, l_short.size, 13, false, l_short.ell, 0);
+  BoolArray gt_bound = fix->GT(l_short, bound);
+  l_short = fix->if_else(gt_bound, bound, l_short);
+
   FixArray ret = fix->right_shift(poly_p, l_short, scale + 1, all_0.data);
-  // print_fix(ret);
 
   return ret;
 }
@@ -1657,4 +1661,10 @@ FixArray FPMath::tanh_iron(const FixArray& x){
   FixArray ret(party, x.size, x.signed_, x.ell, x.s);
   math->tanh(x.size, x.data, ret.data, x.ell, x.ell, x.s, x.s);
   return ret;
+}
+
+FixArray FPMath::gt_p_sub(const FixArray& x, const FixArray& p){
+  BoolArray gt = fix->GT(x, p);
+  FixArray sub = fix->sub(x, p);
+  return fix->if_else(gt, sub, x);
 }

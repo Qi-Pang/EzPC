@@ -8,6 +8,7 @@ HE::HE(int party,
     this->party = party;
     this->poly_modulus_degree = poly_modulus_degree;
     this->io = io;
+	this->plain_mod = plain_mod;
 
     // Generate keys
     EncryptionParameters parms(scheme_type::bfv);

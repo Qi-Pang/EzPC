@@ -47,8 +47,8 @@ int32_t input_size = dim*array_size;
 
 bool signed_ = true;
 
-uint64_t mask_x = (bw_x == 64 ? -1 : ((1ULL << 14) - 1));
-uint64_t mask_y = (bw_y == 64 ? -1 : ((1ULL << 14) - 1));
+uint64_t mask_x = (bw_x == 64 ? -1 : ((1ULL << 29) - 1));
+uint64_t mask_y = (bw_y == 64 ? -1 : ((1ULL << 29) - 1));
 
 IOPack *iopackArr[MAX_THREADS];
 OTPack *otpackArr[MAX_THREADS];
@@ -56,10 +56,14 @@ OTPack *otpackArr[MAX_THREADS];
 void softmax_double(const double* input, double* output, int dim, int array_size) {
   
   for (int i = 0; i < dim; i++){
+    double max_s = input[i*array_size];
+    for (int j = 0; j < array_size; ++j) {
+      max_s = max(max_s, input[j + i*array_size]);
+    }
     double sumExp = 0.0;
     // Compute the exponential of each input element and accumulate the sum
     for (int j = 0; j < array_size; ++j) {
-      double expValue = std::exp(input[j + i*array_size]);
+      double expValue = std::exp(input[j + i*array_size] - max_s);
       output[j + i*array_size] = expValue;
       sumExp += expValue;
     }
