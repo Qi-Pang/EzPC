@@ -822,6 +822,28 @@ uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, con
     return result;
 }
 
+uint64_t* BEFCField::bert_postprocess_V(vector<Ciphertext> &cts, const FCMetadata &data) {
+    uint64_t *result_V = new uint64_t[data.image_size*data.filter_w*12];
+    int num_cts_per_mat_V = data.image_size * data.filter_w / data.slot_count;
+    int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
+    for (int packing_num = 0; packing_num < 12; packing_num++) {
+        for (int i = 0; i < num_cts_per_mat_V; i++) {
+            vector<int64_t> plain(data.slot_count, 0ULL);
+            Plaintext pt;
+            decryptor->decrypt(cts[i + 12 * num_cts_per_mat + packing_num * num_cts_per_mat_V], pt);
+            encoder->decode(pt, plain);
+
+            #pragma omp parallel for
+            for (int row = 0; row < data.slot_count; row++) {
+                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                int k = row % data.image_size;
+                result_V[k + j * data.image_size + packing_num * data.image_size * data.filter_w] = plain[row];
+            }
+        }
+    }
+    return result_V;
+}
+
 BEFCField::BEFCField(int party, NetIO *io) {
     this->party = party;
     this->io = io;
@@ -882,7 +904,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         cout << "[Client] Input cts sent" << endl;
         cout << "[Client] Size of cts (Bytes): " << sizeof(Ciphertext) << " " << sizeof(Ciphertext) * cts.size() << endl;
 
-        vector<Ciphertext> enc_result(2 * 12);
+        vector<Ciphertext> enc_result(3 * 12);
         recv_encrypted_vector(context, io, enc_result);
         cout << "[Client] Output cts received" << endl;
         cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
@@ -892,11 +914,12 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // auto HE_result = bert_efficient_postprocess(enc_result, data);
         auto HE_result = bert_cross_packing_postprocess(enc_result, data);
+        auto V_result = bert_postprocess_V(enc_result, data);
 
         // HACK: verify
         for (int i = 0; i < 3; i++) {
-            for (int j = 128; j < 128 * 2; j++)
-                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            for (int j = 0; j < 64; j++)
+                cout << ((int64_t) V_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }
 
@@ -1039,8 +1062,13 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // auto HE_result = bert_efficient_cipher(data, Cipher_plain_results, rotation_masks, cipher_masks);
         // auto HE_result = bert_efficient_cipher_depth3(data, Cipher_plain_results, depth3_masks);
-        vector<Ciphertext> HE_result(2 * 12);
+        vector<Ciphertext> HE_result(3 * 12);
         bert_cipher_cipher_cross_packing(data, Cipher_plain_results, cross_masks, HE_result);
+
+        int packing_gap = data.image_size * data.filter_w / data.slot_count * 3;
+        for (int i = 0; i < 12; i++) {
+            HE_result[24 + i] = Cipher_plain_results[2 + i * packing_gap];
+        }
 
         #pragma omp parallel for
         for (int i = 0; i < HE_result.size(); i++) {

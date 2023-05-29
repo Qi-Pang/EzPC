@@ -194,13 +194,13 @@ int main(int argc, char **argv) {
 
     // 32 bits
     // prime_mod = 4293918721;
-    prime_mod = 2148728833;
+    // prime_mod = 2148728833;
 
     // 30 bits
     // prime_mod = 1073872897; 
 
     // 29 bits 
-    // prime_mod = 536903681;
+    prime_mod = 536903681;
 
     // 28bits
     // prime_mod = 268582913;

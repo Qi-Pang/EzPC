@@ -107,6 +107,8 @@ public:
 
   uint64_t* bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 
+  uint64_t* bert_postprocess_V(vector<Ciphertext> &cts, const FCMetadata &data);
+
   vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 
   void print_noise_budget_vec(vector<Ciphertext> v);
