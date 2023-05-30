@@ -137,9 +137,9 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
     }
 
     for(int i = 0; i < output_dim; i++) {
-        Bias1[i] = i;
-        Bias2[i] = 64 - i;
-        Bias3[i] = i;
+        Bias1[i] = 0;
+        Bias2[i] = 0;
+        Bias3[i] = 0;
     }
 
     // A = read_data("./bin/txt/X_quantize_0.txt");
@@ -165,17 +165,18 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
         input_Bias2.push_back(Bias2);
         input_Bias3.push_back(Bias3);
     }
-
-    // auto temp_w = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.weight.txt");
-    // auto temp_b = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.bias.txt");
-
-    // cout << temp_w.size() << " " << temp_w[0].size() << " " << temp_w[0][1].size() << endl;;
-    // cout << temp_b.size() << " " << temp_b[0].size() << endl;
+    A = read_data("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/inputs_0.txt");
+    auto temp_w1 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.weight.txt");
+    auto temp_w2 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.key.weight.txt");
+    auto temp_w3 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.value.weight.txt");
+    auto temp_b1 = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.bias.txt");
+    auto temp_b2 = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.key.bias.txt");
+    auto temp_b3 = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.value.bias.txt");
 
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
     START_TIMER;
-    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, input_B1, input_B2, input_B3, input_Bias1, input_Bias2, input_Bias3, C, true);
+    befc.matrix_multiplication(input_dim, common_dim, output_dim, A, temp_w1, temp_w2, temp_w3, temp_b1, temp_b2, temp_b3, C, true);
     STOP_TIMER("Total Time for FC");
 }
 

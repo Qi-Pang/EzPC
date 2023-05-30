@@ -896,10 +896,11 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         vector<uint64_t> vec(common_dim * input_dim);
         for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
-                vec[j*input_dim + i] = A[i][j];
+                vec[j*input_dim + i] = neg_mod((int64_t)A[i][j], (int64_t)prime_mod);
 
         auto cts = bert_efficient_preprocess_vec(vec, data);
         auto io_start = io->counter;
+        print_noise_budget_vec(cts);
         send_encrypted_vector(io, cts);
         cout << "[Client] Input cts sent" << endl;
         cout << "[Client] Size of cts (Bytes): " << sizeof(Ciphertext) << " " << sizeof(Ciphertext) * cts.size() << endl;
@@ -918,8 +919,8 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // HACK: verify
         for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 64; j++)
-                cout << ((int64_t) V_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            for (int j = 0; j < 128; j++)
+                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }
 

@@ -66,11 +66,11 @@ void BEAttCtPt::print_pt(Plaintext &pt, int len) {
 
 // column-wise packing
 vector<Ciphertext> BEAttCtPt::bert_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data) {
-    vector<int64_t> pod_matrix(data.slot_count, 0ULL);
+    vector<uint64_t> pod_matrix(data.slot_count, 0ULL);
     vector<Ciphertext> cts;
     for (int i = 0; i < (data.image_size * data.filter_h) / data.slot_count; i++)
     {
-        pod_matrix = vector<int64_t>(input.begin() + i * data.slot_count, input.begin() + (i+1) * data.slot_count);
+        pod_matrix = vector<uint64_t>(input.begin() + i * data.slot_count, input.begin() + (i+1) * data.slot_count);
         Ciphertext ct;
         Plaintext pt;
         encoder->encode(pod_matrix, pt);
@@ -417,7 +417,7 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
         vector<uint64_t> vec(common_dim * input_dim);
         for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
-                vec[j*input_dim + i] = A[i][j];
+                vec[j*input_dim + i] = neg_mod((int64_t)A[i][j], (int64_t)prime_mod);
 
         auto cts = bert_preprocess_vec(vec, data);
 
