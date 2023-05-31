@@ -1668,3 +1668,7 @@ FixArray FPMath::gt_p_sub(const FixArray& x, const FixArray& p){
   FixArray sub = fix->sub(x, p);
   return fix->if_else(gt, sub, x);
 }
+
+void FPMath::print(const FixArray& x){
+  print_fix(x);
+}

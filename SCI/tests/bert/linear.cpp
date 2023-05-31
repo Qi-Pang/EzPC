@@ -1,5 +1,21 @@
 #include "linear.h"
 
+
+void print_pt_l(HE* he, Plaintext &pt, int len) {
+    vector<uint64_t> dest(len, 0ULL);
+    he->encoder->decode(pt, dest);
+    cout << "Decode first 5 rows: ";
+    int non_zero_count;
+    for(int i = 0; i < 128; i++){
+        cout << dest[i] << " ";
+        // if(dest[i] != 0){
+        //     non_zero_count += 1;
+        // }
+    }
+    // cout << "Non zero count: " << non_zero_count;
+    cout << endl;
+}
+
 Linear::Linear(){}
 
 Linear::Linear(int party, NetIO *io) {
@@ -12,6 +28,8 @@ Linear::Linear(int party, NetIO *io) {
 		{54, 54, 55, 55},
 		536903681
     );
+
+    this->p_mod = prime_mod;
 
 	this->he_4096 = new HE(
 		party,
@@ -41,6 +59,8 @@ vector<Ciphertext> Linear::linear_1(
 	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single(12);
 	vector<vector<Plaintext>> bias_packing(12);
 
+    uint64_t plain_mod = he->plain_mod;
+
 	for (int packing_index = 0; packing_index < 12; packing_index++) {
 		vector<uint64_t *> matrix_mod_p1(COMMON_DIM);
 		vector<uint64_t *> matrix_mod_p2(COMMON_DIM);
@@ -56,30 +76,30 @@ vector<Ciphertext> Linear::linear_1(
 			matrix1[i] = new uint64_t[OUTPUT_DIM];
 			matrix2[i] = new uint64_t[OUTPUT_DIM];
 			for (int j = 0; j < OUTPUT_DIM; j++) {
-				matrix_mod_p1[i][j] = neg_mod((int64_t)w_q[packing_index][i][j], (int64_t)prime_mod);
-				matrix_mod_p2[i][j] = neg_mod((int64_t)w_k[packing_index][i][j], (int64_t)prime_mod);
+				matrix_mod_p1[i][j] = neg_mod((int64_t)w_q[packing_index][i][j], (int64_t)plain_mod);
+				matrix_mod_p2[i][j] = neg_mod((int64_t)w_k[packing_index][i][j], (int64_t)plain_mod);
 				int64_t val = (int64_t)w_q[packing_index][i][j];
-				if (val > int64_t(prime_mod / 2)) {
-					val = val - prime_mod;
+				if (val > int64_t(plain_mod / 2)) {
+					val = val - plain_mod;
 				}
 				matrix1[i][j] = val;
 				val = (int64_t)w_k[packing_index][i][j];
-				if (val > int64_t(prime_mod / 2)) {
-					val = val - prime_mod;
+				if (val > int64_t(plain_mod / 2)) {
+					val = val - plain_mod;
 				}
 				matrix2[i][j] = val;
 			}
 
 			for (int j = 0; j < OUTPUT_DIM / 2; j++) {
-				matrix_mod_p3[i][j] = neg_mod((int64_t)w_v[packing_index][i][j], (int64_t)prime_mod);
-				matrix_mod_p4[i][j] = neg_mod((int64_t)w_v[packing_index][i][j + OUTPUT_DIM / 2], (int64_t)prime_mod);
+				matrix_mod_p3[i][j] = neg_mod((int64_t)w_v[packing_index][i][j], (int64_t)plain_mod);
+				matrix_mod_p4[i][j] = neg_mod((int64_t)w_v[packing_index][i][j + OUTPUT_DIM / 2], (int64_t)plain_mod);
 			}
 		}
 
 		for (int i = 0; i < OUTPUT_DIM; i++) {
-			b_q[packing_index][i] = neg_mod((int64_t)b_q[packing_index][i], (int64_t)prime_mod);
-			b_k[packing_index][i] = neg_mod((int64_t)b_k[packing_index][i], (int64_t)prime_mod);
-			b_v[packing_index][i] = neg_mod((int64_t)b_v[packing_index][i], (int64_t)prime_mod);
+			b_q[packing_index][i] = neg_mod((int64_t)b_q[packing_index][i], (int64_t)plain_mod);
+			b_k[packing_index][i] = neg_mod((int64_t)b_k[packing_index][i], (int64_t)plain_mod);
+			b_v[packing_index][i] = neg_mod((int64_t)b_v[packing_index][i], (int64_t)plain_mod);
 		}
 
 		auto cross_mat = bert_cross_packing_matrix(he, matrix_mod_p1.data(), matrix_mod_p2.data(), data);
@@ -89,11 +109,7 @@ vector<Ciphertext> Linear::linear_1(
 		cross_mats_single[packing_index] = cross_mat_single;
 		bias_packing[packing_index] = bias;
 	}
-
-	// PRG128 prg;
-	// uint64_t *secret_share = new uint64_t[INPUT_DIM*OUTPUT_DIM];
-	// prg.random_mod_p<uint64_t>(secret_share, INPUT_DIM*OUTPUT_DIM, prime_mod);
-
+    // print_pt_l(he_8192, bias_packing[0][0], 8192);
 
 	auto cross_masks = generate_cross_packing_masks(he, data);
 
@@ -128,6 +144,9 @@ vector<Ciphertext> Linear::linear_2(
     vector<uint64_t> b,
     const FCMetadata &data
     ){
+
+    uint64_t plain_mod = he->plain_mod;
+
     vector<uint64_t *> matrix_mod_p1(common_dim);
     vector<uint64_t *> matrix_mod_p2(common_dim);
 
@@ -141,12 +160,12 @@ vector<Ciphertext> Linear::linear_2(
         matrix2[i] = new uint64_t[output_dim / 2];
 
         for (int j = 0; j < output_dim / 2; j++) {
-            matrix_mod_p1[i][j] = neg_mod((int64_t)w[i][j], (int64_t)prime_mod);
-            matrix_mod_p2[i][j] = neg_mod((int64_t)w[i][j + output_dim / 2], (int64_t)prime_mod);
+            matrix_mod_p1[i][j] = neg_mod((int64_t)w[i][j], (int64_t)plain_mod);
+            matrix_mod_p2[i][j] = neg_mod((int64_t)w[i][j + output_dim / 2], (int64_t)plain_mod);
         }
     }
     for (int i = 0; i < output_dim; i++) {
-        b[i] = neg_mod((int64_t)b[i], (int64_t)prime_mod);
+        b[i] = neg_mod((int64_t)b[i], (int64_t)plain_mod);
     }
     auto cross_mat_single = bert_cross_packing_single_matrix_2(he, matrix_mod_p1.data(), matrix_mod_p2.data(), data);
     auto cross_bias_single = bert_cross_packing_bias_2(he, b.data(), data);
@@ -1018,6 +1037,7 @@ uint64_t* Linear::bert_cross_packing_postprocess(
 void Linear::plain_cross_packing_postprocess(
     uint64_t* input, 
     uint64_t * output,
+    bool col_packing,
     const FCMetadata &data) {
     int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
     for (int packing_num = 0; packing_num < 12; packing_num++) {
@@ -1025,18 +1045,36 @@ void Linear::plain_cross_packing_postprocess(
             int offset = i + packing_num * num_cts_per_mat;
             vector<uint64_t> plain(&input[offset* data.slot_count], &input[offset* data.slot_count + data.slot_count]);
 
-            #pragma omp parallel for
-            for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size;
-                int k = row % data.image_size;
-                if (j < 32) { // k, (k + j) % 128
-                    output[k + ((k + j + i * 32) % data.image_size) * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+            if (col_packing) {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (j < 32) { // k, (k + j) % 128
+                        output[k + ((k + j + i * 32) % data.image_size) * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else if (j == 32 && i == 0) { // (64 + k) % 128, k
+                        output[((k + 64) % data.image_size) + k * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else { // (k - 32 + j) % 128, k
+                        output[k * data.image_size + (k + j - 32 + i * 32) % data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
                 }
-                else if (j == 32 && i == 0) { // (64 + k) % 128, k
-                    output[((k + 64) % data.image_size) + k * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
-                }
-                else { // (k - 32 + j) % 128, k
-                    output[k * data.image_size + (k + j - 32 + i * 32) % 128 + packing_num * data.image_size * data.image_size] = plain[row];
+            }
+            else {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (j < 32) { // k, (k + j) % 128
+                        output[k * data.image_size + ((k + j + i * 32) % data.image_size) + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else if (j == 32 && i == 0) { // (64 + k) % 128, k
+                        output[((k + 64) % data.image_size) * data.image_size + k + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else { // (k - 32 + j) % 128, k
+                        output[k + ((k + j - 32 + i * 32) % data.image_size) * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
                 }
             }
         }
@@ -1046,6 +1084,7 @@ void Linear::plain_cross_packing_postprocess(
 void Linear::plain_cross_packing_postprocess_v(
     uint64_t* input, 
     uint64_t * output,
+    bool col_packing,
     const FCMetadata &data) {
     int num_cts_per_mat_V = data.image_size * data.filter_w / data.slot_count;
     for (int packing_num = 0; packing_num < 12; packing_num++) {
@@ -1053,11 +1092,23 @@ void Linear::plain_cross_packing_postprocess_v(
             int offset = i + packing_num * num_cts_per_mat_V;
             vector<uint64_t> plain(&input[offset* data.slot_count], &input[offset* data.slot_count + data.slot_count]);
 
-            #pragma omp parallel for
-            for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size + i * data.slot_count / data.image_size;
-                int k = row % data.image_size;
-                output[k + j * data.image_size + packing_num * data.image_size * data.filter_w] = plain[row];
+           if (col_packing) {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int k = row % data.image_size;
+                    output[k + j * data.image_size + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
+            }
+            else {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int k = row % data.image_size;
+                    k = k + j / data.filter_w * data.image_size;
+                    j = j % data.filter_w;
+                    output[k * data.filter_w + j + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
             }
         }
     }
@@ -1066,34 +1117,49 @@ void Linear::plain_cross_packing_postprocess_v(
 void Linear::plain_col_packing_preprocess(
     uint64_t* input, 
     uint64_t * output,
+    uint64_t prime_mod,
     int input_dim,
     int common_dim){
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
-                output[j*input_dim + i] = input[i*common_dim +j];
+                output[j*input_dim + i] = neg_mod((int64_t)input[i*common_dim +j], (int64_t)prime_mod);
 }
 
 void Linear::plain_col_packing_preprocess_vec(
     vector<vector<uint64_t>> input, 
     uint64_t * output,
+    uint64_t prime_mod,
     int input_dim,
     int common_dim){
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
-                output[j*input_dim + i] = input[i][j];
+                output[j*input_dim + i] = neg_mod((int64_t)input[i][j], (int64_t)prime_mod);
 }
 
 void Linear::plain_col_packing_postprocess(
     uint64_t* input, 
     uint64_t * output,
+    bool col_packing,
     const FCMetadata &data){
     for (int i = 0; i < data.image_size * data.filter_w / data.slot_count; i++) {
         int offset = i*data.slot_count;
-        #pragma omp parallel for
-        for (int row = 0; row < data.slot_count; row++) {
-            int j = row / data.image_size + i * data.slot_count / data.image_size;
-            int k = row % data.image_size;
-            output[k + j * data.image_size] = input[offset + row];
+        if (col_packing) {
+            #pragma omp parallel for
+            for (int row = 0; row < data.slot_count; row++) {
+                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                int k = row % data.image_size;
+                output[k + j * data.image_size] = input[row];
+            }
+        }
+        else {
+            #pragma omp parallel for
+            for (int row = 0; row < data.slot_count; row++) {
+                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                int k = row % data.image_size;
+                k = k + j / data.filter_w * data.image_size;
+                j = j % data.filter_w;
+                output[k * data.filter_w + j] = input[row];
+            }
         }
     }
 }

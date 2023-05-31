@@ -95,6 +95,8 @@ public:
 
   FixArray sqrt(const FixArray& x, bool recp_sqrt);
 
+  void print(const FixArray& x);
+
   // FixArray recip_approx(const FixArray& x);
   
   // vector<FixArray> softmax_fix_iron_2(const vector<FixArray>& x);

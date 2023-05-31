@@ -43,6 +43,9 @@ public:
 	HE *he_8192;
 	HE *he_4096;
 
+	// Fix linking error
+	uint64_t p_mod;
+
 	Linear();
 
 	Linear(int party, NetIO *io);
@@ -123,28 +126,33 @@ public:
 	void plain_cross_packing_postprocess(
 		uint64_t* input, 
 		uint64_t * output,
+		bool col_packing,
 		const FCMetadata &data);
 	
 	void plain_cross_packing_postprocess_v(
 		uint64_t* input, 
 		uint64_t * output,
+		bool col_packing,
 		const FCMetadata &data);
 	
 	void plain_col_packing_preprocess(
 		uint64_t* input, 
 		uint64_t * output,
+		uint64_t prime_mod,
 		int common_dim,
 		int input_dim);
 	
 	void plain_col_packing_preprocess_vec(
 		vector<vector<uint64_t>> input, 
 		uint64_t * output,
+		uint64_t prime_mod,
 		int common_dim,
 		int input_dim);
 	
 	void plain_col_packing_postprocess(
 		uint64_t* input, 
 		uint64_t * output,
+		bool col_packing,
 		const FCMetadata &data);
 
 	pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>

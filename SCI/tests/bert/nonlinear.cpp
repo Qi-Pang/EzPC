@@ -332,9 +332,14 @@ void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, i
   } else {
     this_party = party;
   }
+  // if input > p, then sub p
+  // sub p/2 anyway
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray p_array = fpmath->fix->input(PUBLIC, num_ops, p, true, ell, s);
+  FixArray p_2_array = fpmath->fix->input(PUBLIC, num_ops, (p-1)/2, true, ell, s);
   FixArray output = fpmath->gt_p_sub(input, p_array);
+  output = fpmath->fix->sub(output, p_2_array);
+
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
 
@@ -473,4 +478,9 @@ void  NonLinear::n_matrix_mul(
     delete[] input_1_dup;
     delete[] input_2_dup;
     delete[] output_tmp;
+}
+
+void NonLinear::print_ss(uint64_t* input, int length, int ell, int s){
+  FixArray tmp = fpmath[0]->fix->input(party, length, input, true, ell, s);
+  fpmath[0]->print(tmp);
 }

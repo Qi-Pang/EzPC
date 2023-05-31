@@ -24,6 +24,8 @@ public:
 
     size_t poly_modulus_degree;
     uint64_t plain_mod;
+    // plain_mod / 2
+    uint64_t plain_mod_2;
 
     SEALContext *context;
 	Encryptor *encryptor;

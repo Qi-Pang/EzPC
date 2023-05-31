@@ -43,6 +43,8 @@ public:
 
     void n_matrix_mul(int nthreads, uint64_t* input_1, uint64_t* input_2, uint64_t* output, int n, int dim1, int dim2, int dim3, int ell, int s);
 
+    void print_ss(uint64_t* input, int length, int ell, int s);
+
     // softmax_iron(vector<FixArray> input, int nthreads);
 
     // vector<FixArray> layer_norm(vector<FixArray> input, int nthreads);

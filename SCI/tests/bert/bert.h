@@ -7,6 +7,7 @@
 #include <math.h>
 #include "linear.h"
 #include "nonlinear.h"
+#include "bert_utils.h"
 
 #define NL_NTHREADS 12
 

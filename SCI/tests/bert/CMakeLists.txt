@@ -2,6 +2,7 @@ add_library(LIB_BERT
     he.cpp
     nonlinear.cpp
     linear.cpp
+    bert_utils.cpp
     bert.cpp
     )
 
