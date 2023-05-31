@@ -75,9 +75,9 @@ public:
 
   void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<vector<Plaintext>> &enc_mat1, const vector<vector<Plaintext>> &enc_mat2, const vector<Plaintext> &enc_bias, const FCMetadata &data, vector<Ciphertext> &result);
 
-  uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
+  uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing=true);
 
-  uint64_t* bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
+  // uint64_t* bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 
   vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 

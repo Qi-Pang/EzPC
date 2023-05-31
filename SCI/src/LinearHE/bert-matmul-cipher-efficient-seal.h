@@ -105,9 +105,9 @@ public:
 
   uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
 
-  uint64_t* bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
+  uint64_t* bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing=true);
 
-  uint64_t* bert_postprocess_V(vector<Ciphertext> &cts, const FCMetadata &data);
+  uint64_t* bert_postprocess_V(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing=true);
 
   vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 

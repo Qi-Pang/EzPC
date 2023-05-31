@@ -48,14 +48,12 @@ void BEFCField::print_ct(Ciphertext &ct, int len){
 }
 
 void BEFCField::print_pt(Plaintext &pt, int len) {
-    vector<int64_t> dest(len, 0ULL);
+    vector<uint64_t> dest(len, 0ULL);
     encoder->decode(pt, dest);
     cout << "Decode first 5 rows: ";
     int non_zero_count;
-    for(int i = 0; i < 5; i++){
-        for (int j = 0; j < 64; j++)
-            cout << dest[i + j * 128] << " ";
-        cout << endl;
+    for(int i = 0; i < 128; i++){
+        cout << dest[i] << " ";
         // if(dest[i] != 0){
         //     non_zero_count += 1;
         // }
@@ -793,7 +791,7 @@ uint64_t* BEFCField::bert_efficient_postprocess(vector<Ciphertext> &cts, const F
     return result;
 }
 
-uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing) {
     uint64_t *result = new uint64_t[data.image_size*data.image_size*12];
     int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
     for (int packing_num = 0; packing_num < 12; packing_num++) {
@@ -802,19 +800,36 @@ uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, con
             Plaintext tmp;
             decryptor->decrypt(cts[i + packing_num * num_cts_per_mat], tmp);
             encoder->decode(tmp, plain);
-
-            #pragma omp parallel for
-            for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size;
-                int k = row % data.image_size;
-                if (j < 32) { // k, (k + j) % 128
-                    result[k + ((k + j + i * 32) % data.image_size) * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+            if (col_packing) {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (j < 32) { // k, (k + j) % 128
+                        result[k + ((k + j + i * 32) % data.image_size) * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else if (j == 32 && i == 0) { // (64 + k) % 128, k
+                        result[((k + 64) % data.image_size) + k * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else { // (k - 32 + j) % 128, k
+                        result[k * data.image_size + (k + j - 32 + i * 32) % data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
                 }
-                else if (j == 32 && i == 0) { // (64 + k) % 128, k
-                    result[((k + 64) % data.image_size) + k * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
-                }
-                else { // (k - 32 + j) % 128, k
-                    result[k * data.image_size + (k + j - 32 + i * 32) % 128 + packing_num * data.image_size * data.image_size] = plain[row];
+            }
+            else {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (j < 32) { // k, (k + j) % 128
+                        result[k * data.image_size + ((k + j + i * 32) % data.image_size) + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else if (j == 32 && i == 0) { // (64 + k) % 128, k
+                        result[((k + 64) % data.image_size) * data.image_size + k + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
+                    else { // (k - 32 + j) % 128, k
+                        result[k + ((k + j - 32 + i * 32) % data.image_size) * data.image_size + packing_num * data.image_size * data.image_size] = plain[row];
+                    }
                 }
             }
         }
@@ -822,22 +837,34 @@ uint64_t* BEFCField::bert_cross_packing_postprocess(vector<Ciphertext> &cts, con
     return result;
 }
 
-uint64_t* BEFCField::bert_postprocess_V(vector<Ciphertext> &cts, const FCMetadata &data) {
+uint64_t* BEFCField::bert_postprocess_V(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing) {
     uint64_t *result_V = new uint64_t[data.image_size*data.filter_w*12];
     int num_cts_per_mat_V = data.image_size * data.filter_w / data.slot_count;
     int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
     for (int packing_num = 0; packing_num < 12; packing_num++) {
         for (int i = 0; i < num_cts_per_mat_V; i++) {
-            vector<int64_t> plain(data.slot_count, 0ULL);
+            vector<uint64_t> plain(data.slot_count, 0ULL);
             Plaintext pt;
             decryptor->decrypt(cts[i + 12 * num_cts_per_mat + packing_num * num_cts_per_mat_V], pt);
             encoder->decode(pt, plain);
-
-            #pragma omp parallel for
-            for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size + i * data.slot_count / data.image_size;
-                int k = row % data.image_size;
-                result_V[k + j * data.image_size + packing_num * data.image_size * data.filter_w] = plain[row];
+            
+            if (col_packing) {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int k = row % data.image_size;
+                    result_V[k + j * data.image_size + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
+            }
+            else {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int k = row % data.image_size;
+                    k = k + j / data.filter_w * data.image_size;
+                    j = j % data.filter_w;
+                    result_V[k * data.filter_w + j + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
             }
         }
     }
@@ -914,13 +941,14 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         // print_ct(enc_result[0], data.slot_count);
 
         // auto HE_result = bert_efficient_postprocess(enc_result, data);
-        auto HE_result = bert_cross_packing_postprocess(enc_result, data);
-        auto V_result = bert_postprocess_V(enc_result, data);
+        auto HE_result = bert_cross_packing_postprocess(enc_result, data, true);
+        auto V_result = bert_postprocess_V(enc_result, data, true);
 
         // HACK: verify
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 128; j++)
-                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        cout << "col packing" << endl;
+        for (int i = 0; i < 1; i++) {
+            for (int j = 0; j < 64; j++)
+                cout << ((int64_t) V_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }
 
@@ -1011,6 +1039,8 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
             bias_packing[packing_index] = bias;
         }
 
+        print_pt(bias_packing[0][0], 8192);
+        
         PRG128 prg;
         uint64_t *secret_share = new uint64_t[input_dim*output_dim];
         prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);

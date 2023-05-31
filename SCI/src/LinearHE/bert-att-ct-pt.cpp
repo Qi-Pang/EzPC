@@ -343,19 +343,30 @@ void BEAttCtPt::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
 }
 
 
-uint64_t* BEAttCtPt::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+uint64_t* BEAttCtPt::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing) {
     uint64_t *result = new uint64_t[data.image_size * data.filter_w];
     for (int i = 0; i < data.image_size * data.filter_w / data.slot_count; i++) {
-        vector<int64_t> plain(data.slot_count, 0ULL);
+        vector<uint64_t> plain(data.slot_count, 0ULL);
         Plaintext pt;
         decryptor->decrypt(cts[i], pt);
         encoder->decode(pt, plain);
-
-        #pragma omp parallel for
-        for (int row = 0; row < data.slot_count; row++) {
-            int j = row / data.image_size + i * data.slot_count / data.image_size;
-            int k = row % data.image_size;
-            result[k + j * data.image_size] = plain[row];
+        if (col_packing) {
+            #pragma omp parallel for
+            for (int row = 0; row < data.slot_count; row++) {
+                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                int k = row % data.image_size;
+                result[k + j * data.image_size] = plain[row];
+            }
+        }
+        else {
+            #pragma omp parallel for
+            for (int row = 0; row < data.slot_count; row++) {
+                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                int k = row % data.image_size;
+                k = k + j / data.filter_w * data.image_size;
+                j = j % data.filter_w;
+                result[k * data.filter_w + j] = plain[row];
+            }
         }
     }
     return result;
@@ -418,6 +429,11 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
         for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
                 vec[j*input_dim + i] = neg_mod((int64_t)A[i][j], (int64_t)prime_mod);
+        
+        // vector<uint64_t> vec(common_dim * input_dim);
+        // for (int j = 0; j < common_dim; j++)
+        //     for (int i = 0; i < input_dim; i++)
+        //         vec[j + i * common_dim] = neg_mod((int64_t)A[i][j], (int64_t)prime_mod);
 
         auto cts = bert_preprocess_vec(vec, data);
 
@@ -436,14 +452,25 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
         print_noise_budget_vec(enc_result);
         // print_ct(enc_result[0], data.slot_count);
 
-        auto HE_result = bert_efficient_postprocess(enc_result, data);
+        auto HE_result = bert_efficient_postprocess(enc_result, data, true);
 
+        cout << "col packing" << endl;
         // HACK
         for (int i = 64; i < 65; i++) {
             for (int j = 0; j < data.filter_w; j++)
                 cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }
+
+        HE_result = bert_efficient_postprocess(enc_result, data, false);
+        
+        cout << "row packing" << endl;
+        for (int i = 64; i < 65; i++) {
+            for (int j = 0; j < data.filter_w; j++)
+                cout << ((int64_t) HE_result[i * data.filter_w + j] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            cout << endl;
+        }
+
         
         // for (int i = 0; i < num_rows; i++) {
         //   C[i][0] = HE_result[i];
