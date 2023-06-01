@@ -166,8 +166,12 @@ void MatMul(BEFCField &befc, int32_t input_dim, int32_t common_dim, int32_t outp
         input_Bias3.push_back(Bias3);
     }
     A = read_data("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/inputs_0.txt");
-    auto temp_w1 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.weight.txt");
-    auto temp_w2 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.key.weight.txt");
+    // auto temp_w1 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.weight.txt");
+    // auto temp_w2 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.key.weight.txt");
+
+    auto temp_w1 = read_qkv_weights("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.attention.self.query.weight.txt");
+    auto temp_w2 = read_qkv_weights("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.attention.self.key.weight.txt");
+    
     auto temp_w3 = read_qkv_weights("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.value.weight.txt");
     auto temp_b1 = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.query.bias.txt");
     auto temp_b2 = read_qkv_bias("/home/qipang/mnt/d2/secure-bert/robert/sparse/sst-2/weights_txt/bert.encoder.layer.0.attention.self.key.bias.txt");

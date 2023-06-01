@@ -82,17 +82,26 @@ vector<Ciphertext> BEAttCtPt::bert_preprocess_vec(vector<uint64_t> &input, const
 
 vector<Plaintext> BEAttCtPt::bert_cross_packing_bias(const uint64_t *matrix, const FCMetadata &data) {
     vector<Plaintext> cross_bias_packing(data.image_size * data.filter_w / data.slot_count);
-    int matrix_pointer = 0;
+    int matrix_pointer1 = 0;
+    int matrix_pointer2 = data.filter_w / 2;
     for (int packing_num = 0; packing_num < data.image_size * data.filter_w / data.slot_count; packing_num++) {
         vector<uint64_t> temp(data.slot_count, 0ULL);
         int right_flag = 0;
         int row = 0;
         while (row < data.slot_count) {
-            for (int i = 0; i < data.image_size; i++) {
-                temp[row + i] = matrix[matrix_pointer];
+            if (row < data.slot_count / 2) {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix[matrix_pointer1];
+                }
+                matrix_pointer1++;
+            }
+            else {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix[matrix_pointer2];
+                }
+                matrix_pointer2++;
             }
             row += data.image_size;
-            matrix_pointer++;
         }
         Plaintext pt;
         encoder->encode(temp, pt);
@@ -153,6 +162,10 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEAttCtPt::bert_cross
                         if (temp2.size() == data.slot_count) {
                             Plaintext pt;
                             encoder->encode(temp2, pt);
+                            // HACK: check the sparsity
+                            // for (int temp2_ind = 0; temp2_ind < data.slot_count; temp2_ind++)
+                            //     cout << temp2[temp2_ind] << " ";
+                            // cout << endl << endl;
                             temp_matrix_diag[matrix_diag_index] = pt;
                             matrix_diag_index++;
                             temp2.clear();
@@ -353,18 +366,25 @@ uint64_t* BEAttCtPt::bert_efficient_postprocess(vector<Ciphertext> &cts, const F
         if (col_packing) {
             #pragma omp parallel for
             for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                int j = row / data.image_size;
                 int k = row % data.image_size;
-                result[k + j * data.image_size] = plain[row];
+                if (row >= data.slot_count / 2) {
+                    j -= data.slot_count / data.image_size / 2;
+                    j += data.filter_w / 2;
+                }
+                result[k + j * data.image_size + i * data.slot_count / 2] = plain[row];
             }
         }
         else {
             #pragma omp parallel for
             for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                int j = row / data.image_size;
                 int k = row % data.image_size;
-                k = k + j / data.filter_w * data.image_size;
-                j = j % data.filter_w;
+                if (row >= data.slot_count / 2) {
+                    j -= data.slot_count / data.image_size / 2;
+                    j += data.filter_w / 2;
+                }
+                j += i * data.slot_count / data.image_size / 2;
                 result[k * data.filter_w + j] = plain[row];
             }
         }
@@ -452,24 +472,31 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
         print_noise_budget_vec(enc_result);
         // print_ct(enc_result[0], data.slot_count);
 
-        auto HE_result = bert_efficient_postprocess(enc_result, data, true);
+        auto HE_result = bert_efficient_postprocess(enc_result, data, false);
 
-        cout << "col packing" << endl;
         // HACK
-        for (int i = 64; i < 65; i++) {
-            for (int j = 0; j < data.filter_w; j++)
-                cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        for (int i = 0; i < 1; i++) {
+            for (int j = 0; j < 768; j++)
+                cout << ((int64_t) HE_result[j] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }
 
-        HE_result = bert_efficient_postprocess(enc_result, data, false);
+        // cout << "col packing" << endl;
+        // HACK
+        // for (int i = 0; i < 1; i++) {
+        //     for (int j = 0; j < 768; j++)
+        //         cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        //     cout << endl;
+        // }
+
+        // HE_result = bert_efficient_postprocess(enc_result, data, false);
         
-        cout << "row packing" << endl;
-        for (int i = 64; i < 65; i++) {
-            for (int j = 0; j < data.filter_w; j++)
-                cout << ((int64_t) HE_result[i * data.filter_w + j] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-            cout << endl;
-        }
+        // cout << "row packing" << endl;
+        // for (int i = 64; i < 65; i++) {
+        //     for (int j = 0; j < data.filter_w; j++)
+        //         cout << ((int64_t) HE_result[i * data.filter_w + j] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        //     cout << endl;
+        // }
 
         
         // for (int i = 0; i < num_rows; i++) {

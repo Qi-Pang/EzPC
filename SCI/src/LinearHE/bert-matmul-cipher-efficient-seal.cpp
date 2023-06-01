@@ -327,6 +327,12 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross
                         if (temp2.size() == data.slot_count) {
                             Plaintext pt;
                             encoder->encode(temp2, pt);
+                            // HACK: verify sparsity
+                            cout << "packing" << endl;
+                            for (int temp2_ind = 0; temp2_ind < data.slot_count / data.image_size; temp2_ind++) {
+                                cout << temp2[temp2_ind * data.image_size] << " ";
+                            }
+                            cout << endl;
                             temp_matrix_diag[matrix_diag_index] = pt;
                             matrix_diag_index++;
                             temp2.clear();
