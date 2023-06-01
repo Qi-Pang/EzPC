@@ -517,17 +517,26 @@ vector<Plaintext> Linear::bert_cross_packing_bias_2(
     const FCMetadata &data){
 
     vector<Plaintext> cross_bias_packing(data.image_size * data.filter_w / data.slot_count);
-    int matrix_pointer = 0;
+    int matrix_pointer1 = 0;
+    int matrix_pointer2 = data.filter_w / 2;
     for (int packing_num = 0; packing_num < data.image_size * data.filter_w / data.slot_count; packing_num++) {
         vector<uint64_t> temp(data.slot_count, 0ULL);
         int right_flag = 0;
         int row = 0;
         while (row < data.slot_count) {
-            for (int i = 0; i < data.image_size; i++) {
-                temp[row + i] = matrix[matrix_pointer];
+            if (row < data.slot_count / 2) {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix[matrix_pointer1];
+                }
+                matrix_pointer1++;
+            }
+            else {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix[matrix_pointer2];
+                }
+                matrix_pointer2++;
             }
             row += data.image_size;
-            matrix_pointer++;
         }
         Plaintext pt;
         he->encoder->encode(temp, pt);
@@ -1146,19 +1155,34 @@ void Linear::plain_col_packing_postprocess(
         if (col_packing) {
             #pragma omp parallel for
             for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                // int j = row / data.image_size + i * data.slot_count / data.image_size;
+                // int k = row % data.image_size;
+                // output[k + j * data.image_size] = input[row + offset];
+                int j = row / data.image_size;
                 int k = row % data.image_size;
-                output[k + j * data.image_size] = input[row + offset];
+                if (row >= data.slot_count / 2) {
+                    j -= data.slot_count / data.image_size / 2;
+                    j += data.filter_w / 2;
+                }
+                output[k + j * data.image_size + i * data.slot_count / 2] = input[row+ offset];
             }
         }
         else {
             #pragma omp parallel for
             for (int row = 0; row < data.slot_count; row++) {
-                int j = row / data.image_size + i * data.slot_count / data.image_size;
+                // int j = row / data.image_size + i * data.slot_count / data.image_size;
+                // int k = row % data.image_size;
+                // k = k + j / data.filter_w * data.image_size;
+                // j = j % data.filter_w;
+                // output[k * data.filter_w + j] = input[row + offset];
+                int j = row / data.image_size;
                 int k = row % data.image_size;
-                k = k + j / data.filter_w * data.image_size;
-                j = j % data.filter_w;
-                output[k * data.filter_w + j] = input[row + offset];
+                if (row >= data.slot_count / 2) {
+                    j -= data.slot_count / data.image_size / 2;
+                    j += data.filter_w / 2;
+                }
+                j += i * data.slot_count / data.image_size / 2;
+                output[k * data.filter_w + j] = input[row+ offset];
             }
         }
     }

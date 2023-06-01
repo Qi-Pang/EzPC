@@ -46,7 +46,7 @@ void print_pt(HE* he, Plaintext &pt, int len) {
     he->encoder->decode(pt, dest);
     cout << "Decode first 5 rows: ";
     int non_zero_count;
-    for(int i = 0; i < 128; i++){
+    for(int i = 0; i < 16; i++){
         if(dest[i] > he->plain_mod_2) {
             cout << (int64_t)(dest[i] - he->plain_mod) << " ";
         } else{
@@ -269,15 +269,9 @@ vector<Ciphertext> Bert::ss_to_he_server(HE* he, uint64_t* input, int length){
         vector<uint64_t> tmp(slot_count);
         for(int j = 0; j < slot_count; ++j){
             tmp[j] = neg_mod((int64_t)input[i*slot_count + j], (int64_t)plain_mod);
-            // if(j < 5 && i ==0){
-            //     tmp[j] = neg_mod((int64_t)-j, (int64_t)plain_mod);;
-            //     cout << tmp[j] << " ";
-            // }
-            // tmp[j] = neg_mod((int64_t)input[i*slot_count + j], (int64_t)plain_mod);;
         }
         Plaintext pt;
         he->encoder->encode(tmp, pt);
-        // print_pt(he,pt, 8192);
         share_server.push_back(pt);
     }
 
@@ -309,17 +303,10 @@ void Bert::ss_to_he_client(HE* he, uint64_t* input, int length){
     for(int i = 0; i < dim; i++){
         vector<uint64_t> tmp(slot_count);
         for(int j = 0; j < slot_count; ++j){
-            // tmp[j] = input[i*slot_count + j] % plain_mod;
              tmp[j] = neg_mod((int64_t)input[i*slot_count + j], (int64_t)plain_mod);
-            // if(j < 5 && i ==0){
-            //     tmp[j] = neg_mod((int64_t)j, (int64_t)plain_mod);;
-            //     cout << tmp[j] << " ";
-            // }
-            // tmp[j] = neg_mod((int64_t)input[i*slot_count + j], (int64_t)plain_mod);
         }
         Plaintext pt;
         he->encoder->encode(tmp, pt);
-        // print_pt(he,pt, 8192);
         Ciphertext ct; 
         he->encryptor->encrypt(pt, ct);
         cts.push_back(ct);
@@ -396,149 +383,156 @@ void Bert::run_server() {
     uint64_t h1_cache[INPUT_DIM*COMMON_DIM] = {0};
     uint64_t h4_cache[INPUT_DIM*COMMON_DIM] = {0};
 
-    // recv_encrypted_vector(lin.he_8192->context, io, h1);
-    // cout << "> Receive input cts from client " << endl;
+    recv_encrypted_vector(lin.he_8192->context, io, h1);
+    cout << "> Receive input cts from client " << endl;
 
     cout << "> --- Entering Attention Layers ---" << endl;
     for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
-        // cout << "-> Layer - " << layer_id << ": Linear #1 " << endl;
+        cout << "-> Layer - " << layer_id << ": Linear #1 " << endl;
 
-        // // -------------------- Linear #1 -------------------- //
-        // // q_k_v include the result of QxK^T and V
-        // vector<Ciphertext> q_k_v = lin.linear_1(
-        //     lin.he_8192,
-        //     h1,
-        //     w_q[layer_id],
-        //     w_k[layer_id],
-        //     w_v[layer_id],
-        //     b_q[layer_id],
-        //     b_k[layer_id],
-        //     b_v[layer_id],
-        //     data_lin1
-        // );
+        // -------------------- Linear #1 -------------------- //
+        // q_k_v include the result of QxK^T and V
+        vector<Ciphertext> q_k_v = lin.linear_1(
+            lin.he_8192,
+            h1,
+            w_q[layer_id],
+            w_k[layer_id],
+            w_v[layer_id],
+            b_q[layer_id],
+            b_k[layer_id],
+            b_v[layer_id],
+            data_lin1
+        );
 
-        // cout << "-> Layer - " << layer_id << ": Linear #1 done " << endl;
+        cout << "-> Layer - " << layer_id << ": Linear #1 done " << endl;
 
-        // // To Secret Share and Post Processing
+        // To Secret Share and Post Processing
 
-        // int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        // int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
-        // int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        // int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
+        int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
+        int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
+        int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
+        int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
         
-        // int qk_v_size = qk_size + v_size;
+        int qk_v_size = qk_size + v_size;
 
-        // assert( qk_v_size == q_k_v.size()*(lin.he_8192->poly_modulus_degree));
+        assert( qk_v_size == q_k_v.size()*(lin.he_8192->poly_modulus_degree));
 
-        // uint64_t* qk_v_cross = new uint64_t[qk_v_size];
-        // uint64_t* v_matrix_row = new uint64_t[v_size];
-        // uint64_t* softmax_input_row = new uint64_t[qk_size];
-        // uint64_t* softmax_output_row = new uint64_t[softmax_size];
-        // uint64_t* softmax_v_row = new uint64_t[att_size];
+        uint64_t* qk_v_cross = new uint64_t[qk_v_size];
+        uint64_t* v_matrix_row = new uint64_t[v_size];
+        uint64_t* softmax_input_row = new uint64_t[qk_size];
+        uint64_t* softmax_output_row = new uint64_t[softmax_size];
+        uint64_t* softmax_v_row = new uint64_t[att_size];
             
-        // // Secret sharing and send share to client
-        // cout << "-> Layer - " << layer_id << ": Secret sharing " << endl;
-        // he_to_ss_server(lin.he_8192, q_k_v, qk_v_cross);
+        // Secret sharing and send share to client
+        cout << "-> Layer - " << layer_id << ": Secret sharing " << endl;
+        he_to_ss_server(lin.he_8192, q_k_v, qk_v_cross);
         
-        // cout << "-> Layer - " << layer_id 
-        //     << ": Softmax preprocessing..." << endl;
+        cout << "-> Layer - " << layer_id 
+            << ": Softmax preprocessing..." << endl;
 
-        // // mod p
-        // nl.gt_p_sub(
-        //     NL_NTHREADS,
-        //     qk_v_cross,
-        //     lin.he_8192->plain_mod,
-        //     qk_v_cross,
-        //     qk_v_size,
-        //     NL_ELL,
-        //     NL_SCALE
-        // );
+        // mod p
+        nl.gt_p_sub(
+            NL_NTHREADS,
+            qk_v_cross,
+            lin.he_8192->plain_mod,
+            qk_v_cross,
+            qk_v_size,
+            NL_ELL,
+            NL_SCALE
+        );
 
-        // lin.plain_cross_packing_postprocess(
-        //     qk_v_cross, 
-        //     softmax_input_row,
-        //     // we need row packing
-        //     false,
-        //     data_lin1);
+        lin.plain_cross_packing_postprocess(
+            qk_v_cross, 
+            softmax_input_row,
+            // we need row packing
+            false,
+            data_lin1);
         
-        // lin.plain_cross_packing_postprocess_v(
-        //     &qk_v_cross[qk_size], 
-        //     v_matrix_row,
-        //     false,
-        //     data_lin1);
+        lin.plain_cross_packing_postprocess_v(
+            &qk_v_cross[qk_size], 
+            v_matrix_row,
+            false,
+            data_lin1);
 
 
-        // // -------------------- Softmax -------------------- //
+        // -------------------- Softmax -------------------- //
 
-        // cout << "-> Layer - " << layer_id 
-        //     << ": Softmax and multiply V..." << endl;
-        // // To row packing
+        cout << "-> Layer - " << layer_id 
+            << ": Softmax and multiply V..." << endl;
+        // To row packing
 
-        // // Softmax
-        // nl.softmax(
-        //     NL_NTHREADS,
-        //     softmax_input_row,
-        //     softmax_output_row,
-        //     12*INPUT_DIM,
-        //     INPUT_DIM,
-        //     NL_ELL,
-        //     NL_SCALE);
+        // Softmax
+        nl.softmax(
+            NL_NTHREADS,
+            softmax_input_row,
+            softmax_output_row,
+            12*INPUT_DIM,
+            INPUT_DIM,
+            NL_ELL,
+            NL_SCALE);
 
 
-        // nl.n_matrix_mul(
-        //     NL_NTHREADS,
-        //     softmax_output_row,
-        //     v_matrix_row,
-        //     softmax_v_row,
-        //     PACKING_NUM,
-        //     INPUT_DIM,
-        //     INPUT_DIM,
-        //     OUTPUT_DIM,
-        //     NL_ELL,
-        //     NL_SCALE
-        // ); 
+        nl.n_matrix_mul_iron(
+            NL_NTHREADS,
+            softmax_output_row,
+            v_matrix_row,
+            softmax_v_row,
+            PACKING_NUM,
+            INPUT_DIM,
+            INPUT_DIM,
+            OUTPUT_DIM,
+            NL_ELL,
+            NL_SCALE
+        ); 
 
-        // // To col packing
+        // To col packing
 
-        // cout << "-> Layer - " << layer_id 
-        //     << ": Softmax postprocessing..." << endl;
+        cout << "-> Layer - " << layer_id 
+            << ": Softmax postprocessing..." << endl;
         
-        // uint64_t* h2_concate = new uint64_t[att_size];
+        uint64_t* h2_concate = new uint64_t[att_size];
 
-        // lin.concat(softmax_v_row, h2_concate, 12, 128, 64);  
+        lin.concat(softmax_v_row, h2_concate, 12, 128, 64);  
 
-        // // FixArray h2_concate_public = 
-        // //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
+        // FixArray h2_concate_public = 
+        //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
 
-        // uint64_t* h2_col = new uint64_t[att_size];
-        // // Packing before send back to server
-        // lin.plain_col_packing_preprocess(
-        //     h2_concate,
-        //     h2_col,
-        //     lin.he_8192->plain_mod,
-        //     INPUT_DIM,
-        //     COMMON_DIM
-        // );
+        uint64_t* h2_col = new uint64_t[att_size];
+        // Packing before send back to server
+        lin.plain_col_packing_preprocess(
+            h2_concate,
+            h2_col,
+            lin.he_8192->plain_mod,
+            INPUT_DIM,
+            COMMON_DIM
+        );
 
 
-        // vector<Ciphertext> h2 = ss_to_he_server(
-        //     lin.he_8192, 
-        //     h2_col,
-        //     att_size);
+        vector<Ciphertext> h2 = ss_to_he_server(
+            lin.he_8192, 
+            h2_col,
+            att_size);
 
-        // // Clean up
-        // delete [] qk_v_cross;
-        // delete [] v_matrix_row;
-        // delete [] softmax_input_row;
-        // delete [] softmax_output_row;
-        // delete [] softmax_v_row;
-        // delete [] h2_col;
+        send_encrypted_vector(io, h2);
+        continue;
+
+        // Clean up
+        delete [] qk_v_cross;
+        delete [] v_matrix_row;
+        delete [] softmax_input_row;
+        delete [] softmax_output_row;
+        delete [] softmax_v_row;
+        delete [] h2_col;
+        
+        // Verifying h2 
+        // send_encrypted_vector(io, h2);
+        // continue;
 
         // -------------------- Linear #2 -------------------- //
-        vector<Ciphertext> h2(COMMON_DIM * INPUT_DIM / 8192);
+        // vector<Ciphertext> h2(COMMON_DIM * INPUT_DIM / 8192);
 
-        recv_encrypted_vector(lin.he_8192->context, io, h2);
-        cout << "> Receive input cts from client " << endl;
+        // recv_encrypted_vector(lin.he_8192->context, io, h2);
+        // cout << "> Receive input cts from client " << endl;
 
         cout << "-> Layer - " << layer_id << ": Linear #2 " << endl;
 
@@ -588,6 +582,7 @@ void Bert::run_server() {
             NL_SCALE
         );
 
+
         // -------------------- Layer Norm -------------------- //
 
         // H3 = Linear#2 + H1
@@ -606,10 +601,6 @@ void Bert::run_server() {
             NL_ELL,
             NL_SCALE
         );
-
-        FixArray ln_public = 
-            nl.to_public(ln_output_row, 128*768, 64, NL_SCALE); 
-
 
         // update H4
         memcpy(h4_cache, ln_output_row, ln_size*sizeof(uint64_t));
@@ -667,7 +658,7 @@ void Bert::run_server() {
         lin.plain_col_packing_postprocess(
             gelu_input_cross,
             gelu_input_col,
-            false,
+            true,
             data_lin3
         );
 
@@ -682,8 +673,6 @@ void Bert::run_server() {
             NL_SCALE
         );
 
-        nl.print_ss(gelu_input_col, 768, NL_ELL, NL_SCALE);
-        continue;
 
         // ---------------------- GELU ---------------------- //
 
@@ -699,6 +688,9 @@ void Bert::run_server() {
             NL_SCALE
         );
 
+        nl.print_ss(gelu_output_col, 16, NL_ELL, NL_SCALE);
+       
+
         cout << "-> Layer - " << layer_id 
             << ": GELU No need postprocessing..." << endl;
 
@@ -707,6 +699,9 @@ void Bert::run_server() {
             lin.he_8192, 
             gelu_output_col,
             gelu_input_size);
+        send_encrypted_vector(io, h6);
+        continue;
+
 
         delete[] gelu_input_cross;
         delete[] gelu_input_col;
@@ -724,6 +719,8 @@ void Bert::run_server() {
             b_i_2[layer_id],
             data_lin4
         );
+
+        
 
         cout << "-> Layer - " << layer_id << ": Linear Inter #2 done " << endl;
 
@@ -751,6 +748,20 @@ void Bert::run_server() {
             false,
             data_lin4
         );
+
+        // mod p
+        nl.gt_p_sub(
+            NL_NTHREADS,
+            ln_2_input_row,
+            lin.he_8192->plain_mod,
+            ln_2_input_row,
+            ln_2_input_size,
+            NL_ELL,
+            NL_SCALE
+        );
+
+        nl.print_ss(ln_2_input_row, 16, NL_ELL, NL_SCALE);
+        continue;
 
         // H8 = Linear#4 + H4
         for(int i = 0; i < ln_2_input_size; i++){
@@ -808,16 +819,15 @@ void Bert::run_client() {
     vector<uint64_t> h1_vec(COMMON_DIM * INPUT_DIM);
     for (int j = 0; j < COMMON_DIM; j++){
         for (int i = 0; i < INPUT_DIM; i++){
-            // h1_vec[j*INPUT_DIM + i] = h1[i][j];
             h1_vec[j*INPUT_DIM + i] = neg_mod((int64_t)h1[i][j], (int64_t)lin.he_8192->plain_mod);
             h1_cache[i*COMMON_DIM + j] = h1[i][j];
         }
     }
             
 
-    // vector<Ciphertext> h1_cts = 
-    //     lin.bert_efficient_preprocess_vec(lin.he_8192, h1_vec, data_lin1);
-    // send_encrypted_vector(io, h1_cts);
+    vector<Ciphertext> h1_cts = 
+        lin.bert_efficient_preprocess_vec(lin.he_8192, h1_vec, data_lin1);
+    send_encrypted_vector(io, h1_cts);
 
     // vector<Ciphertext> tmp(1);
     // recv_encrypted_vector(lin.he_8192->context, io, tmp);
@@ -828,128 +838,147 @@ void Bert::run_client() {
     cout << "> --- Entering Attention Layers ---" << endl;
     for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
 
-        // // -------------- Waiting Linear#1 -------------- //
-        // int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        // int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
-        // int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        // int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
+        // -------------- Waiting Linear#1 -------------- //
+        int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
+        int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
+        int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
+        int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
         
-        // int qk_v_size = qk_size + v_size;
-        // int softmax_cts_len = qk_v_size / lin.he_8192->poly_modulus_degree;
+        int qk_v_size = qk_size + v_size;
+        int softmax_cts_len = qk_v_size / lin.he_8192->poly_modulus_degree;
 
-        // uint64_t* qk_v_cross = new uint64_t[qk_v_size];
-        // uint64_t* v_matrix_row = new uint64_t[v_size];
-        // uint64_t* softmax_input_row = new uint64_t[qk_size];
-        // uint64_t* softmax_output_row = new uint64_t[softmax_size];
-        // uint64_t* softmax_v_row = new uint64_t[att_size];
+        uint64_t* qk_v_cross = new uint64_t[qk_v_size];
+        uint64_t* v_matrix_row = new uint64_t[v_size];
+        uint64_t* softmax_input_row = new uint64_t[qk_size];
+        uint64_t* softmax_output_row = new uint64_t[softmax_size];
+        uint64_t* softmax_v_row = new uint64_t[att_size];
         
-        // // Secret sharing and get share from server
-        // cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        // he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, data_lin1);
+        // Secret sharing and get share from server
+        cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
+        he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, data_lin1);
 
-        // cout << "-> Layer - " << layer_id 
-        //     << ": Softmax preprocessing..." << endl;
+        cout << "-> Layer - " << layer_id 
+            << ": Softmax preprocessing..." << endl;
 
-        // // mod p
-        // nl.gt_p_sub(
-        //     NL_NTHREADS,
-        //     qk_v_cross,
-        //     lin.he_8192->plain_mod,
-        //     qk_v_cross,
-        //     qk_v_size,
-        //     NL_ELL,
-        //     NL_SCALE
-        // );
+        // mod p
+        nl.gt_p_sub(
+            NL_NTHREADS,
+            qk_v_cross,
+            lin.he_8192->plain_mod,
+            qk_v_cross,
+            qk_v_size,
+            NL_ELL,
+            NL_SCALE
+        );
 
-        // lin.plain_cross_packing_postprocess(
-        //     qk_v_cross, 
-        //     softmax_input_row,
-        //     // we need row packing
-        //     false,
-        //     data_lin1);
+        lin.plain_cross_packing_postprocess(
+            qk_v_cross, 
+            softmax_input_row,
+            // we need row packing
+            false,
+            data_lin1);
         
-        // lin.plain_cross_packing_postprocess_v(
-        //     &qk_v_cross[qk_size], 
-        //     v_matrix_row,
-        //     false,
-        //     data_lin1);
+        lin.plain_cross_packing_postprocess_v(
+            &qk_v_cross[qk_size], 
+            v_matrix_row,
+            false,
+            data_lin1);
         
 
-        // // -------------------- Softmax -------------------- //
+        // -------------------- Softmax -------------------- //
 
-        // cout << "-> Layer - " << layer_id 
-        //     << ": Softmax and multiply V..." << endl;
-        // // Softmax
-        // nl.softmax(
-        //     NL_NTHREADS,
-        //     softmax_input_row,
-        //     softmax_output_row,
-        //     12*INPUT_DIM,
-        //     INPUT_DIM,
-        //     NL_ELL,
-        //     NL_SCALE);
+        cout << "-> Layer - " << layer_id 
+            << ": Softmax and multiply V..." << endl;
+        // Softmax
+        nl.softmax(
+            NL_NTHREADS,
+            softmax_input_row,
+            softmax_output_row,
+            12*INPUT_DIM,
+            INPUT_DIM,
+            NL_ELL,
+            NL_SCALE);
+
+        auto t_ss_mul = high_resolution_clock::now();
+
+        nl.n_matrix_mul_iron(
+            NL_NTHREADS,
+            softmax_output_row,
+            v_matrix_row,
+            softmax_v_row,
+            PACKING_NUM,
+            INPUT_DIM,
+            INPUT_DIM,
+            OUTPUT_DIM,
+            NL_ELL,
+            NL_SCALE
+        );
+
+        auto t_ss_mul_done = high_resolution_clock::now();
+        auto interval = (t_ss_mul_done - t_ss_mul)/1e+9;
+        cout << "-> Layer - " << layer_id 
+            << ": Softmax times V takes: " 
+            << interval.count() << "sec" << endl;
 
 
-        // nl.n_matrix_mul(
-        //     NL_NTHREADS,
-        //     softmax_output_row,
-        //     v_matrix_row,
-        //     softmax_v_row,
-        //     PACKING_NUM,
-        //     INPUT_DIM,
-        //     INPUT_DIM,
-        //     OUTPUT_DIM,
-        //     NL_ELL,
-        //     NL_SCALE
-        // );
+        cout << "-> Layer - " << layer_id 
+            << ": Softmax postprocessing..." << endl;
 
-        // cout << "-> Layer - " << layer_id 
-        //     << ": Softmax postprocessing..." << endl;
+        uint64_t* h2_concate = new uint64_t[att_size];
 
-        // uint64_t* h2_concate = new uint64_t[att_size];
+        lin.concat(softmax_v_row, h2_concate, 12, 128, 64); 
 
-        // lin.concat(softmax_v_row, h2_concate, 12, 128, 64); 
+        // FixArray h2_concate_public = 
+        //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
 
-        // // FixArray h2_concate_public = 
-        // //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
+        // save_to_file(h2_concate_public.data, 128, 768, "./weights_txt/softmax_v.txt");
 
-        // // save_to_file(h2_concate_public.data, 128, 768, "./weights_txt/softmax_v.txt");
+        uint64_t* h2_col = new uint64_t[att_size];
+        // Packing before send back to server
+        lin.plain_col_packing_preprocess(
+            h2_concate,
+            h2_col,
+            lin.he_8192->plain_mod,
+            INPUT_DIM,
+            COMMON_DIM
+        );
 
-        // uint64_t* h2_col = new uint64_t[att_size];
-        // // Packing before send back to server
-        // lin.plain_col_packing_preprocess(
-        //     h2_concate,
-        //     h2_col,
-        //     lin.he_8192->plain_mod,
-        //     INPUT_DIM,
-        //     COMMON_DIM
-        // );
 
-        // ss_to_he_client(lin.he_8192, h2_col, att_size);
+        ss_to_he_client(lin.he_8192, h2_col, att_size);
 
-        // // Clean up
-        // delete [] qk_v_cross;
-        // delete [] v_matrix_row;
-        // delete [] softmax_input_row;
-        // delete [] softmax_output_row;
-        // delete [] softmax_v_row;
-        // delete [] h2_col;
+        vector<Ciphertext> tmp2(1);
+        recv_encrypted_vector(lin.he_8192->context, io, tmp2);
+        print_ct(lin.he_8192, tmp2[0], 8192);
+        continue;
 
+        // Clean up
+        delete [] qk_v_cross;
+        delete [] v_matrix_row;
+        delete [] softmax_input_row;
+        delete [] softmax_output_row;
+        delete [] softmax_v_row;
+        delete [] h2_col;
+
+        // Verifying h2 
+        // vector<Ciphertext> tmp(1);
+        // recv_encrypted_vector(lin.he_8192->context, io, tmp);
+        // print_ct(lin.he_8192, tmp[0], 8192);
+        // continue;
         // -------------- Waiting Linear#2 -------------- //
 
-        vector<vector<uint64_t>> h2 = read_data("./weights_txt/softmax_v.txt");
+        // vector<vector<uint64_t>> h2 = read_data("./weights_txt/softmax_v.txt");
 
-        // Column Packing
-        vector<uint64_t> h2_vec(COMMON_DIM * INPUT_DIM);
-        for (int j = 0; j < COMMON_DIM; j++){
-            for (int i = 0; i < INPUT_DIM; i++){
-                h2_vec[j*INPUT_DIM + i] = neg_mod((int64_t)h2[i][j], (int64_t)lin.he_8192->plain_mod);
-            }
-        }
+        // // Column Packing
+        // vector<uint64_t> h2_vec(COMMON_DIM * INPUT_DIM);
+        // for (int j = 0; j < COMMON_DIM; j++){
+        //     for (int i = 0; i < INPUT_DIM; i++){
+        //         h2_vec[j*INPUT_DIM + i] = neg_mod((int64_t)h2[i][j], (int64_t)lin.he_8192->plain_mod);
+        //     }
+        // }
 
-        vector<Ciphertext> h2_cts = 
-        lin.bert_efficient_preprocess_vec(lin.he_8192, h2_vec, data_lin2);
-        send_encrypted_vector(io, h2_cts);
+        // vector<Ciphertext> h2_cts = 
+        // lin.bert_efficient_preprocess_vec(lin.he_8192, h2_vec, data_lin2);
+        // send_encrypted_vector(io, h2_cts);
 
         int ln_size = INPUT_DIM*COMMON_DIM;
         int ln_cts_size = ln_size / lin.he_8192->poly_modulus_degree;
@@ -983,7 +1012,6 @@ void Bert::run_client() {
             NL_ELL,
             NL_SCALE
         );
-        
 
         // -------------------- Layer Norm -------------------- //
 
@@ -992,7 +1020,6 @@ void Bert::run_client() {
         for(int i = 0; i < ln_size; i++){
             ln_input_row[i] += h1_cache[i];
         }
-
 
         cout << "-> Layer - " << layer_id 
             << ": Layer Norm..." << endl;
@@ -1005,11 +1032,6 @@ void Bert::run_client() {
             NL_ELL,
             NL_SCALE
         );
-
-        FixArray ln_public = 
-            nl.to_public(ln_output_row, 128*768, 64, NL_SCALE); 
-        save_to_file(ln_public.data, 128, 768, "./weights_txt/ln_1.txt");
-
 
         // update H4
         memcpy(h4_cache, ln_output_row, ln_size*sizeof(uint64_t));
@@ -1053,7 +1075,7 @@ void Bert::run_client() {
         lin.plain_col_packing_postprocess(
             gelu_input_cross,
             gelu_input_col,
-            false,
+            true,
             data_lin3
         );
 
@@ -1068,8 +1090,6 @@ void Bert::run_client() {
             NL_SCALE
         );
 
-        nl.print_ss(gelu_input_col, 768, NL_ELL, NL_SCALE);
-        continue;
 
         // ---------------------- GELU ---------------------- //
 
@@ -1085,6 +1105,9 @@ void Bert::run_client() {
             NL_SCALE
         );
 
+        nl.print_ss(gelu_output_col, 16, NL_ELL, NL_SCALE);
+        
+
         cout << "-> Layer - " << layer_id 
             << ": GELU No need postprocessing..." << endl;
 
@@ -1092,6 +1115,11 @@ void Bert::run_client() {
             lin.he_8192, 
             gelu_output_col, 
             gelu_input_size);
+
+        vector<Ciphertext> tmp(1);
+        recv_encrypted_vector(lin.he_8192->context, io, tmp);
+        print_ct(lin.he_8192, tmp[0], 8192);
+        continue;
 
         delete[] gelu_input_cross;
         delete[] gelu_input_col;
@@ -1123,6 +1151,20 @@ void Bert::run_client() {
             false,
             data_lin4
         );
+
+        // mod p
+        nl.gt_p_sub(
+            NL_NTHREADS,
+            ln_2_input_row,
+            lin.he_8192->plain_mod,
+            ln_2_input_row,
+            ln_2_input_size,
+            NL_ELL,
+            NL_SCALE
+        );
+
+        nl.print_ss(ln_2_input_row, 16, NL_ELL, NL_SCALE);
+        continue;
 
         // -------------------- Layer Norm -------------------- //
 

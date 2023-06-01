@@ -386,7 +386,9 @@ void mul_thread(int tid, int party, uint64_t *x, uint64_t* z, uint64_t *y, int n
   BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
   FixArray input_x = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray input_y = fpmath->fix->input(this_party, num_ops, z, true, ell, s);
-  FixArray output = fpmath->fix->mul(input_x, input_y, ell + s);
+  BoolArray msb_x = fpmath->fix->MSB(input_x);
+  BoolArray msb_y = fpmath->fix->MSB(input_y);
+  FixArray output = fpmath->fix->mul(input_x, input_y, ell + s, msb_x.data, msb_y.data);
   output = fpmath->fix->truncate_reduce(output, s);
   output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
@@ -492,6 +494,76 @@ void  NonLinear::n_matrix_mul(
     delete[] input_1_dup;
     delete[] input_2_dup;
     delete[] output_tmp;
+}
+
+void matmul_thread(int tid, int party, uint64_t *a, uint64_t* b, uint64_t *c, int dim1, int dim2, int dim3, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  fpmath->fix->mult->matrix_multiplication(
+      dim1,
+      dim2,
+      dim3,
+      a,
+      b,
+      c,
+      ell,
+      ell,
+      ell + s,
+      true,
+      true,
+      true
+    );
+    BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
+    FixArray ret = fpmath->fix->input(party, dim1*dim3, c, true, ell+s, s);
+    ret = fpmath->fix->truncate_reduce(ret, s, all_0.data);
+    ret = fpmath->fix->extend(ret, 64);
+    memcpy(c, ret.data, (dim1*dim3)*sizeof(uint64_t));
+}
+
+void  NonLinear::n_matrix_mul_iron(
+  int nthreads, 
+  uint64_t* input_1,
+  uint64_t* input_2, 
+  uint64_t* output, 
+  int n, 
+  int dim1, 
+  int dim2, 
+  int dim3, 
+  int ell, 
+  int s){
+
+  int size = n*dim1*dim2*dim3;
+  std::thread threads[n];
+
+  int chunk_size = size / n;
+    for (int i = 0; i < n; ++i) {
+        threads[i] =
+            std::thread(
+                matmul_thread, 
+                i, 
+                party, 
+                &input_1[i*dim1*dim2],
+                &input_2[i*dim2*dim3],
+                &output[i*dim1*dim3],
+                dim1,
+                dim2,
+                dim3,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < n; ++i) {
+        threads[i].join();
+    }
+
+  // FixArray ret = fpmath[0]->fix->input(party, n*dim1*dim3, output, true, ell+s, s);
+  // ret = fpmath[0]->fix->truncate_reduce(ret, s);
+  // ret = fpmath[0]->fix->extend(ret, 64);
+  // memcpy(output, ret.data, (n*dim1*dim3)*sizeof(uint64_t));
 }
 
 void NonLinear::print_ss(uint64_t* input, int length, int ell, int s){
