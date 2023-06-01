@@ -128,7 +128,10 @@ void layer_norm_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops
   }
   vector<FixArray> input_array;
   for(int i = 0; i < num_ops; i++){
-    input_array.push_back(fpmath->fix->input(this_party, array_size, &x[i*array_size], true, ell, s));
+    FixArray input = fpmath->fix->input(this_party, array_size, &x[i*array_size], true, ell, s);
+    // input = fpmath->fix->right_shift(input, 4);
+    // input = fpmath->fix->extend(input, ell);
+    input_array.push_back(input);
   }
   vector<FixArray> output_array = fpmath->layer_norm_iron(input_array);
   for(int i = 0; i < num_ops; i++){
@@ -174,6 +177,7 @@ void gelu_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int 
   }
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray output = fpmath->gelu_approx(input);
+  output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
 
@@ -382,9 +386,10 @@ void mul_thread(int tid, int party, uint64_t *x, uint64_t* z, uint64_t *y, int n
   BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
   FixArray input_x = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray input_y = fpmath->fix->input(this_party, num_ops, z, true, ell, s);
-  // FixArray output = fpmath->fix->mul(input_x, input_y, ell + s);
-  // output = fpmath->fix->truncate_reduce(output, s, all_0.data);
-  // memcpy(y, output.data, num_ops*sizeof(uint64_t));
+  FixArray output = fpmath->fix->mul(input_x, input_y, ell + s);
+  output = fpmath->fix->truncate_reduce(output, s);
+  output = fpmath->fix->extend(output, 64);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
 
 void  NonLinear::n_matrix_mul(
@@ -410,6 +415,7 @@ void  NonLinear::n_matrix_mul(
       }
     }
   }
+
   
   uint64_t* input_1_dup = new uint64_t[n*dim1*dim2*dim3];
   uint64_t* input_2_dup = new uint64_t[n*dim1*dim2*dim3];
@@ -420,6 +426,8 @@ void  NonLinear::n_matrix_mul(
       memcpy(&input_2_dup[i*dim2*dim3 + matrix_offset], &input_2_trans[matrix_offset_2], dim2*dim3*sizeof(uint64_t));
     }
   }
+
+  
 
   for(int nm = 0; nm < n; nm++){
     int matrix_offset = nm*dim1*dim2*dim3;
@@ -432,6 +440,7 @@ void  NonLinear::n_matrix_mul(
   }
 
   int size = n*dim1*dim2*dim3;
+  // int size = 128;
   uint64_t* output_tmp = new uint64_t[n*dim1*dim2*dim3];
   std::thread threads[nthreads];
 
@@ -461,6 +470,11 @@ void  NonLinear::n_matrix_mul(
         threads[i].join();
     }
 
+    // print_ss(&input_2_dup[0], 8, ell, s);
+    // print_ss(&input_1_dup[0], 8, ell, s);
+    // print_ss(&output_tmp[0], 8, ell, s);
+    // return;
+
     for(int nm = 0; nm < n; nm++){
     int matrix_offset = nm*dim1*dim2*dim3;
     int matrix_offset_2 = nm*dim1*dim3;
@@ -483,4 +497,11 @@ void  NonLinear::n_matrix_mul(
 void NonLinear::print_ss(uint64_t* input, int length, int ell, int s){
   FixArray tmp = fpmath[0]->fix->input(party, length, input, true, ell, s);
   fpmath[0]->print(tmp);
+}
+
+FixArray NonLinear::to_public(uint64_t* input, int length, int ell, int s){
+  FixArray tmp = fpmath[0]->fix->input(party, length, input, true, ell, s);
+  tmp = fpmath[0]->fix->extend(tmp, 64);
+  tmp = fpmath[0]->fix->output(PUBLIC, tmp);
+  return tmp;
 }

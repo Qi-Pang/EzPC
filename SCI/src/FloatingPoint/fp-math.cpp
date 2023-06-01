@@ -1631,6 +1631,8 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x){
   }
 
   FixArray square_sum = fix->tree_sum(square_group);
+  // square_sum = fix->mul(square_sum, dn, ell+2*s, all_0.data, all_0.data);
+  // square_sum = fix->truncate_reduce(square_sum, 2*s, all_0.data);
   FixArray sigma = sqrt(square_sum, true);
 
   FixArray sigma_flat(party, N*n, sum.signed_, ell, s);
@@ -1642,6 +1644,9 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x){
 
   FixArray x_avg_sigma = fix->mul(x_flat_avg, sigma_flat, ell+s, nullptr, all_0.data);
   x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s, all_0.data);
+
+  // Hack!
+  x_avg_sigma = fix->extend(x_avg_sigma, 64);
 
   vector<FixArray> ret(N);
   for(int i = 0; i < N; i++){

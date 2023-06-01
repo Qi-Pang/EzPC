@@ -987,11 +987,11 @@ vector<Ciphertext> Linear::bert_efficient_preprocess_vec(
 	vector<uint64_t> &input, 
 	const FCMetadata &data) {
 
-    vector<int64_t> pod_matrix(data.slot_count, 0ULL);
+    vector<uint64_t> pod_matrix(data.slot_count, 0ULL);
     vector<Ciphertext> cts;
     for (int i = 0; i < (data.image_size * data.filter_h) / data.slot_count; i++)
     {
-        pod_matrix = vector<int64_t>(input.begin() + i * data.slot_count, input.begin() + (i+1) * data.slot_count);
+        pod_matrix = vector<uint64_t>(input.begin() + i * data.slot_count, input.begin() + (i+1) * data.slot_count);
         Ciphertext ct;
         Plaintext pt;
         he->encoder->encode(pod_matrix, pt);
@@ -1117,23 +1117,23 @@ void Linear::plain_cross_packing_postprocess_v(
 void Linear::plain_col_packing_preprocess(
     uint64_t* input, 
     uint64_t * output,
-    uint64_t prime_mod,
+    uint64_t plain_mod,
     int input_dim,
     int common_dim){
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
-                output[j*input_dim + i] = neg_mod((int64_t)input[i*common_dim +j], (int64_t)prime_mod);
+                output[j*input_dim + i] = input[i*common_dim +j];
 }
 
 void Linear::plain_col_packing_preprocess_vec(
     vector<vector<uint64_t>> input, 
     uint64_t * output,
-    uint64_t prime_mod,
+    uint64_t plain_mod,
     int input_dim,
     int common_dim){
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
-                output[j*input_dim + i] = neg_mod((int64_t)input[i][j], (int64_t)prime_mod);
+                output[j*input_dim + i] = input[i][j];
 }
 
 void Linear::plain_col_packing_postprocess(
@@ -1148,7 +1148,7 @@ void Linear::plain_col_packing_postprocess(
             for (int row = 0; row < data.slot_count; row++) {
                 int j = row / data.image_size + i * data.slot_count / data.image_size;
                 int k = row % data.image_size;
-                output[k + j * data.image_size] = input[row];
+                output[k + j * data.image_size] = input[row + offset];
             }
         }
         else {
@@ -1158,25 +1158,39 @@ void Linear::plain_col_packing_postprocess(
                 int k = row % data.image_size;
                 k = k + j / data.filter_w * data.image_size;
                 j = j % data.filter_w;
-                output[k * data.filter_w + j] = input[row];
+                output[k * data.filter_w + j] = input[row + offset];
             }
         }
     }
 }
 
-vector<vector<uint64_t>> Linear::concat(
+vector<vector<uint64_t>> Linear::concat_vec(
     uint64_t* att,
+    int n,
     int dim1,
-    int dim2,
-    int dim3){
+    int dim2){
     
     vector<vector<uint64_t>> res;
-    for(int j = 0; j < dim2; j++){
+    for(int j = 0; j < dim1; j++){
         vector<uint64_t> row;
-        for(int i = 0; i < dim1; i++){
-            row.insert(row.end(), &att[i*dim2*dim3 + j*dim3], &att[i*dim2*dim3 + j*dim3 + dim3]);
+        for(int i = 0; i < n; i++){
+            row.insert(row.end(), &att[i*dim1*dim2 + j*dim2], &att[i*dim1*dim2 + j*dim2 + dim2]);
         }
         res.push_back(row);
     }
     return res;
+}
+
+void Linear::concat( 
+    uint64_t* input,
+    uint64_t* output,
+    int n,
+    int dim1,
+    int dim2){
+
+    for(int j = 0; j < dim1; j++){
+        for(int i = 0; i < n; i++){
+            memcpy(&output[j*n*dim2 + i*dim2], &input[i*dim1*dim2 + j*dim2], dim2*sizeof(uint64_t));
+        }
+    }
 }

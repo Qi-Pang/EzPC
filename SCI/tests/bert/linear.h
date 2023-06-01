@@ -97,11 +97,20 @@ public:
 
 	// concat on dim1
 	// output: dim2 x (dim1xdim3)
-	vector<vector<uint64_t>> concat(
+	vector<vector<uint64_t>> concat_vec(
 		uint64_t* att,
+		int n,
 		int dim1,
-		int dim2,
-		int dim3);
+		int dim2);
+
+	// concat on dim1
+	// output: dim2 x (dim1xdim3)
+	void concat(
+		uint64_t* input,
+		uint64_t* output,
+		int n,
+		int dim1,
+		int dim2);
 
  	vector<Plaintext> generate_cross_packing_masks(HE* he, const FCMetadata &data);
 
@@ -138,14 +147,14 @@ public:
 	void plain_col_packing_preprocess(
 		uint64_t* input, 
 		uint64_t * output,
-		uint64_t prime_mod,
+		uint64_t plain_mod,
 		int common_dim,
 		int input_dim);
 	
 	void plain_col_packing_preprocess_vec(
 		vector<vector<uint64_t>> input, 
 		uint64_t * output,
-		uint64_t prime_mod,
+		uint64_t plain_mod,
 		int common_dim,
 		int input_dim);
 	

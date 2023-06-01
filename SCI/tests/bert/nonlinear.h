@@ -45,6 +45,8 @@ public:
 
     void print_ss(uint64_t* input, int length, int ell, int s);
 
+    FixArray to_public(uint64_t* input, int length, int ell, int s);
+
     // softmax_iron(vector<FixArray> input, int nthreads);
 
     // vector<FixArray> layer_norm(vector<FixArray> input, int nthreads);
