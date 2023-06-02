@@ -10,13 +10,14 @@
 #include "bert_utils.h"
 
 #define NL_NTHREADS 12
-
 #define NL_ELL 37
 #define NL_SCALE 12
+#define ATTENTION_LAYERS 12
 
-#define ATTENTION_LAYERS 1
+#define NUM_CLASS 2
 
 #define BERT_DEBUG
+#define BERT_TIMING
 
 using namespace std;
 
@@ -47,9 +48,23 @@ public:
     void he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadata &data);
     void ss_to_he_client(HE* he, uint64_t* input, int length);
 
+    void pc_bw_share_server(
+        struct BertModel &bm,
+        uint64_t* wp,
+        uint64_t* bp,
+        uint64_t* wc,
+        uint64_t* bc
+        );
+    void pc_bw_share_client(
+        uint64_t* wp,
+        uint64_t* bp,
+        uint64_t* wc,
+        uint64_t* bc
+    );
+
     void run_server();
 
-    void run_client();
+    int run_client(string input_fname);
 	
 };
 

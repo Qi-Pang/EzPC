@@ -41,7 +41,8 @@ public:
 	FCMetadata data;
 
 	HE *he_8192;
-	HE *he_4096;
+	HE *he_8192_tiny;
+	// HE *he_4096;
 
 	// Fix linking error
 	uint64_t p_mod;

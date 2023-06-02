@@ -29,15 +29,23 @@ Linear::Linear(int party, NetIO *io) {
 		536903681
     );
 
+    this->he_8192_tiny = new HE(
+        party,
+        io,
+        8192,
+        {54, 54, 55, 55},
+		536903681
+    );
+
     this->p_mod = prime_mod;
 
-	this->he_4096 = new HE(
-		party,
-		io,
-		4096,
-		{54, 55},
-		65537
-    );
+	// this->he_4096 = new HE(
+	// 	party,
+	// 	io,
+	// 	4096,
+	// 	{54, 55},
+	// 	65537
+    // );
 }
 
 Linear::~Linear() {
@@ -460,7 +468,6 @@ vector<Plaintext> Linear::bert_cross_packing_bias(
 	const uint64_t *matrix2, 
 	const uint64_t *matrix3, 
 	const FCMetadata &data) {
-
     vector<Plaintext> cross_bias_packing(3 * data.image_size * data.filter_w / data.slot_count);
     int matrix1_pointer = 0;
     int matrix2_pointer = 0;
@@ -491,17 +498,30 @@ vector<Plaintext> Linear::bert_cross_packing_bias(
         cross_bias_packing[packing_num] = pt;
         temp.clear();
     }
-    int matrix3_pointer = 0;
+    int matrix3_pointer1 = 0;
+    int matrix3_pointer2 = data.filter_w / 2;
     for (int packing_num = 2 * data.image_size * data.filter_w / data.slot_count; packing_num < 3 * data.image_size * data.filter_w / data.slot_count; packing_num++) {
+
         vector<uint64_t> temp(data.slot_count, 0ULL);
-        int right_flag = 0;
         int row = 0;
         while (row < data.slot_count) {
-            for (int i = 0; i < data.image_size; i++) {
-                temp[row + i] = matrix3[matrix3_pointer];
+            if (row < data.slot_count / 2) {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix3[matrix3_pointer1];
+                }
+                matrix3_pointer1++;
+                if (matrix3_pointer1 % (data.filter_w / 2) == 0)
+                    matrix3_pointer1 += data.filter_w / 2;
+            }
+            else {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix3[matrix3_pointer2];
+                }
+                matrix3_pointer2++;
+                if (matrix3_pointer2 % (data.filter_w / 2) == 0)
+                    matrix3_pointer2 += data.filter_w / 2;
             }
             row += data.image_size;
-            matrix3_pointer++;
         }
         Plaintext pt;
         he->encoder->encode(temp, pt);
@@ -1096,26 +1116,33 @@ void Linear::plain_cross_packing_postprocess_v(
     bool col_packing,
     const FCMetadata &data) {
     int num_cts_per_mat_V = data.image_size * data.filter_w / data.slot_count;
+    int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
     for (int packing_num = 0; packing_num < 12; packing_num++) {
         for (int i = 0; i < num_cts_per_mat_V; i++) {
             int offset = i + packing_num * num_cts_per_mat_V;
             vector<uint64_t> plain(&input[offset* data.slot_count], &input[offset* data.slot_count + data.slot_count]);
-
-           if (col_packing) {
+            if (col_packing) {
                 #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
-                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int j = row / data.image_size;
                     int k = row % data.image_size;
-                    output[k + j * data.image_size + packing_num * data.image_size * data.filter_w] = plain[row];
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    output[k + j * data.image_size + i * data.slot_count / 2 + packing_num * data.image_size * data.filter_w] = plain[row];
                 }
             }
             else {
                 #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
-                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int j = row / data.image_size;
                     int k = row % data.image_size;
-                    k = k + j / data.filter_w * data.image_size;
-                    j = j % data.filter_w;
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    j += i * data.slot_count / data.image_size / 2;
                     output[k * data.filter_w + j + packing_num * data.image_size * data.filter_w] = plain[row];
                 }
             }

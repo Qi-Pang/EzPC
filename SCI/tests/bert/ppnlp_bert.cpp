@@ -28,13 +28,20 @@ int main(int argc, char **argv) {
     cout << "-> Port: " << port << endl;
     cout << "<<<" << endl << endl;
 
+    
+
     Bert bt(party, port, address);
 
+    auto start = high_resolution_clock::now();
     if(party == ALICE){
         bt.run_server();
     } else{
-        bt.run_client();
+        bt.run_client("./weights_txt/inputs_0.txt");
     }
+    auto end = high_resolution_clock::now();
+    auto interval = (end - start)/1e+9;
+    
+    cout << "-> End to end takes: " << interval.count() << "sec" << endl;
 
     return 0;
 }
