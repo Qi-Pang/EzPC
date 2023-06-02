@@ -1529,8 +1529,6 @@ FixArray FPMath::tanh_inner_preprocess(const FixArray& x){
   FixArray t4 = fix->input(PUBLIC, x.size, uint64_t((-3.3289339650097993) * (1 << s)), true, ell, s);
   FixArray t5 = fix->input(PUBLIC, x.size, uint64_t((-0.0024920889620412097) * (1 << s)), true, ell, s);
 
-  print_fix(t2);
-
   // p1(x) = (x + t0)*x + t1 
   // Range: >0
   FixArray p1 = fix->add(x, t0);
@@ -1538,33 +1536,23 @@ FixArray FPMath::tanh_inner_preprocess(const FixArray& x){
   p1 = fix->truncate_reduce(p1, s, all_1.data);
   p1 = fix->add(p1, t1);
 
-  print_fix(p1);
-
   // p2(x) = (p1(x) + x + t2)*p1(x)*x*t3 + t4*x + t5
 
   // (p1(x) + x + t2) < 0
   FixArray p2 = fix->add(p1, x);
   p2 = fix->add(p2, t2);
 
-  print_fix(p2);
-
   // (p1(x) + x + t2)*p1(x) < 0
   p2 = fix->mul(p2, p1, ell + s, all_1.data, all_0.data);
   p2 = fix->truncate_reduce(p2, s, all_0.data);
-
-  print_fix(p2);
 
   // p2(x) = (p1(x) + x + t2)*p1(x)*t3 >0
   p2 = fix->mul(p2, t3, ell+s, all_1.data, all_1.data);
   p2 = fix->truncate_reduce(p2, s, all_0.data);
 
-  print_fix(p2);
-
   // p2(x) = (p1(x) + x + t2)*p1(x)*x*t3 < 0
   p2 = fix->mul(p2, x, ell+s, all_1.data, all_0.data);
   p2 = fix->truncate_reduce(p2, s, all_1.data);
-
-  print_fix(p2);
 
   FixArray t4x = fix->mul(x, t4, ell+s, all_0.data, all_1.data);
   t4x = fix->truncate_reduce(t4x, s, all_0.data);

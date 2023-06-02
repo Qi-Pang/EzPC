@@ -157,9 +157,9 @@ BertModel load_model(string model_dir, int num_class){
     "bert.encoder.layer.X.intermediate.dense.bias.txt";
 
     string wi2_fname = 
-    "bert.encoder.layer.X.attention.output.dense.weight.txt";
+    "bert.encoder.layer.X.output.dense.weight.txt";
     string bi2_fname = 
-    "bert.encoder.layer.X.attention.output.dense.bias.txt";
+    "bert.encoder.layer.X.output.dense.bias.txt";
 
     // Pooling
     string wp_fname = 
@@ -239,7 +239,7 @@ BertModel load_model(string model_dir, int num_class){
     bm.b_p = read_bias(model_dir + bp_fname, 768);
     
     bm.w_c = read_data(model_dir + wc_fname);
-    bm.b_p = read_bias(model_dir + bp_fname, num_class);
+    bm.b_c = read_bias(model_dir + bp_fname, num_class);
 
     return bm;
 }

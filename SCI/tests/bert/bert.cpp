@@ -217,6 +217,7 @@ void Bert::pc_bw_share_server(
 
     io->send_data(random_share, length*sizeof(uint64_t));
 
+    cout << "share 1 " << endl;
     // Write wp share
     int offset = 0;
     for(int i = 0; i < COMMON_DIM; i++){
@@ -225,20 +226,23 @@ void Bert::pc_bw_share_server(
             offset++;
         }
     }
+     cout << "share 2 " << endl;
     // Write bp share
     for(int i = 0; i < COMMON_DIM; i++){
         bp[i] = (bm.b_p[i] - random_share[offset]) & mask_x;
         offset++;
     }
+     cout << "share 3 " << endl;
     // Write w_c share
-    for(int i = 0; i < NUM_CLASS; i++){
+    for(int i = 0; i < COMMON_DIM; i++){
         for(int j = 0; j < NUM_CLASS; j++){
-            wc[i*COMMON_DIM + j] = (bm.w_c[i][j] - random_share[offset]) & mask_x;
+            wc[i*NUM_CLASS + j] = (bm.w_c[i][j] - random_share[offset]) & mask_x;
             offset++;
         }
     }
+     cout << "share 4 " << endl;
     // Write b_c share
-    for(int i = 0; i < COMMON_DIM; i++){
+    for(int i = 0; i < NUM_CLASS; i++){
         bc[i] = (bm.b_c[i]- random_share[offset]) & mask_x;
         offset++;
     } 
@@ -279,7 +283,7 @@ void Bert::run_server() {
     cout << "> Receive input cts from client " << endl;
 
     cout << "> --- Entering Attention Layers ---" << endl;
-    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
+    for(int layer_id; layer_id < 0; ++layer_id){
         cout << "-> Layer - " << layer_id << ": Linear #1 " << endl;
 
         // -------------------- Linear #1 -------------------- //
@@ -346,7 +350,6 @@ void Bert::run_server() {
             false,
             data_lin1);
 
-
         // -------------------- Softmax -------------------- //
 
         cout << "-> Layer - " << layer_id 
@@ -377,6 +380,8 @@ void Bert::run_server() {
             NL_SCALE
         ); 
 
+        // nl.print_ss(&softmax_output_row[11*128*128], 128, NL_ELL, NL_SCALE);
+
         // To col packing
 
         cout << "-> Layer - " << layer_id 
@@ -388,6 +393,8 @@ void Bert::run_server() {
 
         // FixArray h2_concate_public = 
         //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
+
+        // return;
 
         uint64_t* h2_col = new uint64_t[att_size];
         // Packing before send back to server
@@ -590,10 +597,12 @@ void Bert::run_server() {
 
         // ------------------ Linear #4 ------------------ //
 
+        cout << "-> Layer - " << layer_id << ": Linear #3 " << endl;
+
         vector<Ciphertext> h7 = lin.linear_2(
             lin.he_8192_tiny,
             INPUT_DIM,
-            3072,
+            INTER_DIM,
             COMMON_DIM,
             h6, 
             bm.w_i_2[layer_id],
@@ -603,7 +612,7 @@ void Bert::run_server() {
 
         
 
-        cout << "-> Layer - " << layer_id << ": Linear Inter #2 done " << endl;
+         cout << "-> Layer - " << layer_id << ": Linear #3 done" << endl;
 
         // -------------------- Layer Norm -------------------- //
         
@@ -693,6 +702,8 @@ void Bert::run_server() {
     uint64_t* h100 = new uint64_t[COMMON_DIM];
     uint64_t* h101 = new uint64_t[NUM_CLASS];
 
+    cout << "-> Sharing Pooling and Classification params..." << endl;
+
     pc_bw_share_server(
         bm,
         wp,
@@ -700,10 +711,10 @@ void Bert::run_server() {
         wc,
         bc
     );
-    
 
     // -------------------- POOL -------------------- //
 
+    cout << "-> Layer - Pooling" << endl;
     nl.n_matrix_mul_iron(
         NL_NTHREADS,
         h98,
@@ -721,7 +732,8 @@ void Bert::run_server() {
         h99[i] += bp[i];
     }
 
-    
+    // -------------------- TANH -------------------- //
+
     nl.tanh(
         NL_NTHREADS,
         h99,
@@ -730,7 +742,8 @@ void Bert::run_server() {
         NL_ELL,
         NL_SCALE
     );
-    // -------------------- TANH -------------------- //
+
+    cout << "-> Layer - Classification" << endl;
     nl.n_matrix_mul_iron(
         NL_NTHREADS,
         h100,
@@ -776,7 +789,7 @@ int Bert::run_client(string input_fname) {
     send_encrypted_vector(io, h1_cts);
 
     cout << "> --- Entering Attention Layers ---" << endl;
-    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
+    for(int layer_id; layer_id < 0; ++layer_id){
 
         // -------------- Waiting Linear#1 -------------- //
         int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
@@ -854,6 +867,8 @@ int Bert::run_client(string input_fname) {
             NL_SCALE
         );
 
+        // nl.print_ss(&softmax_output_row[11*128*128], 128, NL_ELL, NL_SCALE);
+
         auto t_ss_mul_done = high_resolution_clock::now();
         auto interval = (t_ss_mul_done - t_ss_mul)/1e+9;
         cout << "-> Layer - " << layer_id 
@@ -872,6 +887,8 @@ int Bert::run_client(string input_fname) {
         //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
 
         // save_to_file(h2_concate_public.data, 128, 768, "./weights_txt/softmax_v.txt");
+
+        // return 0;
 
         uint64_t* h2_col = new uint64_t[att_size];
         // Packing before send back to server
@@ -1128,6 +1145,7 @@ int Bert::run_client(string input_fname) {
     uint64_t* h99 = new uint64_t[COMMON_DIM];
     uint64_t* h100 = new uint64_t[COMMON_DIM];
     uint64_t* h101 = new uint64_t[NUM_CLASS];
+    cout << "-> Sharing Pooling and Classification params..." << endl;
 
     pc_bw_share_client(
         wp,
@@ -1137,6 +1155,7 @@ int Bert::run_client(string input_fname) {
     );
 
     // -------------------- POOL -------------------- //
+    cout << "-> Layer - Pooling" << endl;
     nl.n_matrix_mul_iron(
         NL_NTHREADS,
         h98,
@@ -1154,6 +1173,7 @@ int Bert::run_client(string input_fname) {
         h99[i] += bp[i];
     }
 
+    // -------------------- TANH -------------------- //
     nl.tanh(
         NL_NTHREADS,
         h99,
@@ -1162,8 +1182,8 @@ int Bert::run_client(string input_fname) {
         NL_ELL,
         NL_SCALE
     );
-    // -------------------- TANH -------------------- //
-
+    
+    cout << "-> Layer - Classification" << endl;
     nl.n_matrix_mul_iron(
         NL_NTHREADS,
         h100,
