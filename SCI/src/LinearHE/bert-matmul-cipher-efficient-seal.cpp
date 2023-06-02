@@ -328,11 +328,11 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross
                             Plaintext pt;
                             encoder->encode(temp2, pt);
                             // HACK: verify sparsity
-                            cout << "packing" << endl;
-                            for (int temp2_ind = 0; temp2_ind < data.slot_count / data.image_size; temp2_ind++) {
-                                cout << temp2[temp2_ind * data.image_size] << " ";
-                            }
-                            cout << endl;
+                            // cout << "packing" << endl;
+                            // for (int temp2_ind = 0; temp2_ind < data.slot_count / data.image_size; temp2_ind++) {
+                            //     cout << temp2[temp2_ind * data.image_size] << " ";
+                            // }
+                            // cout << endl;
                             temp_matrix_diag[matrix_diag_index] = pt;
                             matrix_diag_index++;
                             temp2.clear();
@@ -408,17 +408,30 @@ vector<Plaintext> BEFCField::bert_cross_packing_bias(const uint64_t *matrix1, co
         cross_bias_packing[packing_num] = pt;
         temp.clear();
     }
-    int matrix3_pointer = 0;
+    int matrix3_pointer1 = 0;
+    int matrix3_pointer2 = data.filter_w / 2;
     for (int packing_num = 2 * data.image_size * data.filter_w / data.slot_count; packing_num < 3 * data.image_size * data.filter_w / data.slot_count; packing_num++) {
+
         vector<uint64_t> temp(data.slot_count, 0ULL);
-        int right_flag = 0;
         int row = 0;
         while (row < data.slot_count) {
-            for (int i = 0; i < data.image_size; i++) {
-                temp[row + i] = matrix3[matrix3_pointer];
+            if (row < data.slot_count / 2) {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix3[matrix3_pointer1];
+                }
+                matrix3_pointer1++;
+                if (matrix3_pointer1 % (data.filter_w / 2) == 0)
+                    matrix3_pointer1 += data.filter_w / 2;
+            }
+            else {
+                for (int i = 0; i < data.image_size; i++) {
+                    temp[row + i] = matrix3[matrix3_pointer2];
+                }
+                matrix3_pointer2++;
+                if (matrix3_pointer2 % (data.filter_w / 2) == 0)
+                    matrix3_pointer2 += data.filter_w / 2;
             }
             row += data.image_size;
-            matrix3_pointer++;
         }
         Plaintext pt;
         encoder->encode(temp, pt);
@@ -853,22 +866,28 @@ uint64_t* BEFCField::bert_postprocess_V(vector<Ciphertext> &cts, const FCMetadat
             Plaintext pt;
             decryptor->decrypt(cts[i + 12 * num_cts_per_mat + packing_num * num_cts_per_mat_V], pt);
             encoder->decode(pt, plain);
-            
             if (col_packing) {
                 #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
-                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int j = row / data.image_size;
                     int k = row % data.image_size;
-                    result_V[k + j * data.image_size + packing_num * data.image_size * data.filter_w] = plain[row];
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    result_V[k + j * data.image_size + i * data.slot_count / 2 + packing_num * data.image_size * data.filter_w] = plain[row];
                 }
             }
             else {
                 #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
-                    int j = row / data.image_size + i * data.slot_count / data.image_size;
+                    int j = row / data.image_size;
                     int k = row % data.image_size;
-                    k = k + j / data.filter_w * data.image_size;
-                    j = j % data.filter_w;
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    j += i * data.slot_count / data.image_size / 2;
                     result_V[k * data.filter_w + j + packing_num * data.image_size * data.filter_w] = plain[row];
                 }
             }
@@ -953,7 +972,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         // HACK: verify
         cout << "col packing" << endl;
         for (int i = 0; i < 1; i++) {
-            for (int j = 0; j < 64; j++)
+            for (int j = 64; j < 128; j++)
                 cout << ((int64_t) V_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }

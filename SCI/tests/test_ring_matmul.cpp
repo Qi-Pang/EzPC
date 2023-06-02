@@ -34,8 +34,8 @@ OTPack *otpack;
 LinearOT *prod;
 
 int dim1 = 128;
-int dim2 = 64;
-int dim3 = 128;
+int dim2 = 128;
+int dim3 = 768;
 int bwA = 37;
 int bwB = 37;
 int bwC = 37;
@@ -220,8 +220,8 @@ int main(int argc, char **argv) {
   prg.random_data(inA, dim1 * dim2 * sizeof(uint64_t));
   prg.random_data(inB, dim2 * dim3 * sizeof(uint64_t));
 
-  vector<vector<uint64_t>> tempA = read_data("./bin/txt/random_ct1.txt");
-  vector<vector<uint64_t>> tempB = read_data("./bin/txt/random_ct2.txt");
+  // vector<vector<uint64_t>> tempA = read_data("./bin/txt/random_ct1.txt");
+  // vector<vector<uint64_t>> tempB = read_data("./bin/txt/random_ct2.txt");
 
   for (int i = 0; i < dim1 * dim2; i++) {
     inA[i] &= maskA;
@@ -230,16 +230,16 @@ int main(int argc, char **argv) {
     inB[i] &= maskB;
   }
 
-  for (int i = 0; i < dim1; i++) {
-    for (int j = 0; j < dim2; j++) {
-      inA[i * dim2 + j] = tempA[i][j] * 4;
-    }
-  }
-  for (int i = 0; i < dim2; i++) {
-    for (int j = 0; j < dim3; j++) {
-      inB[i * dim3 + j] = tempB[i][j] * 4;
-    }
-  }
+  // for (int i = 0; i < dim1; i++) {
+  //   for (int j = 0; j < dim2; j++) {
+  //     inA[i * dim2 + j] = tempA[i][j] * 4;
+  //   }
+  // }
+  // for (int i = 0; i < dim2; i++) {
+  //   for (int j = 0; j < dim3; j++) {
+  //     inB[i * dim3 + j] = tempB[i][j] * 4;
+  //   }
+  // }
 
   cout << "Precomputed MSBs: " << precomputed_MSBs << endl;
   cout << "Accumulate: " << ::accumulate << endl;
