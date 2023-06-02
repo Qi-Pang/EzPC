@@ -85,6 +85,8 @@ public:
 
   FixArray tanh_inner(const FixArray& x);
 
+  FixArray tanh_inner_preprocess(const FixArray& x);
+
   FixArray tanh_approx(const FixArray& x);
 
   FixArray tanh_iron(const FixArray& x);

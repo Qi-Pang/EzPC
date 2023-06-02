@@ -1513,6 +1513,68 @@ FixArray FPMath::gelu_approx(const FixArray& x){
   return ret;
 }
 
+FixArray FPMath::tanh_inner_preprocess(const FixArray& x){
+  int N = x.size;
+  int ell = x.ell;
+  int s = x.s;
+
+  BoolArray all_0 = bool_op->input(ALICE, N, uint8_t(0));
+  BoolArray all_1 = bool_op->input(ALICE, N, 1);
+
+  // Const
+  FixArray t0 = fix->input(PUBLIC, x.size, uint64_t((-4.259314087994767) * (1 << s)), true, ell, s);
+  FixArray t1 = fix->input(PUBLIC, x.size, uint64_t((18.86353816972803) * (1 << s)), true, ell, s);
+  FixArray t2 = fix->input(PUBLIC, x.size, uint64_t((-36.42402897526823) * (1 << s)), true, ell, s);
+  FixArray t3 = fix->input(PUBLIC, x.size, uint64_t((-0.013232131886235352) * (1 << s)), true, ell, s);
+  FixArray t4 = fix->input(PUBLIC, x.size, uint64_t((-3.3289339650097993) * (1 << s)), true, ell, s);
+  FixArray t5 = fix->input(PUBLIC, x.size, uint64_t((-0.0024920889620412097) * (1 << s)), true, ell, s);
+
+  print_fix(t2);
+
+  // p1(x) = (x + t0)*x + t1 
+  // Range: >0
+  FixArray p1 = fix->add(x, t0);
+  p1 = fix->mul(p1, x, ell+s, all_0.data, all_0.data);
+  p1 = fix->truncate_reduce(p1, s, all_1.data);
+  p1 = fix->add(p1, t1);
+
+  print_fix(p1);
+
+  // p2(x) = (p1(x) + x + t2)*p1(x)*x*t3 + t4*x + t5
+
+  // (p1(x) + x + t2) < 0
+  FixArray p2 = fix->add(p1, x);
+  p2 = fix->add(p2, t2);
+
+  print_fix(p2);
+
+  // (p1(x) + x + t2)*p1(x) < 0
+  p2 = fix->mul(p2, p1, ell + s, all_1.data, all_0.data);
+  p2 = fix->truncate_reduce(p2, s, all_0.data);
+
+  print_fix(p2);
+
+  // p2(x) = (p1(x) + x + t2)*p1(x)*t3 >0
+  p2 = fix->mul(p2, t3, ell+s, all_1.data, all_1.data);
+  p2 = fix->truncate_reduce(p2, s, all_0.data);
+
+  print_fix(p2);
+
+  // p2(x) = (p1(x) + x + t2)*p1(x)*x*t3 < 0
+  p2 = fix->mul(p2, x, ell+s, all_1.data, all_0.data);
+  p2 = fix->truncate_reduce(p2, s, all_1.data);
+
+  print_fix(p2);
+
+  FixArray t4x = fix->mul(x, t4, ell+s, all_0.data, all_1.data);
+  t4x = fix->truncate_reduce(t4x, s, all_0.data);
+
+  p2 = fix->add(p2, t4x);
+  p2 = fix->add(p2, t5);
+
+  return p2;
+}
+
 FixArray FPMath::tanh_inner(const FixArray& x){
   int N = x.size;
   int ell = x.ell;
@@ -1588,8 +1650,8 @@ FixArray FPMath::tanh_approx(const FixArray& x){
   sign_x = fix->truncate_reduce(sign_x, s, all_0.data);
   sign_x = fix->add(sign_x, cons_neg_1);
 
-  BoolArray gt3 = fix->GT(abs_x, 3 << s);
-  FixArray abs_tanh = fix->if_else(gt3, cons_1, tanh_inner(abs_x));
+  BoolArray gt3 = fix->GT(abs_x, (uint64_t)(2.855 * (1 << s)));
+  FixArray abs_tanh = fix->if_else(gt3, cons_1, tanh_inner_preprocess(abs_x));
   FixArray ret = fix->mul(abs_tanh, sign_x, ell+s, all_0.data);
   ret = fix->truncate_reduce(ret, s, all_0.data);
 
