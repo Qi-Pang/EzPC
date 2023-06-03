@@ -329,7 +329,7 @@ void NonLinear::tanh_iron(int nthreads, uint64_t* input, uint64_t* output, int s
     }
 }
 
-void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, int num_ops, int ell, int s_in, int s_out, FPMath *fpmath) {
   int this_party;
   if (tid & 1) {
     this_party = 3 - party;
@@ -338,16 +338,20 @@ void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, i
   }
   // if input > p, then sub p
   // sub p/2 anyway
-  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
-  FixArray p_array = fpmath->fix->input(PUBLIC, num_ops, p, true, ell, s);
-  FixArray p_2_array = fpmath->fix->input(PUBLIC, num_ops, (p-1)/2, true, ell, s);
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s_in);
+  FixArray p_array = fpmath->fix->input(PUBLIC, num_ops, p, true, ell, s_in);
+  FixArray p_2_array = fpmath->fix->input(PUBLIC, num_ops, (p-1)/2, true, ell, s_in);
   FixArray output = fpmath->gt_p_sub(input, p_array);
   output = fpmath->fix->sub(output, p_2_array);
-
+  if(s_in > s_out){
+    output = fpmath->fix->right_shift(output, s_in - s_out);
+  } else if(s_in < s_out){
+    output = fpmath->fix->mul(output, 1<<(s_out - s_in));
+  }
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
 
-void NonLinear::gt_p_sub(int nthreads, uint64_t* input, uint64_t p, uint64_t* output, int size, int ell, int s){
+void NonLinear::gt_p_sub(int nthreads, uint64_t* input, uint64_t p, uint64_t* output, int size, int ell, int s_in, int s_out){
     std::thread threads[nthreads];
     int chunk_size = size / nthreads;
     for (int i = 0; i < nthreads; ++i) {
@@ -368,7 +372,8 @@ void NonLinear::gt_p_sub(int nthreads, uint64_t* input, uint64_t p, uint64_t* ou
                 &output[offset], 
                 lnum_ops,
                 ell,
-                s,
+                s_in, 
+                s_out,
                 this->fpmath[i]);
     }
     for (int i = 0; i < nthreads; ++i) {
@@ -496,13 +501,28 @@ void  NonLinear::n_matrix_mul(
     delete[] output_tmp;
 }
 
-void matmul_thread(int tid, int party, uint64_t *a, uint64_t* b, uint64_t *c, int dim1, int dim2, int dim3, int ell, int s, FPMath *fpmath) {
+void matmul_thread(
+  int tid, 
+  int party, 
+  uint64_t *a, 
+  uint64_t* b, 
+  uint64_t *c, 
+  int dim1, 
+  int dim2, 
+  int dim3, 
+  int ell, 
+  int s_in_1,
+  int s_in_2,
+  int s_out, 
+  FPMath *fpmath) {
+  
   int this_party;
   if (tid & 1) {
     this_party = 3 - party;
   } else {
     this_party = party;
   }
+  int extra_scale = s_in_1 + s_in_2 - s_out;
   fpmath->fix->mult->matrix_multiplication(
       dim1,
       dim2,
@@ -512,14 +532,14 @@ void matmul_thread(int tid, int party, uint64_t *a, uint64_t* b, uint64_t *c, in
       c,
       ell,
       ell,
-      ell + s,
+      ell + extra_scale,
       true,
       true,
       true
     );
     BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
-    FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+s, s);
-    ret = fpmath->fix->truncate_reduce(ret, s, all_0.data);
+    FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
+    ret = fpmath->fix->truncate_reduce(ret, extra_scale, all_0.data);
     ret = fpmath->fix->extend(ret, 64);
     memcpy(c, ret.data, (dim1*dim3)*sizeof(uint64_t));
 }
@@ -534,7 +554,9 @@ void  NonLinear::n_matrix_mul_iron(
   int dim2, 
   int dim3, 
   int ell, 
-  int s){
+  int s_in_1,
+  int s_in_2,
+  int s_out){
 
   std::thread threads[n];
 
@@ -551,7 +573,9 @@ void  NonLinear::n_matrix_mul_iron(
               dim2,
               dim3,
               ell,
-              s,
+              s_in_1,
+              s_in_2,
+              s_out,
               this->fpmath[i]);
   }
   for (int i = 0; i < n; ++i) {
@@ -562,6 +586,47 @@ void  NonLinear::n_matrix_mul_iron(
   // ret = fpmath[0]->fix->truncate_reduce(ret, s);
   // ret = fpmath[0]->fix->extend(ret, 64);
   // memcpy(output, ret.data, (n*dim1*dim3)*sizeof(uint64_t));
+}
+
+void right_shift_thread(int tid, int party, uint64_t *x, int a, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray output = fpmath->fix->right_shift(input, a);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+void NonLinear::right_shift(int nthreads, uint64_t* input, int a, uint64_t* output, int size, int ell, int s){
+    std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                right_shift_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                a,
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
 }
 
 void NonLinear::print_ss(uint64_t* input, int length, int ell, int s){

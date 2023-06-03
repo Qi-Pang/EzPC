@@ -39,13 +39,15 @@ public:
     void tanh(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s);
     void tanh_iron(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s);
 
-    void gt_p_sub(int nthreads, uint64_t* input, uint64_t p, uint64_t* output, int size, int ell, int s);
+    void gt_p_sub(int nthreads, uint64_t* input, uint64_t p, uint64_t* output, int size, int ell, int s_in, int s_out);
 
     void n_matrix_mul(int nthreads, uint64_t* input_1, uint64_t* input_2, uint64_t* output, int n, int dim1, int dim2, int dim3, int ell, int s);
 
-    void n_matrix_mul_iron(int nthreads, uint64_t* input_1, uint64_t* input_2, uint64_t* output, int n, int dim1, int dim2, int dim3, int ell, int s);
+    void n_matrix_mul_iron(int nthreads, uint64_t* input_1, uint64_t* input_2, uint64_t* output, int n, int dim1, int dim2, int dim3, int ell, int s_in_1, int s_in_2, int s_out);
 
     void print_ss(uint64_t* input, int length, int ell, int s);
+
+    void right_shift(int nthreads, uint64_t* input, int a,uint64_t* output, int size, int ell, int s);
 
     FixArray to_public(uint64_t* input, int length, int ell, int s);
 

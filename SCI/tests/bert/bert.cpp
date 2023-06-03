@@ -271,7 +271,7 @@ void Bert::pc_bw_share_client(
 void Bert::run_server() {
     cout << "> Loading weights and bias" << endl;
     // Loading weights
-    struct BertModel bm = load_model("./weights_txt/", NUM_CLASS);
+    bm = load_model("/home/ubuntu/mrpc/weights_txt/", NUM_CLASS);
 
     // Receive cipher text input
     vector<Ciphertext> h1(12);
@@ -283,7 +283,7 @@ void Bert::run_server() {
     cout << "> Receive input cts from client " << endl;
 
     cout << "> --- Entering Attention Layers ---" << endl;
-    for(int layer_id; layer_id < 0; ++layer_id){
+    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
         cout << "-> Layer - " << layer_id << ": Linear #1 " << endl;
 
         // -------------------- Linear #1 -------------------- //
@@ -334,8 +334,10 @@ void Bert::run_server() {
             qk_v_cross,
             qk_v_size,
             NL_ELL,
+            22,
             NL_SCALE
         );
+
 
         lin.plain_cross_packing_postprocess(
             qk_v_cross, 
@@ -377,10 +379,13 @@ void Bert::run_server() {
             INPUT_DIM,
             OUTPUT_DIM,
             NL_ELL,
+            NL_SCALE,
+            NL_SCALE,
             NL_SCALE
-        ); 
+        );
 
-        // nl.print_ss(&softmax_output_row[11*128*128], 128, NL_ELL, NL_SCALE);
+        nl.print_ss(softmax_v_row, 16, 64, NL_SCALE);
+        return;
 
         // To col packing
 
@@ -469,6 +474,7 @@ void Bert::run_server() {
             ln_input_row,
             ln_size,
             NL_ELL,
+            NL_SCALE,
             NL_SCALE
         );
 
@@ -563,6 +569,7 @@ void Bert::run_server() {
             gelu_input_col,
             gelu_input_size,
             NL_ELL,
+            NL_SCALE,
             NL_SCALE
         );
 
@@ -647,6 +654,7 @@ void Bert::run_server() {
             ln_2_input_row,
             ln_2_input_size,
             NL_ELL,
+            NL_SCALE,
             NL_SCALE
         );
 
@@ -725,6 +733,8 @@ void Bert::run_server() {
         COMMON_DIM,
         COMMON_DIM,
         NL_ELL,
+        NL_SCALE,
+        NL_SCALE,
         NL_SCALE
     );
 
@@ -754,6 +764,8 @@ void Bert::run_server() {
         COMMON_DIM,
         NUM_CLASS,
         NL_ELL,
+        NL_SCALE,
+        NL_SCALE,
         NL_SCALE
     );
 
@@ -788,8 +800,10 @@ int Bert::run_client(string input_fname) {
         lin.bert_efficient_preprocess_vec(lin.he_8192, h1_vec, data_lin1);
     send_encrypted_vector(io, h1_cts);
 
+    // print_ct(lin.he_8192, h1_cts[0], 8192);
+
     cout << "> --- Entering Attention Layers ---" << endl;
-    for(int layer_id; layer_id < 0; ++layer_id){
+    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
 
         // -------------- Waiting Linear#1 -------------- //
         int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
@@ -821,6 +835,7 @@ int Bert::run_client(string input_fname) {
             qk_v_cross,
             qk_v_size,
             NL_ELL,
+            22,
             NL_SCALE
         );
 
@@ -836,7 +851,6 @@ int Bert::run_client(string input_fname) {
             v_matrix_row,
             false,
             data_lin1);
-        
 
         // -------------------- Softmax -------------------- //
 
@@ -864,10 +878,14 @@ int Bert::run_client(string input_fname) {
             INPUT_DIM,
             OUTPUT_DIM,
             NL_ELL,
+            NL_SCALE,
+            NL_SCALE,
             NL_SCALE
         );
 
-        // nl.print_ss(&softmax_output_row[11*128*128], 128, NL_ELL, NL_SCALE);
+        nl.print_ss(softmax_v_row, 16, 64, NL_SCALE);
+        return 0;
+
 
         auto t_ss_mul_done = high_resolution_clock::now();
         auto interval = (t_ss_mul_done - t_ss_mul)/1e+9;
@@ -943,6 +961,7 @@ int Bert::run_client(string input_fname) {
             ln_input_row,
             ln_size,
             NL_ELL,
+            NL_SCALE,
             NL_SCALE
         );
 
@@ -1023,6 +1042,7 @@ int Bert::run_client(string input_fname) {
             gelu_input_col,
             gelu_input_size,
             NL_ELL,
+            NL_SCALE,
             NL_SCALE
         );
 
@@ -1089,6 +1109,7 @@ int Bert::run_client(string input_fname) {
             ln_2_input_row,
             ln_2_input_size,
             NL_ELL,
+            NL_SCALE,
             NL_SCALE
         );
 
@@ -1166,6 +1187,8 @@ int Bert::run_client(string input_fname) {
         COMMON_DIM,
         COMMON_DIM,
         NL_ELL,
+        NL_SCALE,
+        NL_SCALE,
         NL_SCALE
     );
 
@@ -1194,6 +1217,8 @@ int Bert::run_client(string input_fname) {
         COMMON_DIM,
         NUM_CLASS,
         NL_ELL,
+        NL_SCALE,
+        NL_SCALE,
         NL_SCALE
     );
 
@@ -1213,4 +1238,493 @@ int Bert::run_client(string input_fname) {
     int max_index = distance(dbl_result.begin(), max_ele);
 
     return max_index;
+}
+
+int Bert::run(string model_dir, string input_fname){
+    // Server: Alice
+    // Client: Bob
+
+    uint64_t h1_cache_12[INPUT_DIM*COMMON_DIM] = {0};
+    uint64_t h4_cache_12[INPUT_DIM*COMMON_DIM] = {0};
+    uint64_t h98[COMMON_DIM] = {0};
+    vector<Ciphertext> h1(12);
+    vector<Ciphertext> h2;
+    vector<Ciphertext> h4;
+    vector<Ciphertext> h6;
+
+    if(party == ALICE){
+        // -------------------- Preparing -------------------- //
+        cout << "> Loading weights and bias" << endl;
+        bm = load_model(model_dir, NUM_CLASS);
+
+        // Receive cipher text input
+        recv_encrypted_vector(lin.he_8192->context, io, h1);
+        cout << "> Receive input cts from client " << endl;
+    } else{
+        cout << "> Loading inputs" << endl;
+        vector<vector<uint64_t>> input_plain = read_data(input_fname);
+
+        // Column Packing
+        vector<uint64_t> input_col(COMMON_DIM * INPUT_DIM);
+        for (int j = 0; j < COMMON_DIM; j++){
+            for (int i = 0; i < INPUT_DIM; i++){
+                input_col[j*INPUT_DIM + i] = neg_mod((int64_t)input_plain[i][j], (int64_t)lin.he_8192->plain_mod);
+                h1_cache_12[i*COMMON_DIM + j] = input_plain[i][j] << 7;
+            }
+        }
+
+        // Send cipher text input
+        vector<Ciphertext> h1_cts = 
+            lin.bert_efficient_preprocess_vec(lin.he_8192, input_col, data_lin1);
+        send_encrypted_vector(io, h1_cts);
+    }
+
+    cout << "> --- Entering Attention Layers ---" << endl;
+    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
+        {
+            // -------------------- Linear #1 -------------------- //
+            int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
+            int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
+            int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
+            int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;  
+            int qk_v_size = qk_size + v_size;
+            uint64_t* qk_v_cross = new uint64_t[qk_v_size];
+            uint64_t* v_matrix_row = new uint64_t[v_size];
+            uint64_t* softmax_input_row = new uint64_t[qk_size];
+            uint64_t* softmax_output_row = new uint64_t[softmax_size];
+            uint64_t* softmax_v_row = new uint64_t[att_size];
+            uint64_t* h2_concate = new uint64_t[att_size];
+            uint64_t* h2_col = new uint64_t[att_size];
+                    
+            if(party == ALICE){
+                cout << "-> Layer - " << layer_id << ": Linear #1 HE" << endl;
+                vector<Ciphertext> q_k_v = lin.linear_1(
+                    lin.he_8192,
+                    h1,
+                    bm.w_q[layer_id],
+                    bm.w_k[layer_id],
+                    bm.w_v[layer_id],
+                    bm.b_q[layer_id],
+                    bm.b_k[layer_id],
+                    bm.b_v[layer_id],
+                    data_lin1
+                );
+                cout << "-> Layer - " << layer_id << ": Linear #1 done HE" << endl;
+                he_to_ss_server(lin.he_8192, q_k_v, qk_v_cross);
+            } else{
+                int softmax_cts_len = qk_v_size / lin.he_8192->poly_modulus_degree;
+                he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, data_lin1);
+            }
+
+            // qk mod p and scale down to 12
+            // mod p
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                qk_v_cross,
+                lin.he_8192->plain_mod,
+                qk_v_cross,
+                qk_v_size,
+                NL_ELL,
+                22,
+                22
+            );
+
+            lin.plain_cross_packing_postprocess(
+                qk_v_cross, 
+                softmax_input_row,
+                // we need row packing
+                false,
+                data_lin1);
+            
+            lin.plain_cross_packing_postprocess_v(
+                &qk_v_cross[qk_size], 
+                v_matrix_row,
+                false,
+                data_lin1);
+            
+            nl.right_shift(
+                NL_NTHREADS,
+                softmax_input_row,
+                22 - NL_SCALE,
+                softmax_input_row,
+                qk_size,
+                NL_ELL,
+                NL_SCALE
+            );
+
+            // Softmax
+            nl.softmax(
+                NL_NTHREADS,
+                softmax_input_row,
+                softmax_output_row,
+                12*INPUT_DIM,
+                INPUT_DIM,
+                NL_ELL,
+                NL_SCALE);
+
+            nl.n_matrix_mul_iron(
+                NL_NTHREADS,
+                softmax_output_row,
+                v_matrix_row,
+                softmax_v_row,
+                PACKING_NUM,
+                INPUT_DIM,
+                INPUT_DIM,
+                OUTPUT_DIM,
+                NL_ELL,
+                NL_SCALE,
+                11,
+                6
+            );
+
+            lin.concat(softmax_v_row, h2_concate, 12, 128, 64); 
+
+            lin.plain_col_packing_preprocess(
+                h2_concate,
+                h2_col,
+                lin.he_8192_tiny->plain_mod,
+                INPUT_DIM,
+                COMMON_DIM
+            );
+
+            // nl.print_ss(h2_concate, 768, NL_ELL, NL_SCALE);
+            // return 0;
+
+            if(party == ALICE){
+                h2 = ss_to_he_server(
+                    lin.he_8192_tiny, 
+                    h2_col,
+                    att_size);
+            } else{
+                ss_to_he_client(lin.he_8192_tiny, h2_col, att_size);
+            }
+            delete [] qk_v_cross;
+            delete [] v_matrix_row;
+            delete [] softmax_input_row;
+            delete [] softmax_output_row;
+            delete [] softmax_v_row;
+            delete [] h2_concate;
+            delete [] h2_col;
+        }
+
+        // -------------------- Linear #2 -------------------- //
+        {
+            int ln_size = INPUT_DIM*COMMON_DIM;
+            int ln_cts_size = ln_size / lin.he_8192_tiny->poly_modulus_degree;
+            uint64_t* ln_input_cross = new uint64_t[ln_size];
+            uint64_t* ln_input_row = new uint64_t[ln_size];
+            uint64_t* ln_output_row = new uint64_t[ln_size];
+            uint64_t* ln_output_col = new uint64_t[ln_size];
+            
+            if(party == ALICE){
+                cout << "-> Layer - " << layer_id << ": Linear #2 HE" << endl;
+                vector<Ciphertext> h3 = lin.linear_2(
+                    lin.he_8192_tiny,
+                    INPUT_DIM,
+                    COMMON_DIM,
+                    COMMON_DIM,
+                    h2, 
+                    bm.w_o[layer_id],
+                    bm.b_o[layer_id],
+                    data_lin2
+                );
+                cout << "-> Layer - " << layer_id << ": Linear #2 HE done " << endl;
+                he_to_ss_server(lin.he_8192_tiny, h3, ln_input_cross);
+            } else{
+                he_to_ss_client(lin.he_8192_tiny, ln_input_cross, ln_cts_size, data_lin2);
+            }
+
+            lin.plain_col_packing_postprocess(
+                ln_input_cross,
+                ln_input_row,
+                false,
+                data_lin2
+            );
+
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                ln_input_row,
+                lin.he_8192_tiny->plain_mod,
+                ln_input_row,
+                ln_size,
+                NL_ELL,
+                NL_SCALE,
+                NL_SCALE
+            );
+
+            for(int i = 0; i < ln_size; i++){
+                ln_input_row[i] += h1_cache_12[i];
+            }
+
+            // Layer Norm
+            nl.layer_norm(
+                NL_NTHREADS,
+                ln_input_row,
+                ln_output_row,
+                INPUT_DIM,
+                COMMON_DIM,
+                NL_ELL,
+                NL_SCALE
+            );
+
+            // update H4
+            // nl.right_shift(
+            //     NL_NTHREADS,
+            //     ln_output_row,
+            //     NL_SCALE - 9,
+            //     h4_cache,
+            //     ln_size,
+            //     NL_ELL,
+            //     NL_SCALE
+            // );
+            memcpy(h4_cache_12, ln_output_row, ln_size*sizeof(uint64_t));
+
+            nl.right_shift(
+                NL_NTHREADS,
+                ln_output_row,
+                NL_SCALE - 5,
+                ln_output_row,
+                ln_size,
+                64,
+                NL_SCALE
+            );
+
+            lin.plain_col_packing_preprocess(
+                ln_output_row,
+                ln_output_col,
+                lin.he_8192_tiny->plain_mod,
+                INPUT_DIM,
+                COMMON_DIM
+            );
+
+            if(party == ALICE){
+                h4 = ss_to_he_server(
+                    lin.he_8192_tiny, 
+                    ln_output_col,
+                    INPUT_DIM*COMMON_DIM);
+            } else{
+                ss_to_he_client(lin.he_8192_tiny, ln_output_col, ln_size);
+            }
+
+
+            delete[] ln_input_cross;
+            delete[] ln_input_row;
+            delete[] ln_output_row;
+            delete[] ln_output_col;
+        }
+    
+
+        // -------------------- Linear #3 -------------------- //
+        {
+            int gelu_input_size = 128*3072;
+            int gelu_cts_size = gelu_input_size / lin.he_8192_tiny->poly_modulus_degree;
+            uint64_t* gelu_input_cross =
+                new uint64_t[gelu_input_size];
+            uint64_t* gelu_input_col =
+                new uint64_t[gelu_input_size];
+            uint64_t* gelu_output_col =
+                new uint64_t[gelu_input_size];
+
+            if(party == ALICE){
+                cout << "-> Layer - " << layer_id << ": Linear #3 HE" << endl;
+                    vector<Ciphertext> h5 = lin.linear_2(
+                    lin.he_8192_tiny,
+                    INPUT_DIM,
+                    COMMON_DIM,
+                    3072,
+                    h4, 
+                    bm.w_i_1[layer_id],
+                    bm.b_i_1[layer_id],
+                    data_lin3
+                );
+                cout << "-> Layer - " << layer_id << ": Linear #3 HE done " << endl;
+                he_to_ss_server(lin.he_8192_tiny, h5, gelu_input_cross);
+            } else{
+                he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, data_lin3);
+            }
+
+            lin.plain_col_packing_postprocess(
+                gelu_input_cross,
+                gelu_input_col,
+                true,
+                data_lin3
+            );
+
+            // mod p
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                gelu_input_col,
+                lin.he_8192_tiny->plain_mod,
+                gelu_input_col,
+                gelu_input_size,
+                NL_ELL,
+                11,
+                11
+            );
+
+            nl.gelu(
+                NL_NTHREADS,
+                gelu_input_col,
+                gelu_output_col,
+                gelu_input_size,
+                NL_ELL,
+                11
+            );
+
+            // nl.print_ss(gelu_output_col, 8, 64, 11);
+
+            nl.right_shift(
+                NL_NTHREADS,
+                gelu_output_col,
+                11 - 4,
+                gelu_output_col,
+                gelu_input_size,
+                64,
+                11
+            );
+            // nl.print_ss(gelu_output_col, 8, 64, 5);
+            // return 0;
+
+            if(party == ALICE){
+                h6 = ss_to_he_server(
+                    lin.he_8192_tiny, 
+                    gelu_output_col,
+                    gelu_input_size);
+            } else{
+                ss_to_he_client(
+                    lin.he_8192_tiny, 
+                    gelu_output_col, 
+                    gelu_input_size);
+            }
+
+            delete[] gelu_input_cross;
+            delete[] gelu_input_col;
+            delete[] gelu_output_col;
+        }
+
+        {
+            int ln_2_input_size = INPUT_DIM*COMMON_DIM;
+            int ln_2_cts_size = ln_2_input_size/lin.he_8192_tiny->poly_modulus_degree;
+
+            uint64_t* ln_2_input_cross =
+                new uint64_t[ln_2_input_size];
+            uint64_t* ln_2_input_row =
+                new uint64_t[ln_2_input_size];
+            uint64_t* ln_2_output_row =
+                new uint64_t[ln_2_input_size];
+            uint64_t* ln_2_output_col =
+                new uint64_t[ln_2_input_size];
+
+            if(party == ALICE){
+                cout << "-> Layer - " << layer_id << ": Linear #4 HE " << endl;
+                vector<Ciphertext> h7 = lin.linear_2(
+                    lin.he_8192_tiny,
+                    INPUT_DIM,
+                    INTER_DIM,
+                    COMMON_DIM,
+                    h6, 
+                    bm.w_i_2[layer_id],
+                    bm.b_i_2[layer_id],
+                    data_lin4
+                );
+                cout << "-> Layer - " << layer_id << ": Linear #4 HE done" << endl;
+                he_to_ss_server(lin.he_8192_tiny, h7, ln_2_input_cross);
+            } else{
+                he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, data_lin4);
+            }
+            // Post Processing
+            lin.plain_col_packing_postprocess(
+                ln_2_input_cross,
+                ln_2_input_row,
+                false,
+                data_lin4
+            );
+
+            // mod p
+            if(layer_id == 9 || layer_id == 10){
+                nl.gt_p_sub(
+                    NL_NTHREADS,
+                    ln_2_input_row,
+                    lin.he_8192_tiny->plain_mod,
+                    ln_2_input_row,
+                    ln_2_input_size,
+                    NL_ELL,
+                    8,
+                    NL_SCALE
+                );
+            } else{
+                nl.gt_p_sub(
+                    NL_NTHREADS,
+                    ln_2_input_row,
+                    lin.he_8192_tiny->plain_mod,
+                    ln_2_input_row,
+                    ln_2_input_size,
+                    NL_ELL,
+                    9,
+                    NL_SCALE
+                );
+            }
+
+            for(int i = 0; i < ln_2_input_size; i++){
+                ln_2_input_row[i] += h4_cache_12[i];
+            }
+
+            nl.layer_norm(
+                NL_NTHREADS,
+                ln_2_input_row,
+                ln_2_output_row,
+                INPUT_DIM,
+                COMMON_DIM,
+                NL_ELL,
+                NL_SCALE
+            );
+
+            // update H1
+            memcpy(h1_cache_12, ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
+
+            // Rescale
+            nl.right_shift(
+                NL_NTHREADS,
+                ln_2_output_row,
+                12 - 5,
+                ln_2_output_row,
+                ln_2_input_size,
+                64,
+                NL_SCALE
+            );
+
+            lin.plain_col_packing_preprocess(
+                ln_2_output_row,
+                ln_2_output_col,
+                lin.he_8192_tiny->plain_mod,
+                INPUT_DIM,
+                COMMON_DIM
+            );
+            if(layer_id == 11){
+                // Using Scale of 12 as 
+                memcpy(h98, h1_cache_12, COMMON_DIM*sizeof(uint64_t));
+            } else{
+                if(party == ALICE){
+                    h1 = ss_to_he_server(
+                    lin.he_8192, 
+                    ln_2_output_col,
+                    INPUT_DIM*COMMON_DIM);
+                } else{
+                    ss_to_he_client(
+                        lin.he_8192, 
+                        ln_2_output_col, 
+                        ln_2_input_size);
+                }
+            }
+
+            delete[] ln_2_input_cross;
+            delete[] ln_2_input_row;
+            delete[] ln_2_output_row;
+            delete[] ln_2_output_col;
+        }
+    }
+    nl.print_ss(h98, 16, NL_ELL, NL_SCALE);
+    return 0;
+
+    
 }

@@ -33,11 +33,12 @@ int main(int argc, char **argv) {
     Bert bt(party, port, address);
 
     auto start = high_resolution_clock::now();
-    if(party == ALICE){
-        bt.run_server();
-    } else{
-        bt.run_client("./weights_txt/inputs_0.txt");
-    }
+    // if(party == ALICE){
+    //     bt.run_server();
+    // } else{
+    //     bt.run_client("/home/ubuntu/mrpc/weights_txt/inputs_0.txt");
+    // }
+    bt.run("/home/ubuntu/mrpc/weights_txt/", "/home/ubuntu/mrpc/weights_txt/inputs_0.txt");
     auto end = high_resolution_clock::now();
     auto interval = (end - start)/1e+9;
     

@@ -38,6 +38,8 @@ public:
     FCMetadata data_lin3;
     FCMetadata data_lin4;
 
+    struct BertModel bm;
+
     Bert(int party, int port, string address);
     ~Bert();
 
@@ -65,6 +67,8 @@ public:
     void run_server();
 
     int run_client(string input_fname);
+
+    int run(string model_dir, string input_fname);
 	
 };
 
