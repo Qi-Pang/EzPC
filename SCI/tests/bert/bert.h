@@ -7,12 +7,11 @@
 #include <math.h>
 #include "linear.h"
 #include "nonlinear.h"
-#include "bert_utils.h"
 
 #define NL_NTHREADS 12
 #define NL_ELL 37
 #define NL_SCALE 12
-#define ATTENTION_LAYERS 12
+
 
 #define NUM_CLASS 2
 
@@ -33,14 +32,7 @@ public:
     Linear lin;
     NonLinear nl;
 
-    FCMetadata data_lin1;
-    FCMetadata data_lin2;
-    FCMetadata data_lin3;
-    FCMetadata data_lin4;
-
-    struct BertModel bm;
-
-    Bert(int party, int port, string address);
+    Bert(int party, int port, string address, string model_path);
     ~Bert();
 
 
@@ -51,7 +43,6 @@ public:
     void ss_to_he_client(HE* he, uint64_t* input, int length);
 
     void pc_bw_share_server(
-        struct BertModel &bm,
         uint64_t* wp,
         uint64_t* bp,
         uint64_t* wc,
@@ -68,7 +59,7 @@ public:
 
     int run_client(string input_fname);
 
-    int run(string model_dir, string input_fname, string mask_fname);
+    int run(string input_fname, string mask_fname);
 	
 };
 

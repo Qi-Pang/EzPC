@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
 
     
 
-    Bert bt(party, port, address);
+    Bert bt(party, port, address, "/home/ubuntu/mrpc/weights_txt/");
 
     auto start = high_resolution_clock::now();
     // if(party == ALICE){
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
     // } else{
     //     bt.run_client("/home/ubuntu/mrpc/weights_txt/inputs_0.txt");
     // }
-    int result = bt.run("/home/ubuntu/mrpc/weights_txt/", "/home/ubuntu/mrpc/weights_txt/inputs_407_data.txt", "/home/ubuntu/mrpc/weights_txt/inputs_407_mask.txt");
+    int result = bt.run("/home/ubuntu/mrpc/weights_txt/inputs_407_data.txt", "/home/ubuntu/mrpc/weights_txt/inputs_407_mask.txt");
     cout << "Prediction: " << result << endl;
     auto end = high_resolution_clock::now();
     auto interval = (end - start)/1e+9;

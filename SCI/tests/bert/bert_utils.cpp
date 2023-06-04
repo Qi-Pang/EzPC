@@ -129,7 +129,7 @@ string replace(string str, string substr1, string substr2) {
 
 BertModel load_model(string model_dir, int num_class){
     BertModel bm;
-
+    
     // Attention
     string wq_fname = 
     "bert.encoder.layer.X.attention.self.query.weight.txt";

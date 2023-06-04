@@ -63,26 +63,48 @@ Linear::Linear(int party, NetIO *io) {
 	// 	{54, 55},
 	// 	65537
     // );
+
+    pp_1.resize(ATTENTION_LAYERS);
+    pp_2.resize(ATTENTION_LAYERS);
+    pp_3.resize(ATTENTION_LAYERS);
+    pp_4.resize(ATTENTION_LAYERS);
+
+    data_lin1.filter_h = COMMON_DIM;
+    data_lin1.filter_w = OUTPUT_DIM;
+    data_lin1.image_size = INPUT_DIM;
+    data_lin1.slot_count = 8192;
+
+    data_lin2.filter_h = COMMON_DIM;
+    data_lin2.filter_w = COMMON_DIM;
+    data_lin2.image_size = INPUT_DIM;
+    data_lin2.slot_count = 8192;
+
+    data_lin3.filter_h = COMMON_DIM;
+    data_lin3.filter_w = INTER_DIM;
+    data_lin3.image_size = INPUT_DIM;
+    data_lin3.slot_count = 8192;
+
+    data_lin4.filter_h = INTER_DIM;
+    data_lin4.filter_w = COMMON_DIM;
+    data_lin4.image_size = INPUT_DIM;
+    data_lin4.slot_count = 8192;
 }
 
 Linear::~Linear() {
 
 }
 
-vector<Ciphertext> Linear::linear_1(
-		HE* he,
-		vector<Ciphertext> input_cts, 
-		vector<vector<vector<uint64_t>>> w_q,
-		vector<vector<vector<uint64_t>>> w_k,
-		vector<vector<vector<uint64_t>>> w_v,
-		vector<vector<uint64_t>> b_q,
-		vector<vector<uint64_t>> b_k,
-		vector<vector<uint64_t>> b_v,
-		const FCMetadata &data) {
-
-	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats(12);
-	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single(12);
-	vector<vector<Plaintext>> bias_packing(12);
+PreprocessParams_1 Linear::params_preprocessing_ct_ct(
+    HE* he,
+    vector<vector<vector<uint64_t>>> w_q,
+    vector<vector<vector<uint64_t>>> w_k,
+    vector<vector<vector<uint64_t>>> w_v,
+    vector<vector<uint64_t>> b_q,
+    vector<vector<uint64_t>> b_k,
+    vector<vector<uint64_t>> b_v,
+    const FCMetadata &data
+){
+    PreprocessParams_1 pp;
 
     uint64_t plain_mod = he->plain_mod;
 
@@ -130,46 +152,27 @@ vector<Ciphertext> Linear::linear_1(
 		auto cross_mat = bert_cross_packing_matrix(he, matrix_mod_p1.data(), matrix_mod_p2.data(), data);
 		auto cross_mat_single = bert_cross_packing_single_matrix(he, matrix_mod_p3.data(), matrix_mod_p4.data(), data);
 		auto bias = bert_cross_packing_bias(he, b_q[packing_index].data(), b_k[packing_index].data(), b_v[packing_index].data(), data);
-		cross_mats[packing_index] = cross_mat;
-		cross_mats_single[packing_index] = cross_mat_single;
-		bias_packing[packing_index] = bias;
+		pp.cross_mats.push_back(cross_mat);
+		pp.cross_mats_single.push_back(cross_mat_single);
+		pp.bias_packing.push_back(bias);
 	}
     // print_pt_l(he_8192, bias_packing[0][0], 8192);
 
-	auto cross_masks = generate_cross_packing_masks(he, data);
+	pp.cross_masks = generate_cross_packing_masks(he, data);
 
-
-	vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count * 3 * 12);
-	bert_cipher_plain_bsgs(he, input_cts, cross_mats, bias_packing, cross_mats_single, data, Cipher_plain_results);
-
-	vector<Ciphertext> HE_result(3 * 12);
-	bert_cipher_cipher_cross_packing(he, data, Cipher_plain_results, cross_masks, HE_result);
-
-    int packing_gap = data.image_size * data.filter_w / data.slot_count * 3;
-    for (int i = 0; i < 12; i++) {
-        HE_result[24 + i] = Cipher_plain_results[2 + i * packing_gap];
-    }
-
-	#pragma omp parallel for
-	for (int i = 0; i < HE_result.size(); i++) {
-		he->evaluator->mod_switch_to_next_inplace(HE_result[i]);
-		he->evaluator->mod_switch_to_next_inplace(HE_result[i]);
-	}
-
-    return HE_result;
+    return pp;
 }
 
-vector<Ciphertext> Linear::linear_2(
+PreprocessParams_2 Linear::params_preprocessing_ct_pt(
     HE* he,
     int32_t input_dim, 
     int32_t common_dim, 
     int32_t output_dim,
-    vector<Ciphertext> input_cts, 
     vector<vector<uint64_t>> w,
     vector<uint64_t> b,
     const FCMetadata &data
-    ){
-
+){
+    PreprocessParams_2 pp;
     uint64_t plain_mod = he->plain_mod;
 
     vector<uint64_t *> matrix_mod_p1(common_dim);
@@ -192,11 +195,97 @@ vector<Ciphertext> Linear::linear_2(
     for (int i = 0; i < output_dim; i++) {
         b[i] = neg_mod((int64_t)b[i], (int64_t)plain_mod);
     }
-    auto cross_mat_single = bert_cross_packing_single_matrix_2(he, matrix_mod_p1.data(), matrix_mod_p2.data(), data);
-    auto cross_bias_single = bert_cross_packing_bias_2(he, b.data(), data);
+    pp.cross_mat_single = bert_cross_packing_single_matrix_2(he, matrix_mod_p1.data(), matrix_mod_p2.data(), data);
+    pp.cross_bias_single = bert_cross_packing_bias_2(he, b.data(), data);
+    return pp;
+}
 
+void Linear::weights_preprocess(BertModel &bm){
+    #pragma omp parallel for
+    for(int i = 0; i < ATTENTION_LAYERS; i++){
+        pp_1[i] = params_preprocessing_ct_ct(
+            he_8192,
+            bm.w_q[i],
+            bm.w_k[i],
+            bm.w_v[i],
+            bm.b_q[i],
+            bm.b_k[i],
+            bm.b_v[i],
+            data_lin1
+        );
+
+        pp_2[i] = params_preprocessing_ct_pt(
+            he_8192_tiny,
+            INPUT_DIM,
+            COMMON_DIM,
+            COMMON_DIM,
+            bm.w_o[i],
+            bm.b_o[i],
+            data_lin2
+        );
+
+        pp_3[i] = params_preprocessing_ct_pt(
+            he_8192_tiny,
+            INPUT_DIM,
+            COMMON_DIM,
+            INTER_DIM,
+            bm.w_i_1[i],
+            bm.b_i_1[i],
+            data_lin3
+        );
+
+        pp_4[i] = params_preprocessing_ct_pt(
+            he_8192_tiny,
+            INPUT_DIM,
+            INTER_DIM,
+            COMMON_DIM,
+            bm.w_i_2[i],
+            bm.b_i_2[i],
+            data_lin4
+        );
+    }
+
+    w_c = bm.w_c;
+    b_c = bm.b_c;
+    w_p = bm.w_p;
+    b_p = bm.b_p;
+}
+
+vector<Ciphertext> Linear::linear_1(
+		HE* he,
+		vector<Ciphertext> input_cts, 
+		PreprocessParams_1 &pp,
+		const FCMetadata &data) {
+
+
+	vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count * 3 * 12);
+	bert_cipher_plain_bsgs(he, input_cts, pp.cross_mats, pp.bias_packing, pp.cross_mats_single, data, Cipher_plain_results);
+
+	vector<Ciphertext> HE_result(3 * 12);
+	bert_cipher_cipher_cross_packing(he, data, Cipher_plain_results, pp.cross_masks, HE_result);
+
+    int packing_gap = data.image_size * data.filter_w / data.slot_count * 3;
+    for (int i = 0; i < 12; i++) {
+        HE_result[24 + i] = Cipher_plain_results[2 + i * packing_gap];
+    }
+
+	#pragma omp parallel for
+	for (int i = 0; i < HE_result.size(); i++) {
+		he->evaluator->mod_switch_to_next_inplace(HE_result[i]);
+		he->evaluator->mod_switch_to_next_inplace(HE_result[i]);
+	}
+
+    return HE_result;
+}
+
+vector<Ciphertext> Linear::linear_2(
+    HE* he,
+    vector<Ciphertext> input_cts, 
+    PreprocessParams_2 &pp,
+    const FCMetadata &data
+    ){
     vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count);
-    bert_cipher_plain_bsgs_2(he, input_cts, cross_mat_single.first, cross_mat_single.second, cross_bias_single, data, Cipher_plain_results);
+    bert_cipher_plain_bsgs_2(he, input_cts, pp.cross_mat_single.first, pp.cross_mat_single.second, pp.cross_bias_single, data, Cipher_plain_results);
 
     return Cipher_plain_results;
 }

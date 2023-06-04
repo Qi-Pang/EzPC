@@ -5,8 +5,11 @@
 #include "FloatingPoint/fp-math.h"
 #include <fstream>
 #include <iostream>
+#include <vector>
+#include <string>
 #include <thread>
 #include <math.h>
+#include "bert_utils.h"
 
 #define PACKING_NUM 12
 
@@ -14,6 +17,8 @@
 #define COMMON_DIM 768
 #define OUTPUT_DIM 64
 #define INTER_DIM 3072
+
+#define ATTENTION_LAYERS 12
 
 using namespace sci;
 using namespace std;
@@ -33,6 +38,18 @@ struct FCMetadata
 	int32_t image_size;
 };
 
+struct PreprocessParams_1{
+    vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats;
+	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single;
+	vector<vector<Plaintext>> bias_packing;
+    vector<Plaintext> cross_masks;
+};
+
+struct PreprocessParams_2{
+    pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> cross_mat_single;
+    vector<Plaintext> cross_bias_single;
+};
+
 class Linear
 {
 public:
@@ -47,6 +64,25 @@ public:
 	// Fix linking error
 	uint64_t p_mod;
 
+	FCMetadata data_lin1;
+    FCMetadata data_lin2;
+    FCMetadata data_lin3;
+    FCMetadata data_lin4;
+
+	// Attention
+	vector<PreprocessParams_1> pp_1;
+	vector<PreprocessParams_2> pp_2;
+	vector<PreprocessParams_2> pp_3;
+	vector<PreprocessParams_2> pp_4;
+
+	// Pooling
+    vector<vector<uint64_t>> w_p;
+    vector<uint64_t> b_p;
+
+    // Classification
+    vector<vector<uint64_t>> w_c;
+    vector<uint64_t> b_c;
+
 	Linear();
 
 	Linear(int party, NetIO *io);
@@ -57,9 +93,8 @@ public:
 
 	void generate_new_keys();
 
-	vector<Ciphertext> linear_1(
+	PreprocessParams_1 params_preprocessing_ct_ct(
 		HE* he,
-		vector<Ciphertext> input_cts, 
 		vector<vector<vector<uint64_t>>> w_q,
 		vector<vector<vector<uint64_t>>> w_k,
 		vector<vector<vector<uint64_t>>> w_v,
@@ -67,16 +102,32 @@ public:
 		vector<vector<uint64_t>> b_k,
 		vector<vector<uint64_t>> b_v,
 		const FCMetadata &data
-		);
-	
-	vector<Ciphertext> linear_2(
+	);
+
+	PreprocessParams_2 params_preprocessing_ct_pt(
 		HE* he,
 		int32_t input_dim, 
 		int32_t common_dim, 
 		int32_t output_dim,
-		vector<Ciphertext> input_cts, 
 		vector<vector<uint64_t>> w,
 		vector<uint64_t> b,
+		const FCMetadata &data
+	);
+
+	void weights_preprocess(BertModel &bm);
+
+
+	vector<Ciphertext> linear_1(
+		HE* he,
+		vector<Ciphertext> input_cts, 
+		PreprocessParams_1 &pp,
+		const FCMetadata &data
+		);
+	
+	vector<Ciphertext> linear_2(
+		HE* he,
+		vector<Ciphertext> input_cts, 
+		PreprocessParams_2 &pp,
 		const FCMetadata &data
 		);
 	

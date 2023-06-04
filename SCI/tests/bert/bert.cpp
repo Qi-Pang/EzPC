@@ -69,7 +69,7 @@ void print_ct(HE* he, Ciphertext &ct, int len){
     print_pt(he, pt, len);
 }
 
-Bert::Bert(int party, int port, string address){
+Bert::Bert(int party, int port, string address, string model_path){
     this->party = party;
     this->address = address;
     this->port = port;
@@ -79,27 +79,16 @@ Bert::Bert(int party, int port, string address){
     this->lin = Linear(party, io);
     cout << "> Setup NonLinear" << endl;
     this->nl = NonLinear(party, address, port+1);
+
+    if(party == ALICE){
+        cout << "> Loading and preprocessing weights on server" << endl;
+        struct BertModel bm = 
+            load_model(model_path, NUM_CLASS);
+        lin.weights_preprocess(bm);
+    }
     cout << "> Bert intialized done!" << endl << endl;
 
-    data_lin1.filter_h = COMMON_DIM;
-    data_lin1.filter_w = OUTPUT_DIM;
-    data_lin1.image_size = INPUT_DIM;
-    data_lin1.slot_count = 8192;
 
-    data_lin2.filter_h = COMMON_DIM;
-    data_lin2.filter_w = COMMON_DIM;
-    data_lin2.image_size = INPUT_DIM;
-    data_lin2.slot_count = 8192;
-
-    data_lin3.filter_h = COMMON_DIM;
-    data_lin3.filter_w = INTER_DIM;
-    data_lin3.image_size = INPUT_DIM;
-    data_lin3.slot_count = 8192;
-
-    data_lin4.filter_h = INTER_DIM;
-    data_lin4.filter_w = COMMON_DIM;
-    data_lin4.image_size = INPUT_DIM;
-    data_lin4.slot_count = 8192;
 
 }
 
@@ -192,7 +181,6 @@ void Bert::ss_to_he_client(HE* he, uint64_t* input, int length){
 }
 
 void Bert::pc_bw_share_server(
-    struct BertModel &bm,
     uint64_t* wp,
     uint64_t* bp,
     uint64_t* wc,
@@ -226,28 +214,28 @@ void Bert::pc_bw_share_server(
     int offset = 0;
     for(int i = 0; i < COMMON_DIM; i++){
         for(int j = 0; j < COMMON_DIM; j++){
-            wp[i*COMMON_DIM + j] = (bm.w_p[i][j] - random_share[offset]) & mask_x;
+            wp[i*COMMON_DIM + j] = (lin.w_p[i][j] - random_share[offset]) & mask_x;
             offset++;
         }
     }
     //  cout << "share 2 " << endl;
     // Write bp share
     for(int i = 0; i < COMMON_DIM; i++){
-        bp[i] = (bm.b_p[i] - random_share[offset]) & mask_x;
+        bp[i] = (lin.b_p[i] - random_share[offset]) & mask_x;
         offset++;
     }
     //  cout << "share 3 " << endl;
     // Write w_c share
     for(int i = 0; i < COMMON_DIM; i++){
         for(int j = 0; j < NUM_CLASS; j++){
-            wc[i*NUM_CLASS + j] = (bm.w_c[i][j] - random_share[offset]) & mask_x;
+            wc[i*NUM_CLASS + j] = (lin.w_c[i][j] - random_share[offset]) & mask_x;
             offset++;
         }
     }
     //  cout << "share 4 " << endl;
     // Write b_c share
     for(int i = 0; i < NUM_CLASS; i++){
-        bc[i] = (bm.b_c[i]- random_share[offset]) & mask_x;
+        bc[i] = (lin.b_c[i]- random_share[offset]) & mask_x;
         offset++;
     } 
 }
@@ -275,7 +263,6 @@ void Bert::pc_bw_share_client(
 void Bert::run_server() {
     cout << "> Loading weights and bias" << endl;
     // Loading weights
-    bm = load_model("/home/ubuntu/mrpc/weights_txt/", NUM_CLASS);
 
     // Receive cipher text input
     vector<Ciphertext> h1(12);
@@ -295,13 +282,8 @@ void Bert::run_server() {
         vector<Ciphertext> q_k_v = lin.linear_1(
             lin.he_8192,
             h1,
-            bm.w_q[layer_id],
-            bm.w_k[layer_id],
-            bm.w_v[layer_id],
-            bm.b_q[layer_id],
-            bm.b_k[layer_id],
-            bm.b_v[layer_id],
-            data_lin1
+            lin.pp_1[layer_id],
+            lin.data_lin1
         );
 
         cout << "-> Layer - " << layer_id << ": Linear #1 done " << endl;
@@ -348,13 +330,13 @@ void Bert::run_server() {
             softmax_input_row,
             // we need row packing
             false,
-            data_lin1);
+            lin.data_lin1);
         
         lin.plain_cross_packing_postprocess_v(
             &qk_v_cross[qk_size], 
             v_matrix_row,
             false,
-            data_lin1);
+            lin.data_lin1);
 
         // -------------------- Softmax -------------------- //
 
@@ -437,13 +419,9 @@ void Bert::run_server() {
 
         vector<Ciphertext> h3 = lin.linear_2(
             lin.he_8192_tiny,
-            INPUT_DIM,
-            COMMON_DIM,
-            COMMON_DIM,
             h2, 
-            bm.w_o[layer_id],
-            bm.b_o[layer_id],
-            data_lin2
+            lin.pp_2[layer_id],
+            lin.data_lin2
         );
 
         cout << "-> Layer - " << layer_id << ": Linear #2 done " << endl;
@@ -467,7 +445,7 @@ void Bert::run_server() {
             ln_input_cross,
             ln_input_row,
             false,
-            data_lin2
+            lin.data_lin2
         );
 
         // mod p
@@ -533,13 +511,9 @@ void Bert::run_server() {
         cout << "-> Layer - " << layer_id << ": Linear #3 " << endl;
         vector<Ciphertext> h5 = lin.linear_2(
             lin.he_8192_tiny,
-            INPUT_DIM,
-            COMMON_DIM,
-            3072,
             h4, 
-            bm.w_i_1[layer_id],
-            bm.b_i_1[layer_id],
-            data_lin3
+            lin.pp_3[layer_id],
+            lin.data_lin3
         );
 
         cout << "-> Layer - " << layer_id << ": Linear #3 done " << endl;
@@ -562,7 +536,7 @@ void Bert::run_server() {
             gelu_input_cross,
             gelu_input_col,
             true,
-            data_lin3
+            lin.data_lin3
         );
 
         // mod p
@@ -612,13 +586,9 @@ void Bert::run_server() {
 
         vector<Ciphertext> h7 = lin.linear_2(
             lin.he_8192_tiny,
-            INPUT_DIM,
-            INTER_DIM,
-            COMMON_DIM,
             h6, 
-            bm.w_i_2[layer_id],
-            bm.b_i_2[layer_id],
-            data_lin4
+            lin.pp_4[layer_id],
+            lin.data_lin4
         );
 
         
@@ -647,7 +617,7 @@ void Bert::run_server() {
             ln_2_input_cross,
             ln_2_input_row,
             false,
-            data_lin4
+            lin.data_lin4
         );
 
         // mod p
@@ -717,7 +687,6 @@ void Bert::run_server() {
     cout << "-> Sharing Pooling and Classification params..." << endl;
 
     pc_bw_share_server(
-        bm,
         wp,
         bp,
         wc,
@@ -801,7 +770,7 @@ int Bert::run_client(string input_fname) {
     }
 
     vector<Ciphertext> h1_cts = 
-        lin.bert_efficient_preprocess_vec(lin.he_8192, h1_vec, data_lin1);
+        lin.bert_efficient_preprocess_vec(lin.he_8192, h1_vec, lin.data_lin1);
     send_encrypted_vector(io, h1_cts);
 
     // print_ct(lin.he_8192, h1_cts[0], 8192);
@@ -826,7 +795,7 @@ int Bert::run_client(string input_fname) {
         
         // Secret sharing and get share from server
         cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, data_lin1);
+        he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, lin.data_lin1);
 
         cout << "-> Layer - " << layer_id 
             << ": Softmax preprocessing..." << endl;
@@ -848,13 +817,13 @@ int Bert::run_client(string input_fname) {
             softmax_input_row,
             // we need row packing
             false,
-            data_lin1);
+            lin.data_lin1);
         
         lin.plain_cross_packing_postprocess_v(
             &qk_v_cross[qk_size], 
             v_matrix_row,
             false,
-            data_lin1);
+            lin.data_lin1);
 
         // -------------------- Softmax -------------------- //
 
@@ -945,7 +914,7 @@ int Bert::run_client(string input_fname) {
    
         // Secret sharing and get share from server
         cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192_tiny, ln_input_cross, ln_cts_size, data_lin2);
+        he_to_ss_client(lin.he_8192_tiny, ln_input_cross, ln_cts_size, lin.data_lin2);
 
         cout << "-> Layer - " << layer_id 
             << ": Layer Norm preprocessing..." << endl;
@@ -954,7 +923,7 @@ int Bert::run_client(string input_fname) {
             ln_input_cross,
             ln_input_row,
             false,
-            data_lin2
+            lin.data_lin2
         );
 
         // mod p
@@ -1026,7 +995,7 @@ int Bert::run_client(string input_fname) {
 
         // Secret sharing and get share from server
         cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, data_lin3);
+        he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, lin.data_lin3);
         cout << "-> Layer - " << layer_id 
             << ": GELU preprocessing..." << endl;
 
@@ -1035,7 +1004,7 @@ int Bert::run_client(string input_fname) {
             gelu_input_cross,
             gelu_input_col,
             true,
-            data_lin3
+            lin.data_lin3
         );
 
         // mod p
@@ -1093,7 +1062,7 @@ int Bert::run_client(string input_fname) {
         
         // Secret sharing and get share from server
         cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, data_lin4);
+        he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, lin.data_lin4);
         cout << "-> Layer - " << layer_id 
             << ": GELU preprocessing..." << endl;
 
@@ -1102,7 +1071,7 @@ int Bert::run_client(string input_fname) {
             ln_2_input_cross,
             ln_2_input_row,
             false,
-            data_lin4
+            lin.data_lin4
         );
 
         // mod p
@@ -1244,7 +1213,7 @@ int Bert::run_client(string input_fname) {
     return max_index;
 }
 
-int Bert::run(string model_dir, string input_fname, string mask_fname){
+int Bert::run(string input_fname, string mask_fname){
     // Server: Alice
     // Client: Bob
 
@@ -1260,9 +1229,6 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
 
     if(party == ALICE){
         // -------------------- Preparing -------------------- //
-        cout << "> Loading weights and bias" << endl;
-        bm = load_model(model_dir, NUM_CLASS);
-
         // Receive cipher text input
         recv_encrypted_vector(lin.he_8192->context, io, h1);
         cout << "> Receive input cts from client " << endl;
@@ -1282,7 +1248,7 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
 
         // Send cipher text input
         vector<Ciphertext> h1_cts = 
-            lin.bert_efficient_preprocess_vec(lin.he_8192, input_col, data_lin1);
+            lin.bert_efficient_preprocess_vec(lin.he_8192, input_col, lin.data_lin1);
         send_encrypted_vector(io, h1_cts);
     }
 
@@ -1308,19 +1274,14 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
                 vector<Ciphertext> q_k_v = lin.linear_1(
                     lin.he_8192,
                     h1,
-                    bm.w_q[layer_id],
-                    bm.w_k[layer_id],
-                    bm.w_v[layer_id],
-                    bm.b_q[layer_id],
-                    bm.b_k[layer_id],
-                    bm.b_v[layer_id],
-                    data_lin1
+                    lin.pp_1[layer_id],
+                    lin.data_lin1
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #1 done HE" << endl;
                 he_to_ss_server(lin.he_8192, q_k_v, qk_v_cross);
             } else{
                 int softmax_cts_len = qk_v_size / lin.he_8192->poly_modulus_degree;
-                he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, data_lin1);
+                he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, lin.data_lin1);
             }
 
             // Scale: Q*V 22 V 11
@@ -1340,13 +1301,13 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
                 softmax_input_row,
                 // we need row packing
                 false,
-                data_lin1);
+                lin.data_lin1);
             
             lin.plain_cross_packing_postprocess_v(
                 &qk_v_cross[qk_size], 
                 v_matrix_row,
                 false,
-                data_lin1);
+                lin.data_lin1);
 
             // nl.print_ss(softmax_input_row, 128, NL_ELL, 22);
             // return 0;
@@ -1465,26 +1426,22 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE" << endl;
                 vector<Ciphertext> h3 = lin.linear_2(
                     lin.he_8192_tiny,
-                    INPUT_DIM,
-                    COMMON_DIM,
-                    COMMON_DIM,
                     h2, 
-                    bm.w_o[layer_id],
-                    bm.b_o[layer_id],
-                    data_lin2
+                    lin.pp_2[layer_id],
+                    lin.data_lin2
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h3, ln_input_cross);
             } else{
                 vector<Ciphertext> h3(ln_cts_size);
-                he_to_ss_client(lin.he_8192_tiny, ln_input_cross, ln_cts_size, data_lin2);
+                he_to_ss_client(lin.he_8192_tiny, ln_input_cross, ln_cts_size, lin.data_lin2);
             }
 
             lin.plain_col_packing_postprocess(
                 ln_input_cross,
                 ln_input_row,
                 false,
-                data_lin2
+                lin.data_lin2
             );
 
             nl.gt_p_sub(
@@ -1571,25 +1528,21 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE" << endl;
                     vector<Ciphertext> h5 = lin.linear_2(
                     lin.he_8192_tiny,
-                    INPUT_DIM,
-                    COMMON_DIM,
-                    3072,
                     h4, 
-                    bm.w_i_1[layer_id],
-                    bm.b_i_1[layer_id],
-                    data_lin3
+                    lin.pp_3[layer_id],
+                    lin.data_lin3
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h5, gelu_input_cross);
             } else{
-                he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, data_lin3);
+                he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, lin.data_lin3);
             }
 
             lin.plain_col_packing_postprocess(
                 gelu_input_cross,
                 gelu_input_col,
                 true,
-                data_lin3
+                lin.data_lin3
             );
 
             // mod p
@@ -1667,25 +1620,21 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE " << endl;
                 vector<Ciphertext> h7 = lin.linear_2(
                     lin.he_8192_tiny,
-                    INPUT_DIM,
-                    INTER_DIM,
-                    COMMON_DIM,
                     h6, 
-                    bm.w_i_2[layer_id],
-                    bm.b_i_2[layer_id],
-                    data_lin4
+                    lin.pp_4[layer_id],
+                    lin.data_lin4
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE done" << endl;
                 he_to_ss_server(lin.he_8192_tiny, h7, ln_2_input_cross);
             } else{
-                he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, data_lin4);
+                he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, lin.data_lin4);
             }
             // Post Processing
             lin.plain_col_packing_postprocess(
                 ln_2_input_cross,
                 ln_2_input_row,
                 false,
-                data_lin4
+                lin.data_lin4
             );
 
             // mod p
@@ -1726,6 +1675,7 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
                 NL_ELL,
                 NL_SCALE
             );
+
 
             // update H1
             memcpy(h1_cache_12, ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
@@ -1786,7 +1736,6 @@ int Bert::run(string model_dir, string input_fname, string mask_fname){
 
     if(party == ALICE){
         pc_bw_share_server(
-            bm,
             wp,
             bp,
             wc,
