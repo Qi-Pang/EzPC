@@ -1639,7 +1639,7 @@ FixArray FPMath::tanh_approx(const FixArray& x){
   sign_x = fix->add(sign_x, cons_neg_1);
 
   BoolArray gt3 = fix->GT(abs_x, (uint64_t)(2.855 * (1 << s)));
-  FixArray abs_tanh = fix->if_else(gt3, cons_1, tanh_inner_preprocess(abs_x));
+  FixArray abs_tanh = fix->if_else(gt3, cons_1, tanh_inner(abs_x));
   FixArray ret = fix->mul(abs_tanh, sign_x, ell+s, all_0.data);
   ret = fix->truncate_reduce(ret, s, all_0.data);
 

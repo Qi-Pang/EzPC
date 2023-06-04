@@ -68,7 +68,7 @@ public:
 
     int run_client(string input_fname);
 
-    int run(string model_dir, string input_fname);
+    int run(string model_dir, string input_fname, string mask_fname);
 	
 };
 

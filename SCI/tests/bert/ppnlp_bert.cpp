@@ -38,7 +38,8 @@ int main(int argc, char **argv) {
     // } else{
     //     bt.run_client("/home/ubuntu/mrpc/weights_txt/inputs_0.txt");
     // }
-    bt.run("/home/ubuntu/mrpc/weights_txt/", "/home/ubuntu/mrpc/weights_txt/inputs_0.txt");
+    int result = bt.run("/home/ubuntu/mrpc/weights_txt/", "/home/ubuntu/mrpc/weights_txt/inputs_407_data.txt", "/home/ubuntu/mrpc/weights_txt/inputs_407_mask.txt");
+    cout << "Prediction: " << result << endl;
     auto end = high_resolution_clock::now();
     auto interval = (end - start)/1e+9;
     

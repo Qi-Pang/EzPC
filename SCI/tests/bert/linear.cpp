@@ -2,11 +2,11 @@
 
 
 void print_pt_l(HE* he, Plaintext &pt, int len) {
-    vector<uint64_t> dest(len, 0ULL);
+    vector<int64_t> dest(len, 0ULL);
     he->encoder->decode(pt, dest);
     cout << "Decode first 5 rows: ";
     int non_zero_count;
-    for(int i = 0; i < 128; i++){
+    for(int i = 0; i < 10; i++){
         cout << dest[i] << " ";
         // if(dest[i] != 0){
         //     non_zero_count += 1;
@@ -14,6 +14,15 @@ void print_pt_l(HE* he, Plaintext &pt, int len) {
     }
     // cout << "Non zero count: " << non_zero_count;
     cout << endl;
+}
+
+void print_ct_l(HE* he, Ciphertext &ct, int len){
+    Plaintext pt;
+    he->decryptor->decrypt(ct, pt);
+    cout << "Noise budget: ";
+    cout << YELLOW << he->decryptor->invariant_noise_budget(ct) << " ";
+    cout << RESET << endl;
+    print_pt_l(he, pt, len);
 }
 
 Linear::Linear(){}
@@ -29,12 +38,20 @@ Linear::Linear(int party, NetIO *io) {
 		536903681
     );
 
+    // this->he_8192_tiny = new HE(
+    //     party,
+    //     io,
+    //     8192,
+    //     {54, 54, 55, 55},
+	// 	536903681
+    // );
+
     this->he_8192_tiny = new HE(
         party,
         io,
         8192,
-        {54, 54, 55, 55},
-		536903681
+        {60, 60},
+		557057
     );
 
     this->p_mod = prime_mod;
@@ -823,7 +840,7 @@ void Linear::bert_cipher_plain_bsgs_2(
         }
     }
     int num_diag = data.slot_count / data.image_size / 2;
-
+    
     #pragma omp parallel for
     for (int i = 0; i < cts.size(); i++)
     {   

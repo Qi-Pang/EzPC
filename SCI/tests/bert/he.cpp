@@ -47,14 +47,13 @@ HE::HE(int party,
 		io->send_data(&rk_size, sizeof(uint64_t));
 		io->send_data(keys_ser.c_str(), pk_size + gk_size + rk_size);
 
-#ifdef HE_DEBUG
 		stringstream os_sk;
 		sec_key.save(os_sk);
 		uint64_t sk_size = os_sk.tellp();
 		string keys_ser_sk = os_sk.str();
 		io->send_data(&sk_size, sizeof(uint64_t));
 		io->send_data(keys_ser_sk.c_str(), sk_size);
-#endif
+
 		encryptor = new Encryptor(*context, pub_key);
 		decryptor = new Decryptor(*context, sec_key);
 	}
@@ -80,7 +79,6 @@ HE::HE(int party,
 		relin_keys->load(*context, is);
 		delete[] key_share;
 
-#ifdef HE_DEBUG
 		uint64_t sk_size;
 		io->recv_data(&sk_size, sizeof(uint64_t));
 		char *key_share_sk = new char[sk_size];
@@ -90,8 +88,8 @@ HE::HE(int party,
 		is_sk.write(key_share_sk, sk_size);
 		sec_key.load(*context, is_sk);
 		delete[] key_share_sk;
-		decryptor_ = new Decryptor(*context, sec_key);
-#endif
+		decryptor = new Decryptor(*context, sec_key);
+
 		encryptor = new Encryptor(*context, pub_key);
 		vector<uint64_t> pod_matrix(poly_modulus_degree, 0ULL);
 		Plaintext tmp;
