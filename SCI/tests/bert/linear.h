@@ -75,6 +75,13 @@ public:
 	vector<PreprocessParams_2> pp_3;
 	vector<PreprocessParams_2> pp_4;
 
+	// Layer Norm
+    vector<vector<uint64_t>> w_ln_1;
+    vector<vector<uint64_t>> b_ln_1;
+
+    vector<vector<uint64_t>> w_ln_2;
+    vector<vector<uint64_t>> b_ln_2;
+
 	// Pooling
     vector<vector<uint64_t>> w_p;
     vector<uint64_t> b_p;

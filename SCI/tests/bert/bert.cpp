@@ -88,8 +88,6 @@ Bert::Bert(int party, int port, string address, string model_path){
     }
     cout << "> Bert intialized done!" << endl << endl;
 
-
-
 }
 
 Bert::~Bert() {
@@ -178,6 +176,60 @@ void Bert::ss_to_he_client(HE* he, uint64_t* input, int length){
         cts.push_back(ct);
     }
     send_encrypted_vector(io, cts);
+}
+
+void Bert::ln_share_server(
+    int layer_id,
+    vector<uint64_t> &wln_input,
+    vector<uint64_t> &bln_input,
+    uint64_t* wln,
+    uint64_t* bln
+){
+    int length = 2*COMMON_DIM;
+    uint64_t* random_share = new uint64_t[length];
+
+    uint64_t mask_x = (NL_ELL == 64 ? -1 : ((1ULL << NL_ELL) - 1));
+
+    // PRG128 prg;
+    // prg.random_data(random_share, length * sizeof(uint64_t));
+
+    // for(int i = 0; i < length; i++){
+    //     random_share[i] &= mask_x;
+    // }
+
+    for(int i = 0; i < length; i++){
+        random_share[i] = 0;
+    }
+
+    io->send_data(random_share, length*sizeof(uint64_t));
+
+    for(int i = 0; i < COMMON_DIM; i++){
+        random_share[i] = (wln_input[i] -  random_share[i]) & mask_x;
+        random_share[i + COMMON_DIM] = 
+            (bln_input[i] -  random_share[i + COMMON_DIM]) & mask_x;
+    }
+
+    for(int i = 0; i < INPUT_DIM; i++){
+        memcpy(&wln[i*COMMON_DIM], random_share, COMMON_DIM*sizeof(uint64_t));
+        memcpy(&bln[i*COMMON_DIM], &random_share[COMMON_DIM], COMMON_DIM*sizeof(uint64_t));
+    }
+
+    delete[] random_share;
+}
+
+void Bert::ln_share_client(
+    uint64_t* wln,
+    uint64_t* bln
+){
+    int length = 2*COMMON_DIM;
+
+    uint64_t* share = new uint64_t[length];
+    io->recv_data(share, length * sizeof(uint64_t));
+    for(int i = 0; i < INPUT_DIM; i++){
+        memcpy(&wln[i*COMMON_DIM], share, COMMON_DIM*sizeof(uint64_t));
+        memcpy(&bln[i*COMMON_DIM], &share[COMMON_DIM], COMMON_DIM*sizeof(uint64_t));
+    }
+    delete[] share;
 }
 
 void Bert::pc_bw_share_server(
@@ -477,6 +529,8 @@ void Bert::run_server() {
             NL_NTHREADS,
             ln_input_row,
             ln_output_row,
+            nullptr,
+            nullptr,
             INPUT_DIM,
             COMMON_DIM,
             NL_ELL,
@@ -642,6 +696,8 @@ void Bert::run_server() {
             NL_NTHREADS,
             ln_2_input_row,
             ln_2_output_row,
+            nullptr,
+            nullptr,
             INPUT_DIM,
             COMMON_DIM,
             NL_ELL,
@@ -955,6 +1011,8 @@ int Bert::run_client(string input_fname) {
             NL_NTHREADS,
             ln_input_row,
             ln_output_row,
+            nullptr,
+            nullptr,
             INPUT_DIM,
             COMMON_DIM,
             NL_ELL,
@@ -1097,6 +1155,8 @@ int Bert::run_client(string input_fname) {
             NL_NTHREADS,
             ln_2_input_row,
             ln_2_output_row,
+            nullptr,
+            nullptr,
             INPUT_DIM,
             COMMON_DIM,
             NL_ELL,
@@ -1213,7 +1273,7 @@ int Bert::run_client(string input_fname) {
     return max_index;
 }
 
-int Bert::run(string input_fname, string mask_fname){
+vector<double> Bert::run(string input_fname, string mask_fname){
     // Server: Alice
     // Client: Bob
 
@@ -1381,8 +1441,8 @@ int Bert::run(string input_fname, string mask_fname){
             // nl.print_ss(&h2_concate[68], 8, NL_ELL, 6);
             // return 0;
 
-            FixArray tmp = nl.to_public(h2_concate, 128*768, 64, 6);
-            save_to_file(tmp.data, 128, 768, "./inter_result/linear2_input.txt");
+            // FixArray tmp = nl.to_public(h2_concate, 128*768, 64, 6);
+            // save_to_file(tmp.data, 128, 768, "./inter_result/linear2_input.txt");
             // return 0;
 
             lin.plain_col_packing_preprocess(
@@ -1421,6 +1481,9 @@ int Bert::run(string input_fname, string mask_fname){
             uint64_t* ln_input_row = new uint64_t[ln_size];
             uint64_t* ln_output_row = new uint64_t[ln_size];
             uint64_t* ln_output_col = new uint64_t[ln_size];
+            uint64_t* ln_weight = new uint64_t[ln_size];
+            uint64_t* ln_bias = new uint64_t[ln_size];
+
             
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE" << endl;
@@ -1432,9 +1495,20 @@ int Bert::run(string input_fname, string mask_fname){
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h3, ln_input_cross);
+                ln_share_server(
+                    layer_id,
+                    lin.w_ln_1[layer_id],
+                    lin.b_ln_1[layer_id],
+                    ln_weight,
+                    ln_bias
+                );
             } else{
                 vector<Ciphertext> h3(ln_cts_size);
                 he_to_ss_client(lin.he_8192_tiny, ln_input_cross, ln_cts_size, lin.data_lin2);
+                ln_share_client(
+                    ln_weight,
+                    ln_bias
+                );
             }
 
             lin.plain_col_packing_postprocess(
@@ -1464,6 +1538,8 @@ int Bert::run(string input_fname, string mask_fname){
                 NL_NTHREADS,
                 ln_input_row,
                 ln_output_row,
+                ln_weight,
+                ln_bias,
                 INPUT_DIM,
                 COMMON_DIM,
                 NL_ELL,
@@ -1485,8 +1561,8 @@ int Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
-            FixArray tmp = nl.to_public(ln_output_row, 128*768, 64, 5);
-            save_to_file(tmp.data, 128, 768, "./inter_result/linear3_input.txt");
+            // FixArray tmp = nl.to_public(ln_output_row, 128*768, 64, 5);
+            // save_to_file(tmp.data, 128, 768, "./inter_result/linear3_input.txt");
 
             lin.plain_col_packing_preprocess(
                 ln_output_row,
@@ -1510,6 +1586,8 @@ int Bert::run(string input_fname, string mask_fname){
             delete[] ln_input_row;
             delete[] ln_output_row;
             delete[] ln_output_col;
+            delete[] ln_weight;
+            delete[] ln_bias;
         }
     
 
@@ -1615,6 +1693,8 @@ int Bert::run(string input_fname, string mask_fname){
                 new uint64_t[ln_2_input_size];
             uint64_t* ln_2_output_col =
                 new uint64_t[ln_2_input_size];
+            uint64_t* ln_weight_2 = new uint64_t[ln_2_input_size];
+            uint64_t* ln_bias_2 = new uint64_t[ln_2_input_size];
 
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE " << endl;
@@ -1626,8 +1706,19 @@ int Bert::run(string input_fname, string mask_fname){
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE done" << endl;
                 he_to_ss_server(lin.he_8192_tiny, h7, ln_2_input_cross);
+                ln_share_server(
+                    layer_id,
+                    lin.w_ln_2[layer_id],
+                    lin.b_ln_2[layer_id],
+                    ln_weight_2,
+                    ln_bias_2
+                );
             } else{
                 he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, lin.data_lin4);
+                ln_share_client(
+                    ln_weight_2,
+                    ln_bias_2
+                );
             }
             // Post Processing
             lin.plain_col_packing_postprocess(
@@ -1670,6 +1761,8 @@ int Bert::run(string input_fname, string mask_fname){
                 NL_NTHREADS,
                 ln_2_input_row,
                 ln_2_output_row,
+                ln_weight_2,
+                ln_bias_2,
                 INPUT_DIM,
                 COMMON_DIM,
                 NL_ELL,
@@ -1719,6 +1812,8 @@ int Bert::run(string input_fname, string mask_fname){
             delete[] ln_2_input_row;
             delete[] ln_2_output_row;
             delete[] ln_2_output_col;
+            delete[] ln_weight_2;
+            delete[] ln_bias_2;
         }
     }
 
@@ -1803,7 +1898,7 @@ int Bert::run(string input_fname, string mask_fname){
 
     if(party == ALICE){
         io->send_data(h101, NUM_CLASS*sizeof(uint64_t));
-        return 0;
+        return {};
     } else{
         uint64_t* res = new uint64_t[NUM_CLASS];
         vector<double> dbl_result;
@@ -1812,10 +1907,6 @@ int Bert::run(string input_fname, string mask_fname){
         for(int i = 0; i < NUM_CLASS; i++){
             dbl_result.push_back((signed_val(res[i] + h101[i], NL_ELL)) / double(1LL << NL_SCALE));
         }
-
-        auto max_ele = max_element(dbl_result.begin(), dbl_result.end());
-        int max_index = distance(dbl_result.begin(), max_ele);
-
-        return max_index;
+        return dbl_result;
     }
 }

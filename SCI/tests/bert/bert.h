@@ -55,11 +55,24 @@ public:
         uint64_t* bc
     );
 
+    void ln_share_server(
+        int layer_id,
+        vector<uint64_t> &wln_input,
+        vector<uint64_t> &bln_input,
+        uint64_t* wln,
+        uint64_t* bln
+    );
+
+    void ln_share_client(
+        uint64_t* wln,
+        uint64_t* bln
+    );
+
     void run_server();
 
     int run_client(string input_fname);
 
-    int run(string input_fname, string mask_fname);
+    vector<double> run(string input_fname, string mask_fname);
 	
 };
 

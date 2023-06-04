@@ -119,7 +119,7 @@ void NonLinear::softmax_iron(int nthreads, uint64_t* input, uint64_t* output, in
     }
 }
 
-void layer_norm_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
+void layer_norm_thread(int tid, int party, uint64_t *x, uint64_t *y, uint64_t *w, uint64_t *b, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
   int this_party;
   if (tid & 1) {
     this_party = 3 - party;
@@ -133,13 +133,15 @@ void layer_norm_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops
     // input = fpmath->fix->extend(input, ell);
     input_array.push_back(input);
   }
-  vector<FixArray> output_array = fpmath->layer_norm_iron(input_array);
+  FixArray w_array = fpmath->fix->input(this_party, num_ops*array_size, w, true, ell, s);
+  FixArray b_array = fpmath->fix->input(this_party, num_ops*array_size, b, true, ell, s);
+  vector<FixArray> output_array = fpmath->layer_norm_iron(input_array, w_array, b_array);
   for(int i = 0; i < num_ops; i++){
     memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
   }
 }
 
-void NonLinear::layer_norm(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s){
+void NonLinear::layer_norm(int nthreads, uint64_t* input, uint64_t* output, uint64_t* weight, uint64_t* bias, int dim, int array_size, int ell, int s){
     std::thread threads[nthreads];
     int chunk_size = dim / nthreads;
     for (int i = 0; i < nthreads; ++i) {
@@ -157,6 +159,8 @@ void NonLinear::layer_norm(int nthreads, uint64_t* input, uint64_t* output, int 
                 party, 
                 &input[offset*array_size], 
                 &output[offset*array_size], 
+                &weight[offset*array_size], 
+                &bias[offset*array_size], 
                 lnum_ops,
                 array_size,
                 ell,

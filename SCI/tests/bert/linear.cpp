@@ -245,6 +245,12 @@ void Linear::weights_preprocess(BertModel &bm){
         );
     }
 
+    w_ln_1 = bm.w_ln_1;
+    b_ln_1 = bm.b_ln_1;
+
+    w_ln_2 = bm.w_ln_2;
+    b_ln_2 = bm.b_ln_2;
+
     w_c = bm.w_c;
     b_c = bm.b_c;
     w_p = bm.w_p;

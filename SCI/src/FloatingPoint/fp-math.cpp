@@ -1646,7 +1646,7 @@ FixArray FPMath::tanh_approx(const FixArray& x){
   return ret;
 }
 
-vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x){
+vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w, FixArray&b){
   int N = x.size();
   int n = x[0].size;
   int ell = x[0].ell;
@@ -1694,6 +1694,11 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x){
 
   FixArray x_avg_sigma = fix->mul(x_flat_avg, sigma_flat, ell+s, nullptr, all_0.data);
   x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s, all_0.data);
+
+  // Weight and Bias
+  x_avg_sigma = fix->mul(x_avg_sigma, w, ell+s);
+  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s, all_0.data);
+  x_avg_sigma = fix->add(x_avg_sigma, b);
 
   // Hack!
   x_avg_sigma = fix->extend(x_avg_sigma, 64);

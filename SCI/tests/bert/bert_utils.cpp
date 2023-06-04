@@ -161,6 +161,17 @@ BertModel load_model(string model_dir, int num_class){
     string bi2_fname = 
     "bert.encoder.layer.X.output.dense.bias.txt";
 
+    // Layer Norm
+    string wln1_fname = 
+    "bert.encoder.layer.X.attention.output.LayerNorm.weight.txt";
+    string bln1_fname = 
+    "bert.encoder.layer.X.attention.output.LayerNorm.bias.txt";
+
+    string wln2_fname = 
+    "bert.encoder.layer.X.output.LayerNorm.weight.txt";
+    string bln2_fname = 
+    "bert.encoder.layer.X.output.LayerNorm.bias.txt";
+
     // Pooling
     string wp_fname = 
     "bert.pooler.dense.weight.txt";
@@ -206,7 +217,23 @@ BertModel load_model(string model_dir, int num_class){
             model_dir + replace(bv_fname, "X", lid)
         );
 
-    
+        vector<uint64_t> wln1 = read_bias(
+            model_dir + replace(wln1_fname, "X", lid), 
+            768
+        );
+        vector<uint64_t> bln1 = read_bias(
+            model_dir + replace(bln1_fname, "X", lid), 
+            768
+        );
+        vector<uint64_t> wln2 = read_bias(
+            model_dir + replace(wln2_fname, "X", lid), 
+            768
+        );
+        vector<uint64_t> bln2 = read_bias(
+            model_dir + replace(bln2_fname, "X", lid), 
+            768
+        );
+
         vector<uint64_t> bo = read_bias(
             model_dir + replace(bo_fname, "X", lid), 
             768
@@ -226,6 +253,11 @@ BertModel load_model(string model_dir, int num_class){
         bm.w_o.push_back(wo);
         bm.w_i_1.push_back(wi1);
         bm.w_i_2.push_back(wi2);
+
+        bm.w_ln_1.push_back(wln1);
+        bm.b_ln_1.push_back(bln1);
+        bm.w_ln_2.push_back(wln2);
+        bm.b_ln_2.push_back(bln2);
 
         bm.b_q.push_back(bq);
         bm.b_k.push_back(bk);
