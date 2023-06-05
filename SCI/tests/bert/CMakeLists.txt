@@ -4,6 +4,7 @@ add_library(LIB_BERT
     linear.cpp
     bert_utils.cpp
     bert.cpp
+    matrix_utils.cpp
     )
 
 target_link_libraries(LIB_BERT SCI-FloatingPoint)

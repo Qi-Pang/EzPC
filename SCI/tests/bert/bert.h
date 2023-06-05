@@ -7,6 +7,7 @@
 #include <math.h>
 #include "linear.h"
 #include "nonlinear.h"
+#include "matrix_utils.h"
 
 #define NL_NTHREADS 12
 #define NL_ELL 37
@@ -31,6 +32,8 @@ public:
 
     Linear lin;
     NonLinear nl;
+
+    BertModel bm;
 
     Bert(int party, int port, string address, string model_path);
     ~Bert();
@@ -67,10 +70,6 @@ public:
         uint64_t* wln,
         uint64_t* bln
     );
-
-    void run_server();
-
-    int run_client(string input_fname);
 
     vector<double> run(string input_fname, string mask_fname);
 	

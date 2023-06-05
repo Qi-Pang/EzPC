@@ -42,31 +42,33 @@ int main(int argc, char **argv) {
     vector<vector<double>> inference_results;
     vector<int> predicted_labels;
 
-    ofstream file("./result/output.txt");
-    if (!file) {
-        std::cerr << "Could not open the file!" << std::endl;
-        return {};
+    if(party == ALICE){
+        for(int i = 0; i < 200; i++ ){
+        cout << "==>> Inference sample #" << i << endl;
+        vector<double> result = bt.run("", "");
     }
-
-    string input_fname = "/home/ubuntu/mrpc/weights_txt/inputs_407_data.txt";
-    string input_mask_fname = "/home/ubuntu/mrpc/weights_txt/inputs_407_mask.txt";
-    for(int i = 0; i < 407; i++ ){
+    } else{
+        ofstream file("./result/mrpc_test_200.txt");
+        if (!file) {
+            std::cerr << "Could not open the file!" << std::endl;
+            return {};
+        }
+        for(int i = 0; i < 200; i++ ){
         cout << "==>> Inference sample #" << i << endl;
         vector<double> result = bt.run(
             "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
             "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
             );
-        if(party == BOB){
-            // inference_results.push_back(result);
-            auto max_ele = max_element(result.begin(), result.end());
-            int max_index = distance(result.begin(), max_ele);
-            // predicted_labels.push_back(max_index);
-            file << max_index << "," 
-                    << result[0]<< "," 
-                    << result[1]<< "," << endl;
-        }
+        // inference_results.push_back(result);
+        auto max_ele = max_element(result.begin(), result.end());
+        int max_index = distance(result.begin(), max_ele);
+        // predicted_labels.push_back(max_index);
+        file << max_index << "," 
+                << result[0]<< "," 
+                << result[1]<< "," << endl;
     }
     file.close();
+    }
     
     // cout << "Prediction: " << result << endl;
     auto end = high_resolution_clock::now();
