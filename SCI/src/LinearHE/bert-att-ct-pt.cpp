@@ -52,16 +52,36 @@ void BEAttCtPt::print_pt(Plaintext &pt, int len) {
     encoder->decode(pt, dest);
     cout << "Decode first 5 rows: ";
     int non_zero_count;
-    for(int i = 0; i < 5; i++){
-        for (int j = 0; j < 64; j++)
-            cout << dest[i + j * 128] << " ";
-        cout << endl;
+    for(int i = 0; i < 10; i++){
+        // for (int j = 0; j < 64; j++)
+        cout << dest[i] << " ";
         // if(dest[i] != 0){
         //     non_zero_count += 1;
         // }
     }
+    cout << endl;
     // cout << "Non zero count: " << non_zero_count;
     cout << endl;
+}
+
+void BEAttCtPt::saveMatrix(const std::string& filename, uint64_t* matrix, size_t rows, size_t cols) {
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                // file << matrix[i * cols + j];
+                file << ((int64_t) matrix[i * cols + j] + (int64_t) prime_mod) % (int64_t) prime_mod;
+                if (j < cols - 1) {
+                    file << ",";
+                }
+            }
+            file << "\n";
+        }
+        file.close();
+    } 
+    else {
+        std::cout << "Unable to open file";
+    }
 }
 
 // column-wise packing
@@ -162,10 +182,11 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEAttCtPt::bert_cross
                         if (temp2.size() == data.slot_count) {
                             Plaintext pt;
                             encoder->encode(temp2, pt);
-                            // HACK: check the sparsity
-                            // for (int temp2_ind = 0; temp2_ind < data.slot_count; temp2_ind++)
-                            //     cout << temp2[temp2_ind] << " ";
-                            // cout << endl << endl;
+                            // HACK: verify sparsity
+                            // cout << "packing" << endl;
+                            // for (int temp2_ind = 0; temp2_ind < data.slot_count / data.image_size; temp2_ind++) {
+                            //     cout << temp2[temp2_ind * data.image_size] << " ";
+                            // }
                             temp_matrix_diag[matrix_diag_index] = pt;
                             matrix_diag_index++;
                             temp2.clear();
@@ -470,9 +491,12 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
         cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
 
         print_noise_budget_vec(enc_result);
-        // print_ct(enc_result[0], data.slot_count);
+        print_ct(enc_result[0], data.slot_count);
+        return;
 
         auto HE_result = bert_efficient_postprocess(enc_result, data, false);
+
+        saveMatrix("/home/qipang/mnt/d1/linear/EzPC/SCI/build/bin/txt/ct-pt-result.txt", HE_result, data.image_size, data.filter_w);
 
         // HACK
         for (int i = 0; i < 1; i++) {
@@ -556,6 +580,12 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
         auto cross_mat_single = bert_cross_packing_single_matrix(matrix_mod_p1.data(), matrix_mod_p2.data(), data);
         auto cross_bias_single = bert_cross_packing_bias(Bias.data(), data);
 
+        print_pt(cross_mat_single.first[0][0], 8192);
+        print_pt(cross_mat_single.second[0][0], 8192);
+        print_pt(cross_bias_single[0], 8192);
+        print_ct(cts[0], 8192);
+        print_ct(cts[1], 8192);
+
         // Ciphertext enc_noise = bert_efficient_preprocess_noise(secret_share, data, cryptoContext_, keyPair_);
         // cout << "[Server] Noise processed" << endl;
         #ifdef HE_TIMING
@@ -577,6 +607,7 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
         vector<Ciphertext> Cipher_plain_results(data.image_size * data.filter_w / data.slot_count);
         bert_cipher_plain_bsgs(cts, cross_mat_single.first, cross_mat_single.second, cross_bias_single, data, Cipher_plain_results);
 
+        print_ct(Cipher_plain_results[1], 8192);
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();
         interval = (t2_cipher_plain - t1_cipher_plain)/1e+9;

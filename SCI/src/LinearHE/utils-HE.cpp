@@ -263,7 +263,8 @@ void generate_new_keys_iron(int party, NetIO *io, int slot_count,
   parms.set_poly_modulus_degree(slot_count);
   // parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {36, 36, 36, 36, 37, 37}));
 //   parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {54, 54, 55, 55}));
-  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {60, 49}));
+  // parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {60, 49}));
+  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {40, 39, 30}));
 //   parms.set_coeff_modulus(CoeffModulus::BFVDefault(slot_count));
   parms.set_plain_modulus(prime_mod);
   // auto context = SEALContext::Create(parms, true, sec_level_type::none);
@@ -307,6 +308,7 @@ void generate_new_keys_iron(int party, NetIO *io, int slot_count,
 #endif
     encryptor_ = new Encryptor(*context_, pub_key);
     decryptor_ = new Decryptor(*context_, sec_key);
+    encryptor_->set_secret_key(sec_key);
   } else // party == ALICE
   {
     uint64_t pk_size;
@@ -396,14 +398,13 @@ void generate_new_keys_ctpt(int party, NetIO *io, int slot_count,
 
     
 
-#ifdef HE_DEBUG
     stringstream os_sk;
     sec_key.save(os_sk);
     uint64_t sk_size = os_sk.tellp();
     string keys_ser_sk = os_sk.str();
     io->send_data(&sk_size, sizeof(uint64_t));
     io->send_data(keys_ser_sk.c_str(), sk_size);
-#endif
+
     encryptor_ = new Encryptor(*context_, pub_key);
     decryptor_ = new Decryptor(*context_, sec_key);
   } else // party == ALICE
@@ -428,7 +429,7 @@ void generate_new_keys_ctpt(int party, NetIO *io, int slot_count,
     relin_keys_->load(*context_, is);
     delete[] key_share;
 
-#ifdef HE_DEBUG
+
     uint64_t sk_size;
     io->recv_data(&sk_size, sizeof(uint64_t));
     char *key_share_sk = new char[sk_size];
@@ -439,7 +440,6 @@ void generate_new_keys_ctpt(int party, NetIO *io, int slot_count,
     sec_key.load(*context_, is_sk);
     delete[] key_share_sk;
     decryptor_ = new Decryptor(*context_, sec_key);
-#endif
     encryptor_ = new Encryptor(*context_, pub_key);
     vector<uint64_t> pod_matrix(slot_count, 0ULL);
     Plaintext tmp;

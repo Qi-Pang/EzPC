@@ -482,6 +482,12 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEFCField::bert_cross
                             temp_matrix_diag[matrix_diag_index] = pt;
                             matrix_diag_index++;
                             temp2.clear();
+                            // HACK: verify sparsity
+                            cout << "packing" << endl;
+                            for (int temp2_ind = 0; temp2_ind < data.slot_count / data.image_size; temp2_ind++) {
+                                cout << temp2[temp2_ind * data.image_size] << " ";
+                            }
+                            cout << endl;
                         }
                     }
                 }
