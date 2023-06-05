@@ -6,6 +6,7 @@ HE instance
 #define HE_H__
 
 #include "LinearHE/utils-HE.h"
+#include "seal/util/polyarithsmallmod.h"
 #include <fstream>
 #include <iostream>
 #include <thread>

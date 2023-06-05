@@ -27,12 +27,12 @@ using namespace seal;
 #define MAX_THREADS 12
 struct FCMetadata {
   int slot_count;
-  int32_t pack_num;
-  int32_t inp_ct;
+//   int32_t pack_num;
+//   int32_t inp_ct;
   // Filter is a matrix
   int32_t filter_h;
   int32_t filter_w;
-  int32_t filter_size;
+//   int32_t filter_size;
   // Image is a matrix
   int32_t image_size;
   int nw;
@@ -60,7 +60,7 @@ public:
 	NetIO *io;
 	FCMetadata data;
 
-	HE *he_37;
+	HE *he_4096;
 
 	// Fix linking error
 	uint64_t p_mod;
@@ -144,6 +144,8 @@ public:
 	vector<vector<Plaintext>> preprocess_matrix(const uint64_t *const *matrix, const FCMetadata &data);
 	vector<Plaintext> preprocess_bias(const uint64_t *matrix, const FCMetadata &data);
 	Plaintext encode_vector(const uint64_t *vec, const FCMetadata &data);
+	vector<Ciphertext> preprocess_vec(HE* he, vector<uint64_t> &input, const FCMetadata &data);
+
 
 };
 

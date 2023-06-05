@@ -30,7 +30,7 @@ Linear::Linear(){}
 Linear::Linear(int party, NetIO *io) {
 	this->party = party;
 	this->io = io;
-	this->he_37 = new HE(
+	this->he_4096 = new HE(
 		party,
 		io,
 		4096,
@@ -56,22 +56,30 @@ Linear::Linear(int party, NetIO *io) {
     data_lin1.filter_h = COMMON_DIM;
     data_lin1.filter_w = OUTPUT_DIM;
     data_lin1.image_size = INPUT_DIM;
-    data_lin1.slot_count = 8192;
+    data_lin1.slot_count = 4096;
+    data_lin1.nw = 16;
+    data_lin1.kw = 2;
 
     data_lin2.filter_h = COMMON_DIM;
     data_lin2.filter_w = COMMON_DIM;
     data_lin2.image_size = INPUT_DIM;
-    data_lin2.slot_count = 8192;
+    data_lin2.slot_count = 4096;
+    data_lin2.nw = 8;
+    data_lin2.kw = 4;
 
     data_lin3.filter_h = COMMON_DIM;
     data_lin3.filter_w = INTER_DIM;
     data_lin3.image_size = INPUT_DIM;
-    data_lin3.slot_count = 8192;
+    data_lin3.slot_count = 4096;
+    data_lin3.nw = 4;
+    data_lin3.kw = 8;
 
     data_lin4.filter_h = INTER_DIM;
     data_lin4.filter_w = COMMON_DIM;
     data_lin4.image_size = INPUT_DIM;
-    data_lin4.slot_count = 8192;
+    data_lin4.slot_count = 4096;
+    data_lin4.nw = 8;
+    data_lin4.kw = 4;
 }
 
 Linear::~Linear() {
@@ -215,4 +223,195 @@ Plaintext Linear::encode_vector(const uint64_t *vec, const FCMetadata &data) {
     assert(pt.data() != nullptr);
     seal::util::modulo_poly_coeffs(vec, data.slot_count, prime_mod, pt.data());
     return pt;
+}
+
+
+vector<Ciphertext> Linear::linear_1(
+HE* he,
+vector<Ciphertext> input_cts, 
+PreprocessParams_1 &pp,
+const FCMetadata &data
+){
+    vector<Ciphertext> result(data.filter_w / data.kw * 3 * 12);
+
+    for (int packing_index = 0; packing_index < 12; packing_index++) {
+        vector<vector<Plaintext>> enc_mat1 = pp.encoded_mats1[packing_index];
+        vector<vector<Plaintext>> enc_mat2 = pp.encoded_mats2[packing_index];
+        vector<vector<Plaintext>> enc_mat3 = pp.encoded_mats3[packing_index];
+
+        #pragma omp parallel for
+        for (int j = 0; j < data.filter_w / data.kw; j++) {
+            for (int i = 0; i < data.filter_h / data.nw; i++) {
+                Ciphertext temp_ct1;
+                Ciphertext temp_ct2;
+                Ciphertext temp_ct3;
+                he->evaluator->multiply_plain(input_cts[i], enc_mat1[i][j], temp_ct1);
+                he->evaluator->multiply_plain(input_cts[i], enc_mat2[i][j], temp_ct2);
+                he->evaluator->multiply_plain(input_cts[i], enc_mat3[i][j], temp_ct3);
+                if (i == 0) {
+                    result[j + data.filter_w / data.kw * 3 * packing_index] = temp_ct1;
+                    result[j + data.filter_w / data.kw + data.filter_w / data.kw * 3 * packing_index] = temp_ct2;
+                    result[j + data.filter_w / data.kw * 2 + data.filter_w / data.kw * 3 * packing_index] = temp_ct3;
+                }
+                else {
+                    he->evaluator->add_inplace(result[j + data.filter_w / data.kw * 3 * packing_index], temp_ct1);
+                    he->evaluator->add_inplace(result[j + data.filter_w / data.kw + data.filter_w / data.kw * 3 * packing_index], temp_ct2);
+                    he->evaluator->add_inplace(result[j + data.filter_w / data.kw * 2 + data.filter_w / data.kw * 3 * packing_index], temp_ct3);
+                }
+            }
+
+            he->evaluator->add_plain_inplace(result[j + data.filter_w / data.kw * 3 * packing_index], pp.encoded_bias1[packing_index][j]);
+            he->evaluator->add_plain_inplace(result[j + data.filter_w / data.kw + data.filter_w / data.kw * 3 * packing_index], pp.encoded_bias2[packing_index][j]);
+            he->evaluator->add_plain_inplace(result[j + data.filter_w / data.kw * 2 + data.filter_w / data.kw * 3 * packing_index], pp.encoded_bias3[packing_index][j]);
+        }
+    }
+
+    int L = result[0].coeff_modulus_size();
+    vector<int> used_indices;
+    for (int i = 0; i < data.image_size; i++) {
+        for (int j = 0; j < data.kw; j++) {
+            used_indices.push_back(i * data.nw * data.kw + (j + 1) * data.nw - 1);
+        }
+    }
+    std::sort(used_indices.begin(), used_indices.end());
+
+    for (int i = 0; i < result.size(); i++) {
+        for (int j = 0; j < data.slot_count; j++) {
+            if (std::binary_search(used_indices.cbegin(), used_indices.cend(), j))
+                continue;
+            auto rns_ptr = result[i].data(0);
+            for (int k = 0; k < L; k++) {
+                rns_ptr[j] = 0;
+                rns_ptr += data.slot_count;
+            }
+        }
+    }
+    return result;
+}
+
+vector<Ciphertext> Linear::linear_2(
+HE* he,
+vector<Ciphertext> input_cts, 
+PreprocessParams_2 &pp,
+const FCMetadata &data
+){
+
+    vector<Ciphertext> result(data.filter_w / data.kw);
+
+    #pragma omp parallel for
+    for (int j = 0; j < data.filter_w / data.kw; j++) {
+        for (int i = 0; i < data.filter_h / data.nw; i++) {
+            Ciphertext temp_ct1;
+            he->evaluator->multiply_plain(input_cts[i], pp.encoded_mat[i][j], temp_ct1);
+            if (i == 0) {
+                result[j] = temp_ct1;
+            }
+            else {
+                he->evaluator->add_inplace(result[j], temp_ct1);
+            }
+        }
+    }
+
+    for (int i = 0; i < result.size(); i++) {
+        he->evaluator->add_plain_inplace(result[i], pp.encoded_bias[i]);
+    }
+
+    int L = result[0].coeff_modulus_size();
+    vector<int> used_indices;
+    for (int i = 0; i < data.image_size; i++) {
+        for (int j = 0; j < data.kw; j++) {
+            used_indices.push_back(i * data.nw * data.kw + (j + 1) * data.nw - 1);
+        }
+    }
+    std::sort(used_indices.begin(), used_indices.end());
+
+    for (int i = 0; i < result.size(); i++) {
+        for (int j = 0; j < data.slot_count; j++) {
+            if (std::binary_search(used_indices.cbegin(), used_indices.cend(), j))
+                continue;
+            auto rns_ptr = result[i].data(0);
+            for (int k = 0; k < L; k++) {
+                rns_ptr[j] = 0;
+                rns_ptr += data.slot_count;
+            }
+        }
+    }
+    return result;
+    
+}
+
+vector<Ciphertext> Linear::preprocess_vec(HE* he, vector<uint64_t> &input, const FCMetadata &data){
+    vector<Ciphertext> cts;
+    for (int i = 0; i < (data.filter_h / data.nw); i++) {
+        vector<uint64_t> pod_matrix(data.slot_count, 0ULL);
+        for (int row_index = 0; row_index < data.image_size; row_index++) {
+            for (int col_index = 0; col_index < data.nw; col_index++) {
+                pod_matrix[row_index * data.nw * data.kw + (data.nw - 1) - col_index] = input[row_index + (i * data.nw + col_index) * data.image_size];
+            }
+        }
+        Plaintext pt = encode_vector(pod_matrix.data(), data);
+        Ciphertext ct;
+        // encryptor->encrypt(pt, ct);
+        he->encryptor->encrypt_symmetric(pt, ct);
+
+        cts.push_back(ct);
+    }
+    return cts;
+}
+
+void Linear::weights_preprocess(BertModel &bm){
+    #pragma omp parallel for
+    for(int i = 0; i < ATTENTION_LAYERS; i++){
+        pp_1[i] = params_preprocessing_ct_pt_1(
+            he_4096,
+            bm.w_q[i],
+            bm.w_k[i],
+            bm.w_v[i],
+            bm.b_q[i],
+            bm.b_k[i],
+            bm.b_v[i],
+            data_lin1
+        );
+
+        pp_2[i] = params_preprocessing_ct_pt_2(
+            he_4096,
+            INPUT_DIM,
+            COMMON_DIM,
+            COMMON_DIM,
+            bm.w_o[i],
+            bm.b_o[i],
+            data_lin2
+        );
+
+        pp_3[i] = params_preprocessing_ct_pt_2(
+            he_4096,
+            INPUT_DIM,
+            COMMON_DIM,
+            INTER_DIM,
+            bm.w_i_1[i],
+            bm.b_i_1[i],
+            data_lin3
+        );
+
+        pp_4[i] = params_preprocessing_ct_pt_2(
+            he_4096,
+            INPUT_DIM,
+            INTER_DIM,
+            COMMON_DIM,
+            bm.w_i_2[i],
+            bm.b_i_2[i],
+            data_lin4
+        );
+    }
+
+    w_ln_1 = bm.w_ln_1;
+    b_ln_1 = bm.b_ln_1;
+
+    w_ln_2 = bm.w_ln_2;
+    b_ln_2 = bm.b_ln_2;
+
+    w_c = bm.w_c;
+    b_c = bm.b_c;
+    w_p = bm.w_p;
+    b_p = bm.b_p;
 }
