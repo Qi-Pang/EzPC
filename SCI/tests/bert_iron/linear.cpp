@@ -129,13 +129,13 @@ PreprocessParams_1 Linear::params_preprocessing_ct_pt_1(
             bias_mod_p3[i] = neg_mod((int64_t)b_v[packing_index][i], (int64_t)plain_mod);
         }
 
-        auto encoded_mat1 = preprocess_matrix(matrix_mod_p1.data(), data);
-        auto encoded_mat2 = preprocess_matrix(matrix_mod_p2.data(), data);
-        auto encoded_mat3 = preprocess_matrix(matrix_mod_p2.data(), data);
+        auto encoded_mat1 = preprocess_matrix(he, matrix_mod_p1.data(), data);
+        auto encoded_mat2 = preprocess_matrix(he, matrix_mod_p2.data(), data);
+        auto encoded_mat3 = preprocess_matrix(he, matrix_mod_p2.data(), data);
 
-        auto temp_bias1 = preprocess_bias(bias_mod_p1.data(), data);
-        auto temp_bias2 = preprocess_bias(bias_mod_p2.data(), data);
-        auto temp_bias3 = preprocess_bias(bias_mod_p3.data(), data);
+        auto temp_bias1 = preprocess_bias(he, bias_mod_p1.data(), data);
+        auto temp_bias2 = preprocess_bias(he, bias_mod_p2.data(), data);
+        auto temp_bias3 = preprocess_bias(he, bias_mod_p3.data(), data);
         pp.encoded_mats1.push_back(encoded_mat1);
         pp.encoded_mats2.push_back(encoded_mat2);
         pp.encoded_mats3.push_back(encoded_mat3);
@@ -176,11 +176,11 @@ PreprocessParams_2 Linear::params_preprocessing_ct_pt_2(
     // uint64_t *secret_share = new uint64_t[input_dim*output_dim];
     // prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
 
-    pp.encoded_mat = preprocess_matrix(matrix_mod_p1.data(), data);
-    pp.encoded_bias = preprocess_bias(b.data(), data);
+    pp.encoded_mat = preprocess_matrix(he, matrix_mod_p1.data(), data);
+    pp.encoded_bias = preprocess_bias(he, b.data(), data);
 }
 
-vector<vector<Plaintext>> Linear::preprocess_matrix(const uint64_t *const *matrix, const FCMetadata &data){
+vector<vector<Plaintext>> Linear::preprocess_matrix(HE* he, const uint64_t *const *matrix, const FCMetadata &data){
     vector<vector<Plaintext>> weightMatrix;
     int sub_mat_row = data.filter_h / data.nw; // 48
     int sub_mat_col = data.filter_w / data.kw; // 32
@@ -193,7 +193,7 @@ vector<vector<Plaintext>> Linear::preprocess_matrix(const uint64_t *const *matri
                     pod_matrix[j * data.nw + i] = matrix[i + sub_row_ind * data.nw][j + sub_col_ind * data.kw];
                 }
             }
-            Plaintext pt = encode_vector(pod_matrix.data(), data);
+            Plaintext pt = encode_vector(he, pod_matrix.data(), data);
             temp.push_back(pt);
         }
         weightMatrix.push_back(temp);
@@ -202,7 +202,7 @@ vector<vector<Plaintext>> Linear::preprocess_matrix(const uint64_t *const *matri
     return weightMatrix;
 }
 
-vector<Plaintext> Linear::preprocess_bias(const uint64_t *matrix, const FCMetadata &data){
+vector<Plaintext> Linear::preprocess_bias(HE* he, const uint64_t *matrix, const FCMetadata &data){
     int res_cts_num = data.filter_w / data.kw;
     vector<Plaintext> packed_bias(res_cts_num);
     for (int ct_ind = 0; ct_ind < res_cts_num; ct_ind++) {
@@ -212,16 +212,16 @@ vector<Plaintext> Linear::preprocess_bias(const uint64_t *matrix, const FCMetada
                 pt_data[i * data.nw * data.kw + (j + 1) * data.nw - 1] = matrix[(j + ct_ind * data.kw)];
             }
         }
-        packed_bias[ct_ind] = encode_vector(pt_data.data(), data);
+        packed_bias[ct_ind] = encode_vector(he, pt_data.data(), data);
     }
     return packed_bias;
 }
 
-Plaintext Linear::encode_vector(const uint64_t *vec, const FCMetadata &data) {
+Plaintext Linear::encode_vector(HE* he, const uint64_t *vec, const FCMetadata &data) {
     Plaintext pt;
     pt.resize(data.slot_count);
     assert(pt.data() != nullptr);
-    seal::util::modulo_poly_coeffs(vec, data.slot_count, prime_mod, pt.data());
+    seal::util::modulo_poly_coeffs(vec, data.slot_count, he->plain_mod, pt.data());
     return pt;
 }
 
@@ -349,7 +349,26 @@ vector<Ciphertext> Linear::preprocess_vec(HE* he, vector<uint64_t> &input, const
                 pod_matrix[row_index * data.nw * data.kw + (data.nw - 1) - col_index] = input[row_index + (i * data.nw + col_index) * data.image_size];
             }
         }
-        Plaintext pt = encode_vector(pod_matrix.data(), data);
+        Plaintext pt = encode_vector(he, pod_matrix.data(), data);
+        Ciphertext ct;
+        // encryptor->encrypt(pt, ct);
+        he->encryptor->encrypt_symmetric(pt, ct);
+
+        cts.push_back(ct);
+    }
+    return cts;
+}
+
+vector<Ciphertext> Linear::preprocess_ptr(HE* he, uint64_t* input, const FCMetadata &data){
+    vector<Ciphertext> cts;
+    for (int i = 0; i < (data.filter_h / data.nw); i++) {
+        vector<uint64_t> pod_matrix(data.slot_count, 0ULL);
+        for (int row_index = 0; row_index < data.image_size; row_index++) {
+            for (int col_index = 0; col_index < data.nw; col_index++) {
+                pod_matrix[row_index * data.nw * data.kw + (data.nw - 1) - col_index] = input[row_index + (i * data.nw + col_index) * data.image_size];
+            }
+        }
+        Plaintext pt = encode_vector(he, pod_matrix.data(), data);
         Ciphertext ct;
         // encryptor->encrypt(pt, ct);
         he->encryptor->encrypt_symmetric(pt, ct);
@@ -414,4 +433,131 @@ void Linear::weights_preprocess(BertModel &bm){
     b_c = bm.b_c;
     w_p = bm.w_p;
     b_p = bm.b_p;
+}
+
+
+vector<Plaintext> Linear::preprocess_noise(HE* he, const uint64_t *secret_share, const FCMetadata &data){
+    // Sample randomness into vector
+    vector<Plaintext> enc_noise(data.filter_w / data.kw * 3 * 12);
+    for (int ct_index = 0; ct_index < enc_noise.size(); ct_index++) {
+        vector<uint64_t> noise(data.slot_count, 0ULL);
+        for (int i = 0; i < data.slot_count; i++)
+            noise[i] = secret_share[i + ct_index * data.slot_count];
+
+        Plaintext pt = encode_vector(he, noise.data(), data);
+        // Ciphertext ct;
+        // encryptor->encrypt(pt, ct);
+        enc_noise[ct_index] = pt;
+    }
+    return enc_noise;
+}
+
+vector<vector<vector<uint64_t>>> Linear::bert_postprocess_noise(HE* he, vector<Plaintext> &enc_noise, const FCMetadata &data){
+    // uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3 * 12];
+    vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>>(3, vector<uint64_t>(data.image_size * data.filter_w)));
+    uint64_t plain_mod = he->plain_mod;
+    for (int packing_index = 0; packing_index < 12; packing_index++) {
+        for (int ct_ind = 0; ct_ind < enc_noise.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind + packing_index * enc_noise.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    result[packing_index][0][i + (j + ct_ind * data.kw) * data.image_size] = plain_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < enc_noise.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind + enc_noise.size() / 3 / 12 + packing_index * enc_noise.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    result[packing_index][1][i + (j + ct_ind * data.kw) * data.image_size] = plain_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < enc_noise.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind + enc_noise.size() / 3 / 12 * 2 + packing_index * enc_noise.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    result[packing_index][2][i + (j + ct_ind * data.kw) * data.image_size] = plain_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+vector<vector<vector<uint64_t>>> 
+Linear::pt_postprocess_1(
+    HE* he,
+    vector<Plaintext> &pts, 
+    const FCMetadata &data, 
+	const bool &col_packing){
+    vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>>(3, vector<uint64_t>(data.image_size * data.filter_w)));
+    
+    for (int packing_index = 0; packing_index < 12; packing_index++) {
+        for (int ct_ind = 0; ct_ind < pts.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = pts[ct_ind + packing_index * pts.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    if (col_packing)
+                        result[packing_index][0][i + (j + ct_ind * data.kw) * data.image_size] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    else
+                        result[packing_index][0][i * data.filter_w + (j + ct_ind * data.kw)] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < pts.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = pts[ct_ind + pts.size() / 3 / 12 + packing_index * pts.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    if (col_packing)
+                        result[packing_index][1][i + (j + ct_ind * data.kw) * data.image_size] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    else
+                        result[packing_index][1][i * data.filter_w + (j + ct_ind * data.kw)] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+
+        for (int ct_ind = 0; ct_ind < pts.size() / 3 / 12; ct_ind++) {
+            Plaintext pt = pts[ct_ind + pts.size() / 3 / 12 * 2 + packing_index * pts.size() / 12];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    if (col_packing)
+                        result[packing_index][2][i + (j + ct_ind * data.kw) * data.image_size] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    else
+                        result[packing_index][2][i * data.filter_w + (j + ct_ind * data.kw)] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+void Linear::concat( 
+    uint64_t* input,
+    uint64_t* output,
+    int n,
+    int dim1,
+    int dim2){
+
+    for(int j = 0; j < dim1; j++){
+        for(int i = 0; i < n; i++){
+            memcpy(&output[j*n*dim2 + i*dim2], &input[i*dim1*dim2 + j*dim2], dim2*sizeof(uint64_t));
+        }
+    }
+}
+
+void Linear::plain_col_packing_preprocess(
+    uint64_t* input, 
+    uint64_t * output,
+    uint64_t plain_mod,
+    int input_dim,
+    int common_dim){
+    for (int j = 0; j < common_dim; j++)
+            for (int i = 0; i < input_dim; i++)
+                output[j*input_dim + i] = input[i*common_dim +j];
 }

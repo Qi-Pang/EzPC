@@ -51,4 +51,6 @@ vector<vector<uint64_t>> read_qkv_bias(const string& filename);
 
 BertModel load_model(string model_dir, int num_class);
 
+void transpose(const uint64_t* inputMatrix, uint64_t* outputMatrix, size_t rows, size_t cols);
+
 #endif

@@ -49,7 +49,7 @@ endmacro()
 # # add_subdirectory(GC)
 add_subdirectory(activation)
 add_subdirectory(bert)
-add_subdirectory(bert_iron)
+# add_subdirectory(bert_iron)
 
 # macro(add_test_secfloat name)
 # 	add_executable(${name}-secfloatml "test_floatml_${name}.cpp")

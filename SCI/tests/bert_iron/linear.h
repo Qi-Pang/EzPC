@@ -141,12 +141,35 @@ public:
 		const FCMetadata &data
 		);
 
-	vector<vector<Plaintext>> preprocess_matrix(const uint64_t *const *matrix, const FCMetadata &data);
-	vector<Plaintext> preprocess_bias(const uint64_t *matrix, const FCMetadata &data);
-	Plaintext encode_vector(const uint64_t *vec, const FCMetadata &data);
+	vector<vector<Plaintext>> preprocess_matrix(HE* he, const uint64_t *const *matrix, const FCMetadata &data);
+	vector<Plaintext> preprocess_bias(HE* he, const uint64_t *matrix, const FCMetadata &data);
+	Plaintext encode_vector(HE* he, const uint64_t *vec, const FCMetadata &data);
 	vector<Ciphertext> preprocess_vec(HE* he, vector<uint64_t> &input, const FCMetadata &data);
+	vector<Ciphertext> preprocess_ptr(HE* he, uint64_t* input, const FCMetadata &data);
 
+	vector<Plaintext> preprocess_noise(HE* he, const uint64_t *secret_share, const FCMetadata &data);
+	vector<vector<vector<uint64_t>>> bert_postprocess_noise(HE* he, vector<Plaintext> &enc_noise, const FCMetadata &data);
 
+	vector<vector<vector<uint64_t>>> 
+    pt_postprocess_1(
+		HE* he,
+        vector<Plaintext> &pts, 
+        const FCMetadata &data, 
+		const bool &col_packing);
+	
+	void concat( 
+		uint64_t* input,
+		uint64_t* output,
+		int n,
+		int dim1,
+		int dim2);
+
+	void plain_col_packing_preprocess(
+		uint64_t* input, 
+		uint64_t * output,
+		uint64_t plain_mod,
+		int common_dim,
+		int input_dim);
 };
 
 #endif

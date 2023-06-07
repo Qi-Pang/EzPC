@@ -275,3 +275,11 @@ BertModel load_model(string model_dir, int num_class){
 
     return bm;
 }
+
+void transpose(const uint64_t* inputMatrix, uint64_t* outputMatrix, size_t rows, size_t cols) {
+    for (size_t i = 0; i < rows; ++i) {
+        for (size_t j = 0; j < cols; ++j) {
+            outputMatrix[j * rows + i] = inputMatrix[i * cols + j];
+        }
+    }
+}

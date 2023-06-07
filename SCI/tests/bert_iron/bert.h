@@ -36,11 +36,11 @@ public:
     ~Bert();
 
 
-    void he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output);
-    vector<Ciphertext> ss_to_he_server(HE* he, uint64_t* input, int length);
+    vector<Plaintext> he_to_ss_server(HE* he, vector<Ciphertext> in, const FCMetadata &data);
+    vector<Ciphertext> ss_to_he_server(HE* he, uint64_t* input, const FCMetadata &data);
 
-    void he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadata &data);
-    void ss_to_he_client(HE* he, uint64_t* input, int length);
+    vector<Plaintext> he_to_ss_client(HE* he, int length);
+    void ss_to_he_client(HE* he, uint64_t* input, const FCMetadata &data);
 
     void pc_bw_share_server(
         uint64_t* wp,

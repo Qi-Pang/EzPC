@@ -343,10 +343,10 @@ void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, i
   // if input > p, then sub p
   // sub p/2 anyway
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s_in);
-  FixArray p_array = fpmath->fix->input(PUBLIC, num_ops, p, true, ell, s_in);
+  // FixArray p_array = fpmath->fix->input(PUBLIC, num_ops, p, true, ell, s_in);
   FixArray p_2_array = fpmath->fix->input(PUBLIC, num_ops, (p-1)/2, true, ell, s_in);
-  FixArray output = fpmath->gt_p_sub(input, p_array);
-  output = fpmath->fix->sub(output, p_2_array);
+  // FixArray output = fpmath->gt_p_sub(input, p_array);
+  FixArray output = fpmath->fix->sub(output, p_2_array);
   if(s_in > s_out){
     output = fpmath->fix->right_shift(output, s_in - s_out);
   } else if(s_in < s_out){
