@@ -1,5 +1,31 @@
 #include "bert.h"
 
+#ifdef BERT_TIMING
+double t_total_linear1 = 0;
+double t_total_linear2 = 0;
+double t_total_linear3 = 0;
+double t_total_linear4 = 0;
+
+double t_total_softmax = 0;
+double t_total_mul_v = 0;
+double t_total_gelu = 0;
+double t_total_ln_1 = 0;
+double t_total_ln_2 = 0;
+
+double t_total_repacking = 0;
+double t_total_gt_sub = 0;
+double t_total_shift = 0;
+
+double t_total_conversion = 0;
+
+double t_total_ln_share = 0;
+#endif 
+
+inline double interval(chrono::_V2::system_clock::time_point start){
+    auto end = high_resolution_clock::now();
+    auto interval = (end - start)/1e+9;
+    return interval.count();
+}
 
 void save_to_file(uint64_t* matrix, size_t rows, size_t cols, const char* filename) {
     std::ofstream file(filename);
@@ -82,9 +108,23 @@ Bert::Bert(int party, int port, string address, string model_path){
 
     if(party == ALICE){
         cout << "> Loading and preprocessing weights on server" << endl;
+        #ifdef BERT_TIMING
+        auto t_load_model = high_resolution_clock::now();
+        #endif 
+
         struct BertModel bm = 
             load_model(model_path, NUM_CLASS);
+
+        #ifdef BERT_TIMING
+        cout << "> [TIMING]: Loading Model takes: " << interval(t_load_model) << "sec" << endl;
+        auto t_model_preprocess = high_resolution_clock::now();
+        #endif 
+
         lin.weights_preprocess(bm);
+
+        #ifdef BERT_TIMING
+        cout << "> [TIMING]: Model Preprocessing takes: " << interval(t_model_preprocess) << "sec" << endl;
+        #endif 
     }
     cout << "> Bert intialized done!" << endl << endl;
 
@@ -95,6 +135,10 @@ Bert::~Bert() {
 }
 
 void Bert::he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output){
+    #ifdef BERT_TIMING
+    auto t_conversion = high_resolution_clock::now();
+    #endif 
+
     PRG128 prg;
     int dim = in.size();
     int slot_count = he->poly_modulus_degree;
@@ -122,9 +166,15 @@ void Bert::he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output){
         cts.push_back(ct);
     }
     send_encrypted_vector(io, cts);
+    #ifdef BERT_TIMING
+    t_total_conversion += interval(t_conversion);
+    #endif 
 }
 
 vector<Ciphertext> Bert::ss_to_he_server(HE* he, uint64_t* input, int length){
+    #ifdef BERT_TIMING
+    auto t_conversion = high_resolution_clock::now();
+    #endif 
     int slot_count = he->poly_modulus_degree;
     uint64_t plain_mod = he->plain_mod;
     vector<Plaintext> share_server;
@@ -144,10 +194,16 @@ vector<Ciphertext> Bert::ss_to_he_server(HE* he, uint64_t* input, int length){
     for(int i = 0; i < dim; i++){
         he->evaluator->add_plain_inplace(share_client[i], share_server[i]);
     }
+    #ifdef BERT_TIMING
+    t_total_conversion += interval(t_conversion);
+    #endif 
     return share_client;
 }
 
 void Bert::he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadata &data){
+    #ifdef BERT_TIMING
+    auto t_conversion = high_resolution_clock::now();
+    #endif 
     vector<Ciphertext> cts(length);
     recv_encrypted_vector(he->context, io, cts);
     for(int i = 0; i < length; i++){
@@ -157,9 +213,15 @@ void Bert::he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadat
         he->encoder->decode(tmp, plain);
         std::copy(plain.begin(), plain.end(), &output[i*data.slot_count]);
     }
+    #ifdef BERT_TIMING
+    t_total_conversion += interval(t_conversion);
+    #endif 
 }
 
 void Bert::ss_to_he_client(HE* he, uint64_t* input, int length){
+    #ifdef BERT_TIMING
+    auto t_conversion = high_resolution_clock::now();
+    #endif 
     int slot_count = he->poly_modulus_degree;
     uint64_t plain_mod = he->plain_mod;
     vector<Ciphertext> cts;
@@ -176,6 +238,9 @@ void Bert::ss_to_he_client(HE* he, uint64_t* input, int length){
         cts.push_back(ct);
     }
     send_encrypted_vector(io, cts);
+    #ifdef BERT_TIMING
+    t_total_conversion += interval(t_conversion);
+    #endif 
 }
 
 void Bert::ln_share_server(
@@ -185,6 +250,10 @@ void Bert::ln_share_server(
     uint64_t* wln,
     uint64_t* bln
 ){
+    #ifdef BERT_TIMING
+    auto t_ln_share = high_resolution_clock::now();
+    #endif 
+
     int length = 2*COMMON_DIM;
     uint64_t* random_share = new uint64_t[length];
 
@@ -215,12 +284,20 @@ void Bert::ln_share_server(
     }
 
     delete[] random_share;
+    #ifdef BERT_TIMING
+    t_total_ln_share += interval(t_ln_share);
+    #endif 
 }
 
 void Bert::ln_share_client(
     uint64_t* wln,
     uint64_t* bln
 ){
+
+    #ifdef BERT_TIMING
+    auto t_ln_share = high_resolution_clock::now();
+    #endif 
+
     int length = 2*COMMON_DIM;
 
     uint64_t* share = new uint64_t[length];
@@ -230,6 +307,9 @@ void Bert::ln_share_client(
         memcpy(&bln[i*COMMON_DIM], &share[COMMON_DIM], COMMON_DIM*sizeof(uint64_t));
     }
     delete[] share;
+    #ifdef BERT_TIMING
+    t_total_ln_share += interval(t_ln_share);
+    #endif 
 }
 
 void Bert::pc_bw_share_server(
@@ -312,973 +392,11 @@ void Bert::pc_bw_share_client(
     memcpy(bc, &share[wp_len + bp_len + wc_len], bc_len*sizeof(uint64_t));
 }
 
-void Bert::run_server() {
-    cout << "> Loading weights and bias" << endl;
-    // Loading weights
-
-    // Receive cipher text input
-    vector<Ciphertext> h1(12);
-    uint64_t h1_cache[INPUT_DIM*COMMON_DIM] = {0};
-    uint64_t h4_cache[INPUT_DIM*COMMON_DIM] = {0};
-    uint64_t h98[COMMON_DIM] = {0};
-
-    recv_encrypted_vector(lin.he_8192->context, io, h1);
-    cout << "> Receive input cts from client " << endl;
-
-    cout << "> --- Entering Attention Layers ---" << endl;
-    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
-        cout << "-> Layer - " << layer_id << ": Linear #1 " << endl;
-
-        // -------------------- Linear #1 -------------------- //
-        // q_k_v include the result of QxK^T and V
-        vector<Ciphertext> q_k_v = lin.linear_1(
-            lin.he_8192,
-            h1,
-            lin.pp_1[layer_id],
-            lin.data_lin1
-        );
-
-        cout << "-> Layer - " << layer_id << ": Linear #1 done " << endl;
-
-        // To Secret Share and Post Processing
-
-        int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
-        int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
-        
-        int qk_v_size = qk_size + v_size;
-
-        assert( qk_v_size == q_k_v.size()*(lin.he_8192->poly_modulus_degree));
-
-        uint64_t* qk_v_cross = new uint64_t[qk_v_size];
-        uint64_t* v_matrix_row = new uint64_t[v_size];
-        uint64_t* softmax_input_row = new uint64_t[qk_size];
-        uint64_t* softmax_output_row = new uint64_t[softmax_size];
-        uint64_t* softmax_v_row = new uint64_t[att_size];
-            
-        // Secret sharing and send share to client
-        cout << "-> Layer - " << layer_id << ": Secret sharing " << endl;
-        he_to_ss_server(lin.he_8192, q_k_v, qk_v_cross);
-        
-        cout << "-> Layer - " << layer_id 
-            << ": Softmax preprocessing..." << endl;
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            qk_v_cross,
-            lin.he_8192->plain_mod,
-            qk_v_cross,
-            qk_v_size,
-            NL_ELL,
-            22,
-            NL_SCALE
-        );
-
-
-        lin.plain_cross_packing_postprocess(
-            qk_v_cross, 
-            softmax_input_row,
-            // we need row packing
-            false,
-            lin.data_lin1);
-        
-        lin.plain_cross_packing_postprocess_v(
-            &qk_v_cross[qk_size], 
-            v_matrix_row,
-            false,
-            lin.data_lin1);
-
-        // -------------------- Softmax -------------------- //
-
-        cout << "-> Layer - " << layer_id 
-            << ": Softmax and multiply V..." << endl;
-        // To row packing
-
-        // Softmax
-        nl.softmax(
-            NL_NTHREADS,
-            softmax_input_row,
-            softmax_output_row,
-            12*INPUT_DIM,
-            INPUT_DIM,
-            NL_ELL,
-            NL_SCALE);
-
-
-        nl.n_matrix_mul_iron(
-            NL_NTHREADS,
-            softmax_output_row,
-            v_matrix_row,
-            softmax_v_row,
-            PACKING_NUM,
-            INPUT_DIM,
-            INPUT_DIM,
-            OUTPUT_DIM,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-        nl.print_ss(softmax_v_row, 16, 64, NL_SCALE);
-        return;
-
-        // To col packing
-
-        cout << "-> Layer - " << layer_id 
-            << ": Softmax postprocessing..." << endl;
-        
-        uint64_t* h2_concate = new uint64_t[att_size];
-
-        lin.concat(softmax_v_row, h2_concate, 12, 128, 64);  
-
-        // FixArray h2_concate_public = 
-        //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
-
-        // return;
-
-        uint64_t* h2_col = new uint64_t[att_size];
-        // Packing before send back to server
-        lin.plain_col_packing_preprocess(
-            h2_concate,
-            h2_col,
-            lin.he_8192_tiny->plain_mod,
-            INPUT_DIM,
-            COMMON_DIM
-        );
-
-
-        vector<Ciphertext> h2 = ss_to_he_server(
-            lin.he_8192_tiny, 
-            h2_col,
-            att_size);
-
-
-        // Clean up
-        delete [] qk_v_cross;
-        delete [] v_matrix_row;
-        delete [] softmax_input_row;
-        delete [] softmax_output_row;
-        delete [] softmax_v_row;
-        delete [] h2_col;
-
-
-        // -------------------- Linear #2 -------------------- //
-
-        cout << "-> Layer - " << layer_id << ": Linear #2 " << endl;
-
-        vector<Ciphertext> h3 = lin.linear_2(
-            lin.he_8192_tiny,
-            h2, 
-            lin.pp_2[layer_id],
-            lin.data_lin2
-        );
-
-        cout << "-> Layer - " << layer_id << ": Linear #2 done " << endl;
-        
-        // Secret Share
-
-        int ln_size = INPUT_DIM*COMMON_DIM;
-        uint64_t* ln_input_cross = new uint64_t[ln_size];
-        uint64_t* ln_input_row = new uint64_t[ln_size];
-        uint64_t* ln_output_row = new uint64_t[ln_size];
-        uint64_t* ln_output_col = new uint64_t[ln_size];
-
-        // Secret sharing and send share to client
-        cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_server(lin.he_8192_tiny, h3, ln_input_cross);
-
-        cout << "-> Layer - " << layer_id 
-            << ": Layer Norm preprocessing..." << endl;
-        // Post Processing
-        lin.plain_col_packing_postprocess(
-            ln_input_cross,
-            ln_input_row,
-            false,
-            lin.data_lin2
-        );
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            ln_input_row,
-            lin.he_8192_tiny->plain_mod,
-            ln_input_row,
-            ln_size,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-        // nl.print_ss(ln_input_row, 16, NL_ELL, NL_SCALE);
-        // return;
-
-
-        // -------------------- Layer Norm -------------------- //
-
-        // H3 = Linear#2 + H1
-        for(int i = 0; i < ln_size; i++){
-            ln_input_row[i] += h1_cache[i];
-        } 
-
-        cout << "-> Layer - " << layer_id 
-            << ": Layer Norm..." << endl;
-        nl.layer_norm(
-            NL_NTHREADS,
-            ln_input_row,
-            ln_output_row,
-            nullptr,
-            nullptr,
-            INPUT_DIM,
-            COMMON_DIM,
-            NL_ELL,
-            NL_SCALE
-        );
-
-        // update H4
-        memcpy(h4_cache, ln_output_row, ln_size*sizeof(uint64_t));
-
-        cout << "-> Layer - " << layer_id 
-            << ": Layer Norm postprocessing..." << endl;
-        lin.plain_col_packing_preprocess(
-            ln_output_row,
-            ln_output_col,
-            lin.he_8192_tiny->plain_mod,
-            INPUT_DIM,
-            COMMON_DIM
-        );
-
-        vector<Ciphertext> h4 = ss_to_he_server(
-            lin.he_8192_tiny, 
-            ln_output_col,
-            INPUT_DIM*COMMON_DIM);
-
-        delete[] ln_input_cross;
-        delete[] ln_input_row;
-        delete[] ln_output_row;
-        delete[] ln_output_col;
-
-        // ------------------ Linear inter #1 ------------------ //
-
-        cout << "-> Layer - " << layer_id << ": Linear #3 " << endl;
-        vector<Ciphertext> h5 = lin.linear_2(
-            lin.he_8192_tiny,
-            h4, 
-            lin.pp_3[layer_id],
-            lin.data_lin3
-        );
-
-        cout << "-> Layer - " << layer_id << ": Linear #3 done " << endl;
-
-        int gelu_input_size = 128*3072;
-        uint64_t* gelu_input_cross =
-            new uint64_t[gelu_input_size];
-        uint64_t* gelu_input_col =
-            new uint64_t[gelu_input_size];
-        uint64_t* gelu_output_col =
-            new uint64_t[gelu_input_size];
-
-        // Secret sharing and send share to client
-        he_to_ss_server(lin.he_8192_tiny, h5, gelu_input_cross);
-        cout << "-> Layer - " << layer_id 
-            << ": GELU preprocessing..." << endl;
-
-        // Post Processing
-        lin.plain_col_packing_postprocess(
-            gelu_input_cross,
-            gelu_input_col,
-            true,
-            lin.data_lin3
-        );
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            gelu_input_col,
-            lin.he_8192_tiny->plain_mod,
-            gelu_input_col,
-            gelu_input_size,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-
-        // ---------------------- GELU ---------------------- //
-
-        cout << "-> Layer - " << layer_id 
-            << ": GELU..." << endl;
-            
-        nl.gelu(
-            NL_NTHREADS,
-            gelu_input_col,
-            gelu_output_col,
-            gelu_input_size,
-            NL_ELL,
-            NL_SCALE
-        );
-       
-
-        cout << "-> Layer - " << layer_id 
-            << ": GELU No need postprocessing..." << endl;
-
-
-        vector<Ciphertext> h6 = ss_to_he_server(
-            lin.he_8192_tiny, 
-            gelu_output_col,
-            gelu_input_size);
-
-        delete[] gelu_input_cross;
-        delete[] gelu_input_col;
-        delete[] gelu_output_col;
-
-        // ------------------ Linear #4 ------------------ //
-
-        cout << "-> Layer - " << layer_id << ": Linear #3 " << endl;
-
-        vector<Ciphertext> h7 = lin.linear_2(
-            lin.he_8192_tiny,
-            h6, 
-            lin.pp_4[layer_id],
-            lin.data_lin4
-        );
-
-        
-
-         cout << "-> Layer - " << layer_id << ": Linear #3 done" << endl;
-
-        // -------------------- Layer Norm -------------------- //
-        
-        int ln_2_input_size = INPUT_DIM*COMMON_DIM;
-        uint64_t* ln_2_input_cross =
-            new uint64_t[ln_2_input_size];
-        uint64_t* ln_2_input_row =
-            new uint64_t[ln_2_input_size];
-        uint64_t* ln_2_output_row =
-            new uint64_t[ln_2_input_size];
-        uint64_t* ln_2_output_col =
-            new uint64_t[ln_2_input_size];
-        
-         // Secret sharing and send share to client
-        he_to_ss_server(lin.he_8192_tiny, h7, ln_2_input_cross);
-        cout << "-> Layer - " << layer_id 
-            << ": Secret sharing Linear Inter #2 results done " << endl;
-
-        // Post Processing
-        lin.plain_col_packing_postprocess(
-            ln_2_input_cross,
-            ln_2_input_row,
-            false,
-            lin.data_lin4
-        );
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            ln_2_input_row,
-            lin.he_8192_tiny->plain_mod,
-            ln_2_input_row,
-            ln_2_input_size,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-
-        // H8 = Linear#4 + H4
-        for(int i = 0; i < ln_2_input_size; i++){
-            ln_2_input_row[i] += h4_cache[i];
-        }
-
-        nl.layer_norm(
-            NL_NTHREADS,
-            ln_2_input_row,
-            ln_2_output_row,
-            nullptr,
-            nullptr,
-            INPUT_DIM,
-            COMMON_DIM,
-            NL_ELL,
-            NL_SCALE
-        );
-
-        // update H1
-        memcpy(h1_cache, ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
-
-        lin.plain_col_packing_preprocess(
-            ln_2_output_row,
-            ln_2_output_col,
-            lin.he_8192_tiny->plain_mod,
-            INPUT_DIM,
-            COMMON_DIM
-        );
-
-        if(layer_id == 11){
-            memcpy(h98, ln_2_output_row, COMMON_DIM*sizeof(uint64_t));
-        } else{
-            h1 = ss_to_he_server(
-                lin.he_8192, 
-                ln_2_output_col,
-                INPUT_DIM*COMMON_DIM);
-        }
-        
-        delete[] ln_2_input_cross;
-        delete[] ln_2_input_row;
-        delete[] ln_2_output_row;
-        delete[] ln_2_output_col;
-    }
-
-    // Secret share Pool and Classification model
-    uint64_t* wp = new uint64_t[COMMON_DIM*COMMON_DIM];
-    uint64_t* bp = new uint64_t[COMMON_DIM];
-    uint64_t* wc = new uint64_t[COMMON_DIM*NUM_CLASS];
-    uint64_t* bc = new uint64_t[NUM_CLASS];
-
-    uint64_t* h99 = new uint64_t[COMMON_DIM];
-    uint64_t* h100 = new uint64_t[COMMON_DIM];
-    uint64_t* h101 = new uint64_t[NUM_CLASS];
-
-    cout << "-> Sharing Pooling and Classification params..." << endl;
-
-    pc_bw_share_server(
-        wp,
-        bp,
-        wc,
-        bc
-    );
-
-    // -------------------- POOL -------------------- //
-
-    cout << "-> Layer - Pooling" << endl;
-    nl.n_matrix_mul_iron(
-        NL_NTHREADS,
-        h98,
-        wp,
-        h99,
-        1,
-        1,
-        COMMON_DIM,
-        COMMON_DIM,
-        NL_ELL,
-        NL_SCALE,
-        NL_SCALE,
-        NL_SCALE
-    );
-
-    for(int i = 0; i < NUM_CLASS; i++){
-        h99[i] += bp[i];
-    }
-
-    // -------------------- TANH -------------------- //
-
-    nl.tanh(
-        NL_NTHREADS,
-        h99,
-        h100,
-        COMMON_DIM,
-        NL_ELL,
-        NL_SCALE
-    );
-
-    cout << "-> Layer - Classification" << endl;
-    nl.n_matrix_mul_iron(
-        NL_NTHREADS,
-        h100,
-        wc,
-        h101,
-        1,
-        1,
-        COMMON_DIM,
-        NUM_CLASS,
-        NL_ELL,
-        NL_SCALE,
-        NL_SCALE,
-        NL_SCALE
-    );
-
-    for(int i = 0; i < NUM_CLASS; i++){
-        h101[i] += bc[i];
-    }
-
-    io->send_data(h101, NUM_CLASS*sizeof(uint64_t));
-
-}
-
-int Bert::run_client(string input_fname) {
-    cout << "> Loading input" << endl;
-    // Loading inputs 
-    // H_1: 128×768
-    vector<vector<uint64_t>> h1 = read_data(input_fname);
-
-    uint64_t h1_cache[INPUT_DIM*COMMON_DIM] = {0};
-    uint64_t h4_cache[INPUT_DIM*COMMON_DIM] = {0};
-    uint64_t h98[COMMON_DIM] = {0};
-
-    // Column Packing
-    vector<uint64_t> h1_vec(COMMON_DIM * INPUT_DIM);
-    for (int j = 0; j < COMMON_DIM; j++){
-        for (int i = 0; i < INPUT_DIM; i++){
-            h1_vec[j*INPUT_DIM + i] = neg_mod((int64_t)h1[i][j], (int64_t)lin.he_8192->plain_mod);
-            h1_cache[i*COMMON_DIM + j] = h1[i][j];
-        }
-    }
-
-    vector<Ciphertext> h1_cts = 
-        lin.bert_efficient_preprocess_vec(lin.he_8192, h1_vec, lin.data_lin1);
-    send_encrypted_vector(io, h1_cts);
-
-    // print_ct(lin.he_8192, h1_cts[0], 8192);
-
-    cout << "> --- Entering Attention Layers ---" << endl;
-    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
-
-        // -------------- Waiting Linear#1 -------------- //
-        int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
-        int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-        int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
-        
-        int qk_v_size = qk_size + v_size;
-        int softmax_cts_len = qk_v_size / lin.he_8192->poly_modulus_degree;
-
-        uint64_t* qk_v_cross = new uint64_t[qk_v_size];
-        uint64_t* v_matrix_row = new uint64_t[v_size];
-        uint64_t* softmax_input_row = new uint64_t[qk_size];
-        uint64_t* softmax_output_row = new uint64_t[softmax_size];
-        uint64_t* softmax_v_row = new uint64_t[att_size];
-        
-        // Secret sharing and get share from server
-        cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, lin.data_lin1);
-
-        cout << "-> Layer - " << layer_id 
-            << ": Softmax preprocessing..." << endl;
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            qk_v_cross,
-            lin.he_8192->plain_mod,
-            qk_v_cross,
-            qk_v_size,
-            NL_ELL,
-            22,
-            NL_SCALE
-        );
-
-        lin.plain_cross_packing_postprocess(
-            qk_v_cross, 
-            softmax_input_row,
-            // we need row packing
-            false,
-            lin.data_lin1);
-        
-        lin.plain_cross_packing_postprocess_v(
-            &qk_v_cross[qk_size], 
-            v_matrix_row,
-            false,
-            lin.data_lin1);
-
-        // -------------------- Softmax -------------------- //
-
-        cout << "-> Layer - " << layer_id 
-            << ": Softmax and multiply V..." << endl;
-        // Softmax
-        nl.softmax(
-            NL_NTHREADS,
-            softmax_input_row,
-            softmax_output_row,
-            12*INPUT_DIM,
-            INPUT_DIM,
-            NL_ELL,
-            NL_SCALE);
-
-        auto t_ss_mul = high_resolution_clock::now();
-
-        nl.n_matrix_mul_iron(
-            NL_NTHREADS,
-            softmax_output_row,
-            v_matrix_row,
-            softmax_v_row,
-            PACKING_NUM,
-            INPUT_DIM,
-            INPUT_DIM,
-            OUTPUT_DIM,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-        nl.print_ss(softmax_v_row, 16, 64, NL_SCALE);
-        return 0;
-
-
-        auto t_ss_mul_done = high_resolution_clock::now();
-        auto interval = (t_ss_mul_done - t_ss_mul)/1e+9;
-        cout << "-> Layer - " << layer_id 
-            << ": Softmax times V takes: " 
-            << interval.count() << "sec" << endl;
-
-
-        cout << "-> Layer - " << layer_id 
-            << ": Softmax postprocessing..." << endl;
-
-        uint64_t* h2_concate = new uint64_t[att_size];
-
-        lin.concat(softmax_v_row, h2_concate, 12, 128, 64); 
-
-        // FixArray h2_concate_public = 
-        //     nl.to_public(h2_concate, 12*128*64, 64, NL_SCALE); 
-
-        // save_to_file(h2_concate_public.data, 128, 768, "./weights_txt/softmax_v.txt");
-
-        // return 0;
-
-        uint64_t* h2_col = new uint64_t[att_size];
-        // Packing before send back to server
-        lin.plain_col_packing_preprocess(
-            h2_concate,
-            h2_col,
-            lin.he_8192_tiny->plain_mod,
-            INPUT_DIM,
-            COMMON_DIM
-        );
-
-
-        ss_to_he_client(lin.he_8192_tiny, h2_col, att_size);
-
-        // Clean up
-        delete [] qk_v_cross;
-        delete [] v_matrix_row;
-        delete [] softmax_input_row;
-        delete [] softmax_output_row;
-        delete [] softmax_v_row;
-        delete [] h2_col;
-
-        // -------------- Waiting Linear#2 -------------- //
-
-        int ln_size = INPUT_DIM*COMMON_DIM;
-        int ln_cts_size = ln_size / lin.he_8192_tiny->poly_modulus_degree;
-        
-        uint64_t* ln_input_cross = new uint64_t[ln_size];
-        uint64_t* ln_input_row = new uint64_t[ln_size];
-        uint64_t* ln_output_row = new uint64_t[ln_size];
-        uint64_t* ln_output_col = new uint64_t[ln_size];
-   
-        // Secret sharing and get share from server
-        cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192_tiny, ln_input_cross, ln_cts_size, lin.data_lin2);
-
-        cout << "-> Layer - " << layer_id 
-            << ": Layer Norm preprocessing..." << endl;
-        // Post Processing
-        lin.plain_col_packing_postprocess(
-            ln_input_cross,
-            ln_input_row,
-            false,
-            lin.data_lin2
-        );
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            ln_input_row,
-            lin.he_8192_tiny->plain_mod,
-            ln_input_row,
-            ln_size,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-        // nl.print_ss(ln_input_row, 16, NL_ELL, NL_SCALE);
-        // return 0;
-
-        // -------------------- Layer Norm -------------------- //
-
-        
-        // H3 = Linear#2 + H1
-        for(int i = 0; i < ln_size; i++){
-            ln_input_row[i] += h1_cache[i];
-        }
-
-        cout << "-> Layer - " << layer_id 
-            << ": Layer Norm..." << endl;
-        nl.layer_norm(
-            NL_NTHREADS,
-            ln_input_row,
-            ln_output_row,
-            nullptr,
-            nullptr,
-            INPUT_DIM,
-            COMMON_DIM,
-            NL_ELL,
-            NL_SCALE
-        );
-
-        // update H4
-        memcpy(h4_cache, ln_output_row, ln_size*sizeof(uint64_t));
-
-        cout << "-> Layer - " << layer_id 
-            << ": Layer Norm postprocessing..." << endl;
-        lin.plain_col_packing_preprocess(
-            ln_output_row,
-            ln_output_col,
-            lin.he_8192_tiny->plain_mod,
-            INPUT_DIM,
-            COMMON_DIM
-        );
-
-
-        ss_to_he_client(lin.he_8192_tiny, ln_output_col, ln_size);
-
-        delete[] ln_input_cross;
-        delete[] ln_input_row;
-        delete[] ln_output_row;
-        delete[] ln_output_col;
-
-        // -------------- Waiting Linear#3 -------------- //
-
-        int gelu_input_size = 128*3072;
-        int gelu_cts_size = gelu_input_size / lin.he_8192_tiny->poly_modulus_degree;
-        uint64_t* gelu_input_cross =
-            new uint64_t[gelu_input_size];
-        uint64_t* gelu_input_col =
-            new uint64_t[gelu_input_size];
-        uint64_t* gelu_output_col =
-            new uint64_t[gelu_input_size];
-
-        // Secret sharing and get share from server
-        cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, lin.data_lin3);
-        cout << "-> Layer - " << layer_id 
-            << ": GELU preprocessing..." << endl;
-
-        // Post Processing
-        lin.plain_col_packing_postprocess(
-            gelu_input_cross,
-            gelu_input_col,
-            true,
-            lin.data_lin3
-        );
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            gelu_input_col,
-            lin.he_8192_tiny->plain_mod,
-            gelu_input_col,
-            gelu_input_size,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-
-        // ---------------------- GELU ---------------------- //
-
-        cout << "-> Layer - " << layer_id 
-            << ": GELU..." << endl;
-
-        nl.gelu(
-            NL_NTHREADS,
-            gelu_input_col,
-            gelu_output_col,
-            gelu_input_size,
-            NL_ELL,
-            NL_SCALE
-        );
-
-        cout << "-> Layer - " << layer_id 
-            << ": GELU No need postprocessing..." << endl;
-
-        ss_to_he_client(
-            lin.he_8192_tiny, 
-            gelu_output_col, 
-            gelu_input_size);
-
-        
-        delete[] gelu_input_cross;
-        delete[] gelu_input_col;
-        delete[] gelu_output_col;
-
-        // -------------- Waiting Linear#4 -------------- //
-        int ln_2_input_size = INPUT_DIM*COMMON_DIM;
-        int ln_2_cts_size = ln_2_input_size/lin.he_8192_tiny->poly_modulus_degree;
-
-        uint64_t* ln_2_input_cross =
-            new uint64_t[ln_2_input_size];
-        uint64_t* ln_2_input_row =
-            new uint64_t[ln_2_input_size];
-        uint64_t* ln_2_output_row =
-            new uint64_t[ln_2_input_size];
-        uint64_t* ln_2_output_col =
-            new uint64_t[ln_2_input_size];
-        
-        // Secret sharing and get share from server
-        cout << "-> Layer - " << layer_id << ": Secret Sharing" << endl;
-        he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, lin.data_lin4);
-        cout << "-> Layer - " << layer_id 
-            << ": GELU preprocessing..." << endl;
-
-        // Post Processing
-        lin.plain_col_packing_postprocess(
-            ln_2_input_cross,
-            ln_2_input_row,
-            false,
-            lin.data_lin4
-        );
-
-        // mod p
-        nl.gt_p_sub(
-            NL_NTHREADS,
-            ln_2_input_row,
-            lin.he_8192_tiny->plain_mod,
-            ln_2_input_row,
-            ln_2_input_size,
-            NL_ELL,
-            NL_SCALE,
-            NL_SCALE
-        );
-
-        // -------------------- Layer Norm -------------------- //
-
-        // H8 = Linear#4 + H4
-        for(int i = 0; i < ln_2_input_size; i++){
-            ln_2_input_row[i] += h4_cache[i];
-        }
-
-        nl.layer_norm(
-            NL_NTHREADS,
-            ln_2_input_row,
-            ln_2_output_row,
-            nullptr,
-            nullptr,
-            INPUT_DIM,
-            COMMON_DIM,
-            NL_ELL,
-            NL_SCALE
-        );
-
-        // update H1
-        memcpy(h1_cache, ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
-
-        cout << "-> Layer - " << layer_id 
-            << ": GELU postprocessing..." << endl;
-        lin.plain_col_packing_preprocess(
-            ln_2_output_row,
-            ln_2_output_col,
-            lin.he_8192_tiny->plain_mod,
-            INPUT_DIM,
-            COMMON_DIM
-        );
-
-        if(layer_id == 11){
-            memcpy(h98, ln_2_output_row, COMMON_DIM*sizeof(uint64_t));
-        } else{
-            ss_to_he_client(
-                lin.he_8192, 
-                ln_2_output_col, 
-                ln_2_input_size);
-        }
-
-        delete[] ln_2_input_cross;
-        delete[] ln_2_input_row;
-        delete[] ln_2_output_row;
-        delete[] ln_2_output_col;
-    }
-    // Secret share Pool and Classification model
-    uint64_t* wp = new uint64_t[COMMON_DIM*COMMON_DIM];
-    uint64_t* bp = new uint64_t[COMMON_DIM];
-    uint64_t* wc = new uint64_t[COMMON_DIM*NUM_CLASS];
-    uint64_t* bc = new uint64_t[NUM_CLASS];
-    
-    uint64_t* h99 = new uint64_t[COMMON_DIM];
-    uint64_t* h100 = new uint64_t[COMMON_DIM];
-    uint64_t* h101 = new uint64_t[NUM_CLASS];
-    cout << "-> Sharing Pooling and Classification params..." << endl;
-
-    pc_bw_share_client(
-        wp,
-        bp,
-        wc,
-        bc
-    );
-
-    // -------------------- POOL -------------------- //
-    cout << "-> Layer - Pooling" << endl;
-    nl.n_matrix_mul_iron(
-        NL_NTHREADS,
-        h98,
-        wp,
-        h99,
-        1,
-        1,
-        COMMON_DIM,
-        COMMON_DIM,
-        NL_ELL,
-        NL_SCALE,
-        NL_SCALE,
-        NL_SCALE
-    );
-
-    for(int i = 0; i < NUM_CLASS; i++){
-        h99[i] += bp[i];
-    }
-
-    // -------------------- TANH -------------------- //
-    nl.tanh(
-        NL_NTHREADS,
-        h99,
-        h100,
-        COMMON_DIM,
-        NL_ELL,
-        NL_SCALE
-    );
-    
-    cout << "-> Layer - Classification" << endl;
-    nl.n_matrix_mul_iron(
-        NL_NTHREADS,
-        h100,
-        wc,
-        h101,
-        1,
-        1,
-        COMMON_DIM,
-        NUM_CLASS,
-        NL_ELL,
-        NL_SCALE,
-        NL_SCALE,
-        NL_SCALE
-    );
-
-    for(int i = 0; i < NUM_CLASS; i++){
-        h101[i] += bc[i];
-    }
-
-    uint64_t* res = new uint64_t[NUM_CLASS];
-    vector<double> dbl_result;
-    io->recv_data(res, NUM_CLASS*sizeof(uint64_t));
-
-    for(int i = 0; i < NUM_CLASS; i++){
-        dbl_result.push_back((signed_val(res[i] + h101[i], NL_ELL)) / double(1LL << NL_SCALE));
-    }
-
-    auto max_ele = max_element(dbl_result.begin(), dbl_result.end());
-    int max_index = distance(dbl_result.begin(), max_ele);
-
-    return max_index;
-}
-
 vector<double> Bert::run(string input_fname, string mask_fname){
     // Server: Alice
     // Client: Bob
 
     vector<uint64_t> softmax_mask;
-
     uint64_t h1_cache_12[INPUT_DIM*COMMON_DIM] = {0};
     uint64_t h4_cache_12[INPUT_DIM*COMMON_DIM] = {0};
     uint64_t h98[COMMON_DIM] = {0};
@@ -1331,18 +449,28 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #1 HE" << endl;
+                #ifdef BERT_TIMING
+                auto t_linear1 = high_resolution_clock::now();
+                #endif 
                 vector<Ciphertext> q_k_v = lin.linear_1(
                     lin.he_8192,
                     h1,
                     lin.pp_1[layer_id],
                     lin.data_lin1
                 );
+                #ifdef BERT_TIMING
+                t_total_linear1 += interval(t_linear1);
+                #endif 
                 cout << "-> Layer - " << layer_id << ": Linear #1 done HE" << endl;
                 he_to_ss_server(lin.he_8192, q_k_v, qk_v_cross);
             } else{
                 int softmax_cts_len = qk_v_size / lin.he_8192->poly_modulus_degree;
                 he_to_ss_client(lin.he_8192, qk_v_cross, softmax_cts_len, lin.data_lin1);
             }
+
+            #ifdef BERT_TIMING
+            auto t_gt_sub = high_resolution_clock::now();
+            #endif 
 
             // Scale: Q*V 22 V 11
             nl.gt_p_sub(
@@ -1355,6 +483,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 22,
                 22
             );
+
+            #ifdef BERT_TIMING
+            t_total_gt_sub += interval(t_gt_sub);
+            auto t_repacking = high_resolution_clock::now();
+            #endif 
 
             lin.plain_cross_packing_postprocess(
                 qk_v_cross, 
@@ -1369,6 +502,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 false,
                 lin.data_lin1);
 
+            #ifdef BERT_TIMING
+            t_total_repacking += interval(t_repacking);
+            auto t_shift = high_resolution_clock::now();
+            #endif 
+
             
             // Rescale QK to 12
             nl.right_shift(
@@ -1380,6 +518,18 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 NL_SCALE
             );
+
+            // for(int i = 0; i < qk_size; i++){
+            //     softmax_input_row[i] = ((int64_t)softmax_input_row[i]) >> 10;
+            // }
+
+            // nl.print_ss(softmax_input_row, 16, NL_ELL, NL_SCALE);
+            // return {};
+
+            #ifdef BERT_TIMING
+            t_total_shift += interval(t_shift);
+            auto t_softmax = high_resolution_clock::now();
+            #endif 
 
 
             if (party == BOB){
@@ -1405,6 +555,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 INPUT_DIM,
                 NL_ELL,
                 NL_SCALE);
+            
+            #ifdef BERT_TIMING
+            t_total_softmax += interval(t_softmax);
+            auto t_mul_v = high_resolution_clock::now();
+            #endif 
 
 
             // Rescale to 6
@@ -1422,9 +577,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 11,
                 6
             );
-
-
             lin.concat(softmax_v_row, h2_concate, 12, 128, 64); 
+
+            #ifdef BERT_TIMING
+            t_total_mul_v += interval(t_mul_v);
+            auto t_repacking_2 = high_resolution_clock::now();
+            #endif 
+
 
             lin.plain_col_packing_preprocess(
                 h2_concate,
@@ -1434,8 +593,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 COMMON_DIM
             );
 
-            // nl.print_ss(h2_concate, 768, NL_ELL, NL_SCALE);
-            // return 0;
+            #ifdef BERT_TIMING
+            t_total_repacking += interval(t_repacking_2);
+            #endif 
+
 
             if(party == ALICE){
                 h2 = ss_to_he_server(
@@ -1468,12 +629,18 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE" << endl;
+                #ifdef BERT_TIMING
+                auto t_linear2 = high_resolution_clock::now();
+                #endif 
                 vector<Ciphertext> h3 = lin.linear_2(
                     lin.he_8192_tiny,
                     h2, 
                     lin.pp_2[layer_id],
                     lin.data_lin2
                 );
+                #ifdef BERT_TIMING
+                t_total_linear2 += interval(t_linear2);
+                #endif 
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h3, ln_input_cross);
                 ln_share_server(
@@ -1492,12 +659,21 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 );
             }
 
+            #ifdef BERT_TIMING
+            auto t_repacking = high_resolution_clock::now();
+            #endif 
+
             lin.plain_col_packing_postprocess(
                 ln_input_cross,
                 ln_input_row,
                 false,
                 lin.data_lin2
             );
+
+            #ifdef BERT_TIMING
+            t_total_repacking += interval(t_repacking);
+            auto t_gt_sub = high_resolution_clock::now();
+            #endif 
 
             nl.gt_p_sub(
                 NL_NTHREADS,
@@ -1509,6 +685,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE,
                 NL_SCALE
             );
+
+            #ifdef BERT_TIMING
+            t_total_gt_sub += interval(t_gt_sub);
+            auto t_ln_1 = high_resolution_clock::now();
+            #endif 
 
             for(int i = 0; i < ln_size; i++){
                 ln_input_row[i] += h1_cache_12[i];
@@ -1527,8 +708,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
-            nl.print_ss(ln_output_row, 16, NL_ELL, NL_SCALE);
-            return {};
+            #ifdef BERT_TIMING
+            t_total_ln_1 += interval(t_ln_1);
+            auto t_shift = high_resolution_clock::now();
+            #endif 
 
             memcpy(h4_cache_12, ln_output_row, ln_size*sizeof(uint64_t));
 
@@ -1542,6 +725,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
+            #ifdef BERT_TIMING
+            t_total_shift += interval(t_shift);
+            auto t_repacking_2 = high_resolution_clock::now();
+            #endif 
+
             // FixArray tmp = nl.to_public(ln_output_row, 128*768, 64, 5);
             // save_to_file(tmp.data, 128, 768, "./inter_result/linear3_input.txt");
 
@@ -1552,6 +740,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 INPUT_DIM,
                 COMMON_DIM
             );
+
+            #ifdef BERT_TIMING
+            t_total_repacking += interval(t_repacking_2);
+            #endif 
 
             if(party == ALICE){
                 h4 = ss_to_he_server(
@@ -1585,17 +777,28 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE" << endl;
-                    vector<Ciphertext> h5 = lin.linear_2(
-                    lin.he_8192_tiny,
-                    h4, 
-                    lin.pp_3[layer_id],
-                    lin.data_lin3
+                #ifdef BERT_TIMING
+                auto t_linear3 = high_resolution_clock::now();
+                #endif 
+                vector<Ciphertext> h5 = lin.linear_2(
+                lin.he_8192_tiny,
+                h4, 
+                lin.pp_3[layer_id],
+                lin.data_lin3
                 );
+                #ifdef BERT_TIMING
+                t_total_linear3 += interval(t_linear3);
+                #endif 
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h5, gelu_input_cross);
             } else{
                 he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, lin.data_lin3);
             }
+
+            #ifdef BERT_TIMING
+            auto t_repacking = high_resolution_clock::now();
+            #endif 
+
 
             lin.plain_col_packing_postprocess(
                 gelu_input_cross,
@@ -1603,6 +806,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 true,
                 lin.data_lin3
             );
+
+            #ifdef BERT_TIMING
+            t_total_repacking += interval(t_repacking);
+            auto t_gt_sub = high_resolution_clock::now();
+            #endif 
 
             // mod p
             nl.gt_p_sub(
@@ -1616,6 +824,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 11
             );
 
+            #ifdef BERT_TIMING
+            t_total_gt_sub += interval(t_gt_sub);
+            auto t_gelu = high_resolution_clock::now();
+            #endif 
+
             nl.gelu(
                 NL_NTHREADS,
                 gelu_input_col,
@@ -1624,6 +837,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 11
             );
+
+            #ifdef BERT_TIMING
+            t_total_gelu += interval(t_gelu);
+            auto t_shift = high_resolution_clock::now();
+            #endif 
 
             nl.right_shift(
                 NL_NTHREADS,
@@ -1634,6 +852,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 64,
                 11
             );
+
+            #ifdef BERT_TIMING
+            t_total_shift += interval(t_shift);
+            #endif 
 
             // FixArray tmp = nl.to_public(gelu_output_col, 128*3072, 64, 4);
             // save_to_file(tmp.data, 128, 3072, "./inter_result/linear4_input.txt");
@@ -1679,12 +901,18 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE " << endl;
+                #ifdef BERT_TIMING
+                auto t_linear4 = high_resolution_clock::now();
+                #endif 
                 vector<Ciphertext> h7 = lin.linear_2(
                     lin.he_8192_tiny,
                     h6, 
                     lin.pp_4[layer_id],
                     lin.data_lin4
                 );
+                #ifdef BERT_TIMING
+                t_total_linear4 += interval(t_linear4);
+                #endif 
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE done" << endl;
                 he_to_ss_server(lin.he_8192_tiny, h7, ln_2_input_cross);
                 ln_share_server(
@@ -1701,6 +929,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     ln_bias_2
                 );
             }
+
+            #ifdef BERT_TIMING
+            auto t_repacking = high_resolution_clock::now();
+            #endif 
             // Post Processing
             lin.plain_col_packing_postprocess(
                 ln_2_input_cross,
@@ -1708,6 +940,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 false,
                 lin.data_lin4
             );
+
+            #ifdef BERT_TIMING
+            t_total_repacking += interval(t_repacking);
+            auto t_gt_sub = high_resolution_clock::now();
+            #endif 
 
             // mod p
             if(layer_id == 9 || layer_id == 10){
@@ -1734,6 +971,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 );
             }
 
+            #ifdef BERT_TIMING
+            t_total_gt_sub += interval(t_gt_sub);
+            auto t_ln = high_resolution_clock::now();
+            #endif 
+
             for(int i = 0; i < ln_2_input_size; i++){
                 ln_2_input_row[i] += h4_cache_12[i];
             }
@@ -1750,6 +992,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
+            #ifdef BERT_TIMING
+            t_total_ln_2 += interval(t_ln);
+            auto t_shift = high_resolution_clock::now();
+            #endif 
 
             // update H1
             memcpy(h1_cache_12, ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
@@ -1765,6 +1011,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
+            #ifdef BERT_TIMING
+            t_total_shift += interval(t_shift);
+            auto t_repacking_2 = high_resolution_clock::now();
+            #endif 
+
             lin.plain_col_packing_preprocess(
                 ln_2_output_row,
                 ln_2_output_col,
@@ -1772,6 +1023,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 INPUT_DIM,
                 COMMON_DIM
             );
+
+            #ifdef BERT_TIMING
+            t_total_repacking += interval(t_repacking_2);
+            #endif 
+
             if(layer_id == 11){
                 // Using Scale of 12 as 
                 memcpy(h98, h1_cache_12, COMMON_DIM*sizeof(uint64_t));
@@ -1809,6 +1065,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     uint64_t* h101 = new uint64_t[NUM_CLASS];
 
     cout << "-> Sharing Pooling and Classification params..." << endl;
+
+    #ifdef BERT_TIMING
+    auto t_pc = high_resolution_clock::now();
+    #endif 
 
     if(party == ALICE){
         pc_bw_share_server(
@@ -1876,6 +1136,29 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     for(int i = 0; i < NUM_CLASS; i++){
         h101[i] += bc[i];
     }
+
+    #ifdef BERT_TIMING
+    cout << "> [TIMING]: linear1 takes " << t_total_linear1 << " sec" << endl;
+    cout << "> [TIMING]: linear2 takes " << t_total_linear2 << " sec" << endl;
+    cout << "> [TIMING]: linear3 takes " << t_total_linear3 << " sec" << endl;
+    cout << "> [TIMING]: linear4 takes " << t_total_linear4 << " sec" << endl;
+
+    cout << "> [TIMING]: softmax takes " << t_total_softmax << " sec" << endl;
+    cout << "> [TIMING]: mul v takes " << t_total_mul_v << " sec" << endl;
+    cout << "> [TIMING]: gelu takes " << t_total_gelu << " sec" << endl;
+    cout << "> [TIMING]: ln_1 takes " << t_total_ln_1 << " sec" << endl;
+    cout << "> [TIMING]: ln_2 takes " << t_total_ln_2 << " sec" << endl;
+
+    cout << "> [TIMING]: repacking takes " << t_total_repacking << " sec" << endl;
+    cout << "> [TIMING]: gt_sub takes " << t_total_gt_sub << " sec" << endl;
+    cout << "> [TIMING]: shift takes " << t_total_shift << " sec" << endl;
+
+    cout << "> [TIMING]: conversion takes " << t_total_conversion << " sec" << endl;
+    cout << "> [TIMING]: ln_share takes " << t_total_ln_share << " sec" << endl;
+
+
+    cout << "> [TIMING]: " << interval(t_pc) << " sec" << endl; 
+    #endif 
 
     if(party == ALICE){
         io->send_data(h101, NUM_CLASS*sizeof(uint64_t));

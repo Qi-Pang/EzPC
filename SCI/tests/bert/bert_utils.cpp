@@ -129,6 +129,27 @@ string replace(string str, string substr1, string substr2) {
 
 BertModel load_model(string model_dir, int num_class){
     BertModel bm;
+
+    bm.w_q.resize(12);
+    bm.w_k.resize(12);
+    bm.w_v.resize(12);
+    bm.w_o.resize(12);
+    bm.w_i_1.resize(12);
+    bm.w_i_2.resize(12);
+
+    bm.b_q.resize(12);
+    bm.b_k.resize(12);
+    bm.b_v.resize(12);
+    bm.b_o.resize(12);
+    bm.b_i_1.resize(12);
+    bm.b_i_2.resize(12);
+
+    bm.w_ln_1.resize(12);
+    bm.w_ln_2.resize(12);
+
+    bm.b_ln_1.resize(12);
+    bm.b_ln_2.resize(12);
+
     
     // Attention
     string wq_fname = 
@@ -185,6 +206,7 @@ BertModel load_model(string model_dir, int num_class){
     "classifier.bias.txt";
     
     // Attention
+    #pragma omp parallel for
     for(int i = 0; i < 12; i++){
         string lid = to_string(i);
         vector<vector<vector<uint64_t>>> wq = read_qkv_weights(
@@ -247,24 +269,24 @@ BertModel load_model(string model_dir, int num_class){
             768
         );
 
-        bm.w_q.push_back(wq);
-        bm.w_k.push_back(wk);
-        bm.w_v.push_back(wv);
-        bm.w_o.push_back(wo);
-        bm.w_i_1.push_back(wi1);
-        bm.w_i_2.push_back(wi2);
+        bm.w_q[i] =  wq;
+        bm.w_k[i] =  wk;
+        bm.w_v[i] =  wv;
+        bm.w_o[i] =  wo;
+        bm.w_i_1[i] =  wi1;
+        bm.w_i_2[i] =  wi2;
 
-        bm.w_ln_1.push_back(wln1);
-        bm.b_ln_1.push_back(bln1);
-        bm.w_ln_2.push_back(wln2);
-        bm.b_ln_2.push_back(bln2);
+        bm.w_ln_1[i] =  wln1;
+        bm.b_ln_1[i] =  bln1;
+        bm.w_ln_2[i] =  wln2;
+        bm.b_ln_2[i] =  bln2;
 
-        bm.b_q.push_back(bq);
-        bm.b_k.push_back(bk);
-        bm.b_v.push_back(bv);
-        bm.b_o.push_back(bo);
-        bm.b_i_1.push_back(bi1);
-        bm.b_i_2.push_back(bi2);
+        bm.b_q[i] =  bq;
+        bm.b_k[i] =  bk;
+        bm.b_v[i] =  bv;
+        bm.b_o[i] =  bo;
+        bm.b_i_1[i] =  bi1;
+        bm.b_i_2[i] =  bi2;
     }
 
     bm.w_p = read_data(model_dir + wp_fname);

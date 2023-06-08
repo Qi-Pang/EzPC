@@ -59,13 +59,15 @@ int main(int argc, char **argv) {
             "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
             "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
             );
-        // inference_results.push_back(result);
-        auto max_ele = max_element(result.begin(), result.end());
-        int max_index = distance(result.begin(), max_ele);
-        // predicted_labels.push_back(max_index);
-        file << max_index << "," 
-                << result[0]<< "," 
-                << result[1]<< "," << endl;
+        if(result.size() > 1){
+            // inference_results.push_back(result);
+            auto max_ele = max_element(result.begin(), result.end());
+            int max_index = distance(result.begin(), max_ele);
+            // predicted_labels.push_back(max_index);
+            file << max_index << "," 
+                    << result[0]<< "," 
+                    << result[1]<< "," << endl;
+        }
     }
     file.close();
     }

@@ -68,10 +68,6 @@ public:
         uint64_t* bln
     );
 
-    void run_server();
-
-    int run_client(string input_fname);
-
     vector<double> run(string input_fname, string mask_fname);
 	
 };
