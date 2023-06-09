@@ -85,6 +85,19 @@ public:
       int32_t bwA, int32_t bwB, int32_t bwC, bool accumulate,
       MultMode mode = MultMode::None);
 
+  // Matmul cross terms A0B1 + A1B0
+  // Simulate without OT
+  void matmul_cross_terms_sim(
+      // (dim1xdim2) X (dim2xdim3)
+      int32_t dim1, int32_t dim2, int32_t dim3,
+      // input share matrix
+      uint64_t *inA, uint64_t *inB,
+      // output share matrix
+      uint64_t *outC,
+      // bitwidths
+      int32_t bwA, int32_t bwB, int32_t bwC, bool accumulate,
+      MultMode mode = MultMode::None);
+
   // Matmul Multiplexer: bwA == 1 || bwB == 1
   void matmul_multiplexer(
       // (dim1xdim2) X (dim2xdim3)

@@ -22,6 +22,7 @@ void save_to_file_2(uint64_t* matrix, size_t rows, size_t cols, const char* file
 
 void mat_mul(const vector<vector<uint64_t>>& matrix1, const vector<vector<uint64_t>>& matrix2, uint64_t* result, size_t rows1, size_t cols1, size_t cols2) {
     // Perform matrix multiplication
+    #pragma omp parallel for collapse(2)
     for (size_t i = 0; i < rows1; ++i) {
         for (size_t j = 0; j < cols2; ++j) {
             uint64_t sum = 0;
@@ -40,6 +41,7 @@ void mat_mul(const vector<vector<uint64_t>>& matrix1, const vector<vector<uint64
 
 void mat_mul_ptr(const uint64_t* matrix1, const uint64_t* matrix2, uint64_t* result, size_t rows1, size_t cols1, size_t cols2) {
     // Perform matrix multiplication
+    #pragma omp parallel for collapse(2)
     for (size_t i = 0; i < rows1; ++i) {
         for (size_t j = 0; j < cols2; ++j) {
             uint64_t sum = 0;

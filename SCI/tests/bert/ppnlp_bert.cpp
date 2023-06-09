@@ -43,17 +43,17 @@ int main(int argc, char **argv) {
     vector<int> predicted_labels;
 
     if(party == ALICE){
-        for(int i = 0; i < 200; i++ ){
+        for(int i = 0; i < 1; i++ ){
         cout << "==>> Inference sample #" << i << endl;
         vector<double> result = bt.run("", "");
     }
     } else{
-        ofstream file("./result/mrpc_test_200.txt");
+        ofstream file("/home/ubuntu/clive/EzPC/random.txt");
         if (!file) {
             std::cerr << "Could not open the file!" << std::endl;
             return {};
         }
-        for(int i = 0; i < 200; i++ ){
+        for(int i = 0; i < 1; i++ ){
         cout << "==>> Inference sample #" << i << endl;
         vector<double> result = bt.run(
             "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
         // predicted_labels.push_back(max_index);
         file << max_index << "," 
                 << result[0]<< "," 
-                << result[1]<< "," << endl;
+                << result[1] << endl;
     }
     file.close();
     }

@@ -676,7 +676,7 @@ void LinearOT::matrix_multiplication(int32_t dim1, int32_t dim2, int32_t dim3,
   /* print_vec(this, tmpA, bwA, dim1*dim2); */
   /* print_vec(this, tmpB, bwB, dim2*dim3); */
   uint64_t *cross_terms = new uint64_t[dim];
-  matmul_cross_terms(dim1, dim2, dim3, tmpA, tmpB, cross_terms, bwA, bwB, bwC,
+  matmul_cross_terms_sim(dim1, dim2, dim3, tmpA, tmpB, cross_terms, bwA, bwB, bwC,
                      accumulate, mode);
   /* print_vec(this, cross_terms, bwC, dim); */
 
@@ -811,4 +811,32 @@ void LinearOT::matrix_multiplication(int32_t dim1, int32_t dim2, int32_t dim3,
   delete[] tmpA;
   delete[] tmpB;
   delete[] tmpC;
+}
+
+
+void LinearOT::matmul_cross_terms_sim(int32_t dim1, int32_t dim2, int32_t dim3,
+                                  uint64_t *inA, uint64_t *inB, uint64_t *outC,
+                                  int32_t bwA, int32_t bwB, int32_t bwC,
+                                  bool accumulate, MultMode mode) {
+  uint64_t* inB_ = new uint64_t[dim2*dim3];
+  if(party == ALICE){
+    iopack->io->send_data(inB, dim2*dim3*sizeof(uint64_t));
+    iopack->io->recv_data(inB_, dim2*dim3*sizeof(uint64_t));
+  } else{
+    iopack->io->recv_data(inB_, dim2*dim3*sizeof(uint64_t));
+    iopack->io->send_data(inB, dim2*dim3*sizeof(uint64_t));
+  }
+  matmul_cleartext(dim1, dim2, dim3, inA, inB_, outC, accumulate);
+
+  int32_t dim;
+  uint64_t maskC = (bwC == 64 ? -1 : ((1ULL << bwC) - 1));
+
+  if (accumulate)
+    dim = dim1 * dim3;
+  else
+    dim = dim1 * dim2 * dim3;
+  
+  for(int i = 0; i < dim; i++){
+    outC[i] &= maskC;
+  }
 }

@@ -1268,6 +1268,7 @@ void Linear::plain_col_packing_preprocess(
     uint64_t plain_mod,
     int input_dim,
     int common_dim){
+    #pragma omp parallel for
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
                 output[j*input_dim + i] = input[i*common_dim +j];
@@ -1279,6 +1280,7 @@ void Linear::plain_col_packing_preprocess_vec(
     uint64_t plain_mod,
     int input_dim,
     int common_dim){
+    #pragma omp parallel for
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
                 output[j*input_dim + i] = input[i][j];
