@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
 
     
 
-    Bert bt(party, port, address, "/home/ubuntu/mrpc/weights_txt/");
+    Bert bt(party, port, address, "/home/ubuntu/mrpc_robust/weights_txt/");
 
     auto start = high_resolution_clock::now();
     // if(party == ALICE){
@@ -56,8 +56,8 @@ int main(int argc, char **argv) {
         for(int i = 0; i < 1; i++ ){
         cout << "==>> Inference sample #" << i << endl;
         vector<double> result = bt.run(
-            "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
-            "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
+            "/home/ubuntu/mrpc_robust/weights_txt/inputs_" + to_string(i) + "_data.txt",
+            "/home/ubuntu/mrpc_robust/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
             );
         // inference_results.push_back(result);
         auto max_ele = max_element(result.begin(), result.end());

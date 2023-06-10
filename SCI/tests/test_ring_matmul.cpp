@@ -33,9 +33,9 @@ IOPack *iopack;
 OTPack *otpack;
 LinearOT *prod;
 
-int dim1 = 128;
-int dim2 = 64;
-int dim3 = 128;
+int dim1 = 1;
+int dim2 = 768;
+int dim3 = 768;
 int bwA = 37;
 int bwB = 37;
 int bwC = 37;
@@ -80,7 +80,6 @@ void test_matrix_multiplication(uint64_t *inA, uint64_t *inB,
   uint64_t *outC = new uint64_t[dim];
 
   INIT_TIMER;
-  START_TIMER;
   uint8_t *msbA = nullptr;
   uint8_t *msbB = nullptr;
   if (precomputed_MSBs) {
@@ -91,9 +90,11 @@ void test_matrix_multiplication(uint64_t *inA, uint64_t *inB,
   }
   uint64_t num_rounds = iopack->get_rounds();
   uint64_t comm_start = iopack->get_comm();
-  prod->matrix_multiplication(dim1, dim2, dim3, inA, inB, outC, bwA, bwB, bwC,
+  START_TIMER;
+  prod->matrix_multiplication(dim1, dim2, dim3, inA, inB, outC, bwA, bwB, bwC + 12,
                               signed_arithmetic, signed_B, ::accumulate, mode,
                               msbA, msbB);
+  STOP_TIMER("Total time for matmul");
   if (precomputed_MSBs) {
     delete[] msbA;
     delete[] msbB;
@@ -102,7 +103,6 @@ void test_matrix_multiplication(uint64_t *inA, uint64_t *inB,
   cout << "Bytes Sent: " << (comm_end - comm_start) << endl;
   num_rounds = iopack->get_rounds() - num_rounds;
   cout << "Num rounds: " << num_rounds << endl;
-  STOP_TIMER("Total time for matmul");
 
   if (party == ALICE) {
     iopack->io->send_data(inA, dim1 * dim2 * sizeof(uint64_t));
@@ -220,9 +220,6 @@ int main(int argc, char **argv) {
   prg.random_data(inA, dim1 * dim2 * sizeof(uint64_t));
   prg.random_data(inB, dim2 * dim3 * sizeof(uint64_t));
 
-  vector<vector<uint64_t>> tempA = read_data("./bin/txt/random_ct1.txt");
-  vector<vector<uint64_t>> tempB = read_data("./bin/txt/random_ct2.txt");
-
   for (int i = 0; i < dim1 * dim2; i++) {
     inA[i] &= maskA;
   }
@@ -230,22 +227,11 @@ int main(int argc, char **argv) {
     inB[i] &= maskB;
   }
 
-  for (int i = 0; i < dim1; i++) {
-    for (int j = 0; j < dim2; j++) {
-      inA[i * dim2 + j] = tempA[i][j] * 4;
-    }
-  }
-  for (int i = 0; i < dim2; i++) {
-    for (int j = 0; j < dim3; j++) {
-      inB[i * dim3 + j] = tempB[i][j] * 4;
-    }
-  }
-
   cout << "Precomputed MSBs: " << precomputed_MSBs << endl;
   cout << "Accumulate: " << ::accumulate << endl;
   mode = MultMode::None;
   cout << "Mode: None" << endl;
-  test_matrix_multiplication(inA, inB, false);
+  // test_matrix_multiplication(inA, inB, false);
   test_matrix_multiplication(inA, inB, true);
   // mode = MultMode::Alice_has_A;
   // cout << "Mode: Alice_has_A" << endl;

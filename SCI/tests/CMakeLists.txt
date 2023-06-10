@@ -16,7 +16,7 @@ macro (add_test_float _name)
     target_link_libraries(${_name}-float SCI-FloatingPoint) 
 endmacro()
 
-# add_test_OT(matmul)
+add_test_OT(matmul)
 # add_test_OT(value_extension)
 # add_test_OT(truncation)
 # add_test_OT(relu)

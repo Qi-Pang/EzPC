@@ -17,7 +17,7 @@
 #define NUM_CLASS 2
 
 #define BERT_DEBUG
-#define BERT_TIMING
+// #define BERT_TIMING
 
 using namespace std;
 

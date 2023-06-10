@@ -1,5 +1,11 @@
 #include "nonlinear.h"
 
+inline double interval_2(chrono::_V2::system_clock::time_point start){
+    auto end = high_resolution_clock::now();
+    auto interval = (end - start)/1e+9;
+    return interval.count();
+}
+
 NonLinear::NonLinear(int party, string address, int port){
     this->party = party;
     this->address = address;
@@ -527,6 +533,7 @@ void matmul_thread(
     this_party = party;
   }
   int extra_scale = s_in_1 + s_in_2 - s_out;
+  auto t_pc = high_resolution_clock::now();
   fpmath->fix->mult->matrix_multiplication(
       dim1,
       dim2,
@@ -541,6 +548,7 @@ void matmul_thread(
       true,
       true
     );
+    cout << "> [TIMING]: mul takes:" << interval_2(t_pc) << " sec" << endl; 
     BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
     FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
     ret = fpmath->fix->truncate_reduce(ret, extra_scale, all_1.data);
@@ -585,11 +593,47 @@ void  NonLinear::n_matrix_mul_iron(
   for (int i = 0; i < n; ++i) {
       threads[i].join();
   }
+}
 
-  // FixArray ret = fpmath[0]->fix->input(party, n*dim1*dim3, output, true, ell+s, s);
-  // ret = fpmath[0]->fix->truncate_reduce(ret, s);
-  // ret = fpmath[0]->fix->extend(ret, 64);
-  // memcpy(output, ret.data, (n*dim1*dim3)*sizeof(uint64_t));
+void  NonLinear::p_matrix_mul_iron(
+  int nthreads, 
+  uint64_t* input_1,
+  uint64_t* input_2, 
+  uint64_t* output, 
+  int n, 
+  int dim1, 
+  int dim2, 
+  int dim3, 
+  int ell, 
+  int s_in_1,
+  int s_in_2,
+  int s_out){
+
+  std::thread threads[n];
+
+  int dim1_ = dim1 / n;
+
+  for (int i = 0; i < n; ++i) {
+      threads[i] =
+          std::thread(
+              matmul_thread, 
+              i, 
+              party, 
+              &input_1[i*dim1_*dim2],
+              input_2,
+              &output[i*dim1_*dim3],
+              dim1_,
+              dim2,
+              dim3,
+              ell,
+              s_in_1,
+              s_in_2,
+              s_out,
+              this->fpmath[i]);
+  }
+  for (int i = 0; i < n; ++i) {
+      threads[i].join();
+  }
 }
 
 void right_shift_thread(int tid, int party, uint64_t *x, int a, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {

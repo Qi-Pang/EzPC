@@ -1,5 +1,31 @@
 #include "bert.h"
 
+#ifdef BERT_TIMING
+double t_total_linear1 = 0;
+double t_total_linear2 = 0;
+double t_total_linear3 = 0;
+double t_total_linear4 = 0;
+
+double t_total_softmax = 0;
+double t_total_mul_v = 0;
+double t_total_gelu = 0;
+double t_total_ln_1 = 0;
+double t_total_ln_2 = 0;
+
+double t_total_repacking = 0;
+double t_total_gt_sub = 0;
+double t_total_shift = 0;
+
+double t_total_conversion = 0;
+
+double t_total_ln_share = 0;
+#endif 
+
+inline double interval(chrono::_V2::system_clock::time_point start){
+    auto end = high_resolution_clock::now();
+    auto interval = (end - start)/1e+9;
+    return interval.count();
+}
 
 void save_to_file(uint64_t* matrix, size_t rows, size_t cols, const char* filename) {
     std::ofstream file(filename);
@@ -762,6 +788,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         );
     }
 
+    #ifdef BERT_TIMING
+    auto t_pc = high_resolution_clock::now();
+    #endif 
+
     // -------------------- POOL -------------------- //
     cout << "-> Layer - Pooling" << endl;
     nl.n_matrix_mul_iron(
@@ -779,9 +809,17 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         NL_SCALE
     );
 
+    #ifdef BERT_TIMING
+    cout << "> [TIMING]: Pooling mul takes:" << interval(t_pc) << " sec" << endl; 
+    #endif 
+
     for(int i = 0; i < NUM_CLASS; i++){
         h99[i] += bp[i];
     }
+
+    #ifdef BERT_TIMING
+    cout << "> [TIMING]: Pooling takes:" << interval(t_pc) << " sec" << endl; 
+    #endif 
 
     // -------------------- TANH -------------------- //
     nl.tanh(
@@ -812,6 +850,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     for(int i = 0; i < NUM_CLASS; i++){
         h101[i] += bc[i];
     }
+
+    #ifdef BERT_TIMING
+    cout << "> [TIMING]: Pooling and Classification takes:" << interval(t_pc) << " sec" << endl; 
+    #endif 
 
     if(party == ALICE){
         io->send_data(h101, NUM_CLASS*sizeof(uint64_t));
