@@ -528,7 +528,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             // Layer Norm
-            nl.layer_norm_plain(
+            nl.layer_norm(
                 NL_NTHREADS,
                 ln_input_row,
                 ln_output_row,
@@ -709,7 +709,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 ln_2_input_row[i] += h4_cache_12[i];
             }
 
-            nl.layer_norm_plain(
+            nl.layer_norm(
                 NL_NTHREADS,
                 ln_2_input_row,
                 ln_2_output_row,
