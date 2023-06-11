@@ -533,7 +533,7 @@ void matmul_thread(
     this_party = party;
   }
   int extra_scale = s_in_1 + s_in_2 - s_out;
-  auto t_pc = high_resolution_clock::now();
+  // auto t_pc = high_resolution_clock::now();
   fpmath->fix->mult->matrix_multiplication(
       dim1,
       dim2,
@@ -548,7 +548,7 @@ void matmul_thread(
       true,
       true
     );
-    cout << "> [TIMING]: mul takes:" << interval_2(t_pc) << " sec" << endl; 
+    // cout << "> [TIMING]: mul takes:" << interval_2(t_pc) << " sec" << endl; 
     BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
     FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
     ret = fpmath->fix->truncate_reduce(ret, extra_scale, all_1.data);
@@ -687,4 +687,88 @@ FixArray NonLinear::to_public(uint64_t* input, int length, int ell, int s){
   tmp = fpmath[0]->fix->extend(tmp, 64);
   tmp = fpmath[0]->fix->output(PUBLIC, tmp);
   return tmp;
+}
+
+void layer_norm_double(
+  vector<double> input, 
+  vector<double> w,
+  vector<double> b,
+  double* output, 
+  int dim, 
+  int array_size) {
+  
+  for (int i = 0; i < dim; i++){
+    double sum = 0.0;
+    double* sub_avg = new double[array_size];
+    double sigma_sqr = 0;
+    for (int j = 0; j < array_size; ++j) {
+      sum += input[j + i*array_size];
+    }
+    sum /= array_size;
+    for (int j = 0; j < array_size; ++j) {
+      sub_avg[j] = input[j + i*array_size] - sum;
+      sigma_sqr += sub_avg[j]*sub_avg[j];
+    }
+    sigma_sqr /= array_size;
+    double sigma = std::sqrt(sigma_sqr);
+    for (int j = 0; j < array_size; ++j) {
+      output[j + i*array_size] = sub_avg[j] / sigma;
+      output[j + i*array_size] = output[j + i*array_size] * w[j + i*array_size] + b[j + i*array_size];
+    }
+    delete[] sub_avg;
+  }
+
+}
+
+void NonLinear::layer_norm_plain(
+  int nthreads, 
+  uint64_t* input, 
+  uint64_t* output, 
+  uint64_t* weight, 
+  uint64_t* bias, 
+  int dim, 
+  int array_size, 
+  int ell, 
+  int s){
+    if(party == ALICE){
+      iopackArr[0]->io->send_data(input, dim*array_size*sizeof(uint64_t));
+      iopackArr[0]->io->send_data(weight, dim*array_size*sizeof(uint64_t));
+      iopackArr[0]->io->send_data(bias, dim*array_size*sizeof(uint64_t));
+      for(int i = 0; i < dim*array_size; i++){
+        output[i] = 0;
+      }
+    } else{
+      uint64_t* input_a = new uint64_t[dim*array_size];
+      uint64_t* w_a = new uint64_t[dim*array_size];
+      uint64_t* b_a = new uint64_t[dim*array_size];
+
+      iopackArr[0]->io->recv_data(input_a, dim*array_size*sizeof(uint64_t));
+      iopackArr[0]->io->recv_data(w_a, dim*array_size*sizeof(uint64_t));
+      iopackArr[0]->io->recv_data(b_a, dim*array_size*sizeof(uint64_t));
+
+      vector<double> input_dbl; 
+      vector<double> w_dbl; 
+      vector<double> b_dbl; 
+
+      double* res_dbl = new double[dim*array_size];
+
+      for(int i = 0; i < dim*array_size; i++){
+        input_dbl.push_back((signed_val(input_a[i] + input[i], ell)) / double(1LL << s));
+        w_dbl.push_back((signed_val(w_a[i] + weight[i], ell)) / double(1LL << s));
+        b_dbl.push_back((signed_val(b_a[i] + bias[i], ell)) / double(1LL << s));
+      }
+
+      layer_norm_double(
+        input_dbl,
+        w_dbl,
+        b_dbl,
+        res_dbl,
+        dim, 
+        array_size
+      );
+
+      for(int i = 0; i < dim*array_size; i++){
+        output[i] = (int64_t)(res_dbl[i] * (1LL << s));
+      }
+    }
 }

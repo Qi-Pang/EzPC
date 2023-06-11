@@ -7,7 +7,7 @@
 using namespace sci;
 using namespace std;
 
-#define MAX_THREADS 16
+#define MAX_THREADS 12
 
 // extern IOPack *iopackArr[MAX_THREADS];
 // extern OTPack *otpackArr[MAX_THREADS];
@@ -32,6 +32,8 @@ public:
     void softmax_iron(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s);
 
     void layer_norm(int nthreads, uint64_t* input, uint64_t* output, uint64_t* weight, uint64_t* bias, int dim, int array_size, int ell, int s);
+
+    void layer_norm_plain(int nthreads, uint64_t* input, uint64_t* output, uint64_t* weight, uint64_t* bias, int dim, int array_size, int ell, int s);
 
     void gelu(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s);
     void gelu_iron(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s);

@@ -528,7 +528,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             // Layer Norm
-            nl.layer_norm(
+            nl.layer_norm_plain(
                 NL_NTHREADS,
                 ln_input_row,
                 ln_output_row,
@@ -539,10 +539,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 NL_SCALE
             );
-
-            // nl.print_ss(ln_output_row, 16, NL_ELL, NL_SCALE);
-            // return {};
-
+            
             memcpy(h4_cache_12, ln_output_row, ln_size*sizeof(uint64_t));
 
             nl.right_shift(
@@ -712,7 +709,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 ln_2_input_row[i] += h4_cache_12[i];
             }
 
-            nl.layer_norm(
+            nl.layer_norm_plain(
                 NL_NTHREADS,
                 ln_2_input_row,
                 ln_2_output_row,
