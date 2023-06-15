@@ -27,6 +27,7 @@ public:
     int party;
     string address;
     int port;
+    int conv_err;
 
     NetIO *io;
 
@@ -44,6 +45,12 @@ public:
 
     void he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadata &data);
     void ss_to_he_client(HE* he, uint64_t* input, int length);
+
+    void he_to_ss_server_plain(HE* he, uint64_t* input, uint64_t* output, int length);
+    void he_to_ss_client_plain(HE* he, uint64_t* output, int length);
+
+    void ss_to_he_server_plain(HE* he, uint64_t* input, int length, uint64_t* output);
+    void ss_to_he_client_plain(HE* he, uint64_t* input, int length);
 
     void pc_bw_share_server(
         uint64_t* wp,

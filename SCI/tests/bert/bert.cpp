@@ -100,6 +100,7 @@ Bert::Bert(int party, int port, string address, string model_path){
     this->address = address;
     this->port = port;
     this->io = new NetIO(party == 1 ? nullptr : address.c_str(), port);
+    this->conv_err = 0;
 
     cout << "> Setup Linear" << endl;
     this->lin = Linear(party, io);
@@ -117,6 +118,44 @@ Bert::Bert(int party, int port, string address, string model_path){
 
 Bert::~Bert() {
     
+}
+
+void Bert::he_to_ss_server_plain(HE* he, uint64_t* input, uint64_t* output, int length){
+    PRG128 prg;
+    prg.random_mod_p<uint64_t>(output, length, he->plain_mod);
+
+    uint64_t* tmp = new uint64_t[length];
+
+    for(int i = 0; i < length; i++){
+        tmp[i] = input[i] - output[i] + he->plain_mod_2;
+        tmp[i] = neg_mod((int64_t)tmp[i], (int64_t) he->plain_mod);
+    }
+    io->send_data(tmp, length*sizeof(uint64_t));
+    delete[] tmp;
+}
+
+void Bert::he_to_ss_client_plain(HE* he, uint64_t* output, int length){
+    io->recv_data(output, length*sizeof(uint64_t));
+}
+
+void Bert::ss_to_he_server_plain(HE* he, uint64_t* input, int length, uint64_t* output){
+    uint64_t* tmp = new uint64_t[length];
+    io->recv_data(tmp, length*sizeof(uint64_t));
+    for(int i = 0; i < length; i++){
+        uint64_t v = input[i] + tmp[i];
+        output[i] = neg_mod((int64_t)(v), (int64_t) he->plain_mod);
+        if(output[i] > he->plain_mod_2){
+            output[i] -= he->plain_mod;
+        }
+        if(output[i] != v){
+            conv_err += 1;
+        }
+    }
+    delete[] tmp;
+}
+
+void Bert::ss_to_he_client_plain(HE* he, uint64_t* input, int length){
+    io->send_data(input, length*sizeof(uint64_t));
 }
 
 void Bert::he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output){
@@ -382,6 +421,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
             int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;  
             int qk_v_size = qk_size + v_size;
+            uint64_t* v_matrix_row_lin = new uint64_t[v_size];
+            uint64_t* softmax_input_row_lin = new uint64_t[qk_size];
+
             uint64_t* v_matrix_row = new uint64_t[v_size];
             uint64_t* softmax_input_row = new uint64_t[qk_size];
             uint64_t* softmax_output_row = new uint64_t[softmax_size];
@@ -398,19 +440,62 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     bm.b_q[layer_id],
                     bm.b_k[layer_id],
                     bm.b_v[layer_id],
-                    softmax_input_row,
-                    v_matrix_row
+                    softmax_input_row_lin,
+                    v_matrix_row_lin
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #1 done HE" << endl;
+                he_to_ss_server_plain(
+                    lin.he_8192, 
+                    softmax_input_row_lin, 
+                    softmax_input_row, 
+                    qk_size);
+
+                he_to_ss_server_plain(
+                    lin.he_8192, 
+                    v_matrix_row_lin, 
+                    v_matrix_row, 
+                    v_size);
 
             } else{
-                for(int i = 0; i < qk_size; i++){
-                    softmax_input_row[i] = 0;
-                }
-                for(int i = 0; i < v_size; i++){
-                    v_matrix_row[i] = 0;
-                }
+                // for(int i = 0; i < qk_size; i++){
+                //     softmax_input_row[i] = 0;
+                // }
+                // for(int i = 0; i < v_size; i++){
+                //     v_matrix_row[i] = 0;
+                // }
+                he_to_ss_client_plain(
+                    lin.he_8192, 
+                    softmax_input_row, 
+                    qk_size);
+                
+                he_to_ss_client_plain(
+                    lin.he_8192, 
+                    v_matrix_row, 
+                    v_size);
             }
+
+            // Scale: Q*V 22 V 11
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                softmax_input_row,
+                lin.he_8192->plain_mod,
+                softmax_input_row,
+                qk_size,
+                NL_ELL,
+                22,
+                22
+            );
+
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                v_matrix_row,
+                lin.he_8192->plain_mod,
+                v_matrix_row,
+                v_size,
+                NL_ELL,
+                22,
+                22
+            );
 
             
             // Rescale QK to 12
@@ -469,14 +554,34 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             lin.concat(softmax_v_row, h2_concate, 12, 128, 64); 
 
             if(party == ALICE){
-                io->recv_data(h2, att_size*sizeof(uint64_t));
-                for(int i = 0; i < att_size; i++){
-                    h2[i] += h2_concate[i];
-                }
+                // io->recv_data(h2, att_size*sizeof(uint64_t));
+                // for(int i = 0; i < att_size; i++){
+                //     h2[i] += h2_concate[i];
+                // }
+                ss_to_he_server_plain(
+                    lin.he_8192_tiny,
+                    h2_concate,
+                    att_size,
+                    h2
+                );
 
             } else{
-                io->send_data(h2_concate, att_size*sizeof(uint64_t));
+                // io->send_data(h2_concate, att_size*sizeof(uint64_t));
+                ss_to_he_client_plain(
+                    lin.he_8192_tiny,
+                    h2_concate,
+                    att_size
+                );
             }
+
+            // for(int i = 0; i < 8; i++){
+            //     cout << (int64_t)h2[i] << " ";
+            // }
+            // cout << endl;
+            // return {};
+
+            delete [] v_matrix_row_lin;
+            delete [] softmax_input_row_lin;
             delete [] v_matrix_row;
             delete [] softmax_input_row;
             delete [] softmax_output_row;
@@ -488,6 +593,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         {
             int ln_size = INPUT_DIM*COMMON_DIM;
             int ln_cts_size = ln_size / lin.he_8192_tiny->poly_modulus_degree;
+            uint64_t* ln_input_row_lin = new uint64_t[ln_size];
             uint64_t* ln_input_row = new uint64_t[ln_size];
             uint64_t* ln_output_row = new uint64_t[ln_size];
             uint64_t* ln_weight = new uint64_t[ln_size];
@@ -503,9 +609,15 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     128,
                     768,
                     768,
-                    ln_input_row
+                    ln_input_row_lin
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE done " << endl;
+                he_to_ss_server_plain(
+                    lin.he_8192_tiny, 
+                    ln_input_row_lin, 
+                    ln_input_row, 
+                    ln_size);
+                
                 ln_share_server(
                     layer_id,
                     bm.w_ln_1[layer_id],
@@ -514,14 +626,29 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     ln_bias
                 );
             } else{
-                for(int i = 0; i < ln_size; i++){
-                    ln_input_row[i] = 0;
-                }
+                // for(int i = 0; i < ln_size; i++){
+                //     ln_input_row[i] = 0;
+                // }
+                he_to_ss_client_plain(
+                    lin.he_8192_tiny, 
+                    ln_input_row, 
+                    ln_size);
                 ln_share_client(
                     ln_weight,
                     ln_bias
                 );
             }
+
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                ln_input_row,
+                lin.he_8192_tiny->plain_mod,
+                ln_input_row,
+                ln_size,
+                NL_ELL,
+                NL_SCALE,
+                NL_SCALE
+            );
 
             for(int i = 0; i < ln_size; i++){
                 ln_input_row[i] += h1_cache_12[i];
@@ -557,15 +684,26 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             // save_to_file(tmp.data, 128, 768, "./inter_result/linear3_input.txt");
 
             if(party == ALICE){
-                io->recv_data(h4, ln_size*sizeof(uint64_t));
-                for(int i = 0; i < ln_size; i++){
-                    h4[i] += ln_output_row[i];
-                }
+                // io->recv_data(h4, ln_size*sizeof(uint64_t));
+                // for(int i = 0; i < ln_size; i++){
+                //     h4[i] += ln_output_row[i];
+                // }
+                ss_to_he_server_plain(
+                    lin.he_8192_tiny,
+                    ln_output_row,
+                    ln_size,
+                    h4
+                );
             } else{
-                io->send_data(ln_output_row, ln_size*sizeof(uint64_t));
+                // io->send_data(ln_output_row, ln_size*sizeof(uint64_t));
+                ss_to_he_client_plain(
+                    lin.he_8192_tiny,
+                    ln_output_row,
+                    ln_size
+                );
             }
 
-
+            delete[] ln_input_row_lin;
             delete[] ln_input_row;
             delete[] ln_output_row;
             delete[] ln_weight;
@@ -577,6 +715,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         {
             int gelu_input_size = 128*3072;
             int gelu_cts_size = gelu_input_size / lin.he_8192_tiny->poly_modulus_degree;
+            uint64_t* gelu_input_col_lin =
+                new uint64_t[gelu_input_size];
             uint64_t* gelu_input_col =
                 new uint64_t[gelu_input_size];
             uint64_t* gelu_output_col =
@@ -591,14 +731,37 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     128,
                     768,
                     3072,
-                    gelu_input_col
+                    gelu_input_col_lin
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE done " << endl;
+
+                he_to_ss_server_plain(
+                    lin.he_8192_tiny, 
+                    gelu_input_col_lin, 
+                    gelu_input_col, 
+                    gelu_input_size);
+
             } else{
-                for(int i = 0; i < gelu_input_size; i++){
-                    gelu_input_col[i] = 0;
-                }
+                // for(int i = 0; i < gelu_input_size; i++){
+                //     gelu_input_col[i] = 0;
+                // }
+                he_to_ss_client_plain(
+                    lin.he_8192_tiny, 
+                    gelu_input_col, 
+                    gelu_input_size);
             }
+
+            // mod p
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                gelu_input_col,
+                lin.he_8192_tiny->plain_mod,
+                gelu_input_col,
+                gelu_input_size,
+                NL_ELL,
+                11,
+                11
+            );
 
 
             nl.gelu(
@@ -626,14 +789,26 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             // return 0;
 
             if(party == ALICE){
-                io->recv_data(h6, gelu_input_size*sizeof(uint64_t));
-                for(int i = 0; i < gelu_input_size; i++){
-                    h6[i] += gelu_output_col[i];
-                }
+                // io->recv_data(h6, gelu_input_size*sizeof(uint64_t));
+                // for(int i = 0; i < gelu_input_size; i++){
+                //     h6[i] += gelu_output_col[i];
+                // }
+                ss_to_he_server_plain(
+                    lin.he_8192_tiny,
+                    gelu_output_col,
+                    gelu_input_size,
+                    h6
+                );
             } else{
-                io->send_data(gelu_output_col, gelu_input_size*sizeof(uint64_t));
+                // io->send_data(gelu_output_col, gelu_input_size*sizeof(uint64_t));
+                ss_to_he_client_plain(
+                    lin.he_8192_tiny,
+                    gelu_output_col,
+                    gelu_input_size
+                );
             }
 
+            delete[] gelu_input_col_lin;
             delete[] gelu_input_col;
             delete[] gelu_output_col;
         }
@@ -642,6 +817,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             int ln_2_input_size = INPUT_DIM*COMMON_DIM;
             int ln_2_cts_size = ln_2_input_size/lin.he_8192_tiny->poly_modulus_degree;
 
+            uint64_t* ln_2_input_row_lin =
                 new uint64_t[ln_2_input_size];
             uint64_t* ln_2_input_row =
                 new uint64_t[ln_2_input_size];
@@ -660,9 +836,16 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     128,
                     3072,
                     768,
-                    ln_2_input_row
+                    ln_2_input_row_lin
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE done" << endl;
+                
+                he_to_ss_server_plain(
+                    lin.he_8192_tiny, 
+                    ln_2_input_row_lin, 
+                    ln_2_input_row, 
+                    ln_2_input_size);
+
                 ln_share_server(
                     layer_id,
                     bm.w_ln_2[layer_id],
@@ -671,9 +854,14 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     ln_bias_2
                 );
             } else{
-                for(int i = 0; i < ln_2_input_size; i++){
-                    ln_2_input_row[i] = 0;
-                }
+                // for(int i = 0; i < ln_2_input_size; i++){
+                //     ln_2_input_row[i] = 0;
+                // }
+                he_to_ss_client_plain(
+                    lin.he_8192_tiny, 
+                    ln_2_input_row, 
+                    ln_2_input_size);
+
                 ln_share_client(
                     ln_weight_2,
                     ln_bias_2
@@ -721,6 +909,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
+            // if(party == ALICE){
+            //     for(int i = 0; i < ln_2_input_size; i++){
+            //         ln_2_output_row[i] += 1 << 5;
+            //     }
+            // }
 
             // update H1
             memcpy(h1_cache_12, ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
@@ -741,15 +934,27 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 memcpy(h98, h1_cache_12, COMMON_DIM*sizeof(uint64_t));
             } else{
                 if(party == ALICE){
-                    io->recv_data(h1, ln_2_input_size*sizeof(uint64_t));
-                    for(int i=0; i < ln_2_input_size; i++){
-                        h1[i] += ln_2_output_row[i];
-                    }
+                    // io->recv_data(h1, ln_2_input_size*sizeof(uint64_t));
+                    // for(int i=0; i < ln_2_input_size; i++){
+                    //     h1[i] += ln_2_output_row[i];
+                    // }
+                    ss_to_he_server_plain(
+                        lin.he_8192,
+                        ln_2_output_row,
+                        ln_2_input_size,
+                        h1
+                    );
                 } else{
-                    io->send_data(ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
+                    // io->send_data(ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
+                    ss_to_he_client_plain(
+                        lin.he_8192,
+                        ln_2_output_row,
+                        ln_2_input_size
+                    );
                 }
             }
 
+            delete[] ln_2_input_row_lin;
             delete[] ln_2_input_row;
             delete[] ln_2_output_row;
             delete[] ln_weight_2;

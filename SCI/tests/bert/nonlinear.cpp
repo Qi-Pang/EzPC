@@ -352,7 +352,7 @@ void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, i
   FixArray p_array = fpmath->fix->input(PUBLIC, num_ops, p, true, ell, s_in);
   FixArray p_2_array = fpmath->fix->input(PUBLIC, num_ops, (p-1)/2, true, ell, s_in);
   FixArray output = fpmath->gt_p_sub(input, p_array);
-  // output = fpmath->fix->sub(output, p_2_array);
+  output = fpmath->fix->sub(output, p_2_array);
   if(s_in > s_out){
     output = fpmath->fix->right_shift(output, s_in - s_out);
   } else if(s_in < s_out){
@@ -399,12 +399,13 @@ void mul_thread(int tid, int party, uint64_t *x, uint64_t* z, uint64_t *y, int n
     this_party = party;
   }
   BoolArray all_1 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(1));
+  BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
   FixArray input_x = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray input_y = fpmath->fix->input(this_party, num_ops, z, true, ell, s);
   BoolArray msb_x = fpmath->fix->MSB(input_x);
   BoolArray msb_y = fpmath->fix->MSB(input_y);
   FixArray output = fpmath->fix->mul(input_x, input_y, ell + s, msb_x.data, msb_y.data);
-  output = fpmath->fix->truncate_reduce(output, s, all_1.data);
+  output = fpmath->fix->truncate_reduce(output, s, all_0.data);
   output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
@@ -549,9 +550,10 @@ void matmul_thread(
       true
     );
     // cout << "> [TIMING]: mul takes:" << interval_2(t_pc) << " sec" << endl; 
+    BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
     BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
     FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
-    ret = fpmath->fix->truncate_reduce(ret, extra_scale, all_1.data);
+    ret = fpmath->fix->truncate_reduce(ret, extra_scale, all_0.data);
     ret = fpmath->fix->extend(ret, 64);
     memcpy(c, ret.data, (dim1*dim3)*sizeof(uint64_t));
 }
