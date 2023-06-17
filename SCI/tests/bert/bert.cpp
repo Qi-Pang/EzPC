@@ -1615,7 +1615,6 @@ vector<double> Bert::run_fast(string input_fname, string mask_fname){
     if(party == ALICE){
         io->send_data(h101, NUM_CLASS*sizeof(uint64_t));
         delete[] h101;
-        delete[] res;
         return {};
     } else{
         uint64_t* res = new uint64_t[NUM_CLASS];
