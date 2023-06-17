@@ -661,7 +661,7 @@ FixArray FPMath::exp4(const FixArray &x){
   // Truncate to original scale and bitlength
   FixArray x_inl = fix->mul(x, inl, ell + scale, all_1.data, all_1.data);
   // Optimization: local truncation
-  x_inl =  fix->truncate_reduce(x_inl, scale, all_1.data);
+  x_inl =  fix->truncate_reduce(x_inl, scale);
   // x_inl =  fix->reduce(x_inl, ell);
   // print_fix(x_inl);
 
@@ -691,7 +691,7 @@ FixArray FPMath::exp4(const FixArray &x){
   BoolArray gt_bound = fix->GT(l_short, bound);
   l_short = fix->if_else(gt_bound, bound, l_short);
 
-  FixArray ret = fix->right_shift(poly_p, l_short, scale + 1, all_0.data);
+  FixArray ret = fix->right_shift(poly_p, l_short, scale + 1, all_1.data);
 
   return ret;
 }
@@ -1458,7 +1458,7 @@ FixArray FPMath::gelu_approx(const FixArray& x){
 
   // y > 0, z_y < 0
   z_y = fix->mul(z_y, y, ell+s, all_1.data, all_0.data);
-  z_y = fix->truncate_reduce(z_y, s, all_1.data);
+  z_y = fix->truncate_reduce(z_y, s);
 
   // p(y):= (z(y)+y+(-24.822721454603112))*(z(y)+(31.65224017185284))+(785.77248299658)
   FixArray cons_2 = fix->input(PUBLIC, N, uint64_t((-24.822721454603112) * (1 << s)), true, ell, s);
@@ -1473,18 +1473,18 @@ FixArray FPMath::gelu_approx(const FixArray& x){
   FixArray rmul = fix->add(z_y, cons_3);
 
   FixArray ladd = fix->mul(lmul, rmul, ell+s, all_1.data, all_0.data);
-  ladd = fix->truncate_reduce(ladd, s, all_1.data);
+  ladd = fix->truncate_reduce(ladd, s);
 
   FixArray sum = fix->add(ladd, cons_4);
 
   FixArray cons_7 = fix->input(PUBLIC, N, uint64_t((0.02084861175412759) * (1 << s)), true, ell, s);
   FixArray p_y = fix->mul(sum, cons_7, ell+s, nullptr, all_0.data);
-  p_y = fix->truncate_reduce(p_y, s, all_1.data);
+  p_y = fix->truncate_reduce(p_y, s);
 
   // 0.5x
   FixArray cons_5 = fix->input(PUBLIC, N, uint64_t((0.5) * (1 << s)), true, ell, s);
   FixArray half_x = fix->mul(x, cons_5, ell+s, nullptr, all_0.data);
-  half_x = fix->truncate_reduce(half_x, s, all_1.data);
+  half_x = fix->truncate_reduce(half_x, s);
 
   // 0.5x + p(y)
   FixArray gelu_y = fix->add(half_x, p_y);
@@ -1533,7 +1533,7 @@ FixArray FPMath::tanh_inner_preprocess(const FixArray& x){
   // Range: >0
   FixArray p1 = fix->add(x, t0);
   p1 = fix->mul(p1, x, ell+s, all_0.data, all_0.data);
-  p1 = fix->truncate_reduce(p1, s, all_1.data);
+  p1 = fix->truncate_reduce(p1, s);
   p1 = fix->add(p1, t1);
 
   // p2(x) = (p1(x) + x + t2)*p1(x)*x*t3 + t4*x + t5
@@ -1544,18 +1544,18 @@ FixArray FPMath::tanh_inner_preprocess(const FixArray& x){
 
   // (p1(x) + x + t2)*p1(x) < 0
   p2 = fix->mul(p2, p1, ell + s, all_1.data, all_0.data);
-  p2 = fix->truncate_reduce(p2, s, all_1.data);
+  p2 = fix->truncate_reduce(p2, s);
 
   // p2(x) = (p1(x) + x + t2)*p1(x)*t3 >0
   p2 = fix->mul(p2, t3, ell+s, all_1.data, all_1.data);
-  p2 = fix->truncate_reduce(p2, s, all_1.data);
+  p2 = fix->truncate_reduce(p2, s);
 
   // p2(x) = (p1(x) + x + t2)*p1(x)*x*t3 < 0
   p2 = fix->mul(p2, x, ell+s, all_1.data, all_0.data);
-  p2 = fix->truncate_reduce(p2, s, all_1.data);
+  p2 = fix->truncate_reduce(p2, s);
 
   FixArray t4x = fix->mul(x, t4, ell+s, all_0.data, all_1.data);
-  t4x = fix->truncate_reduce(t4x, s, all_1.data);
+  t4x = fix->truncate_reduce(t4x, s);
 
   p2 = fix->add(p2, t4x);
   p2 = fix->add(p2, t5);
@@ -1581,31 +1581,31 @@ FixArray FPMath::tanh_inner(const FixArray& x){
 
   // 
   FixArray x_square = fix->mul(x, x, ell+s, all_0.data, all_0.data);
-  x_square = fix->truncate_reduce(x_square, s, all_1.data);
+  x_square = fix->truncate_reduce(x_square, s);
 
   FixArray x_cube = fix->mul(x_square, x, ell+s, all_0.data, all_0.data);
-  x_cube = fix->truncate_reduce(x_cube, s, all_1.data);
+  x_cube = fix->truncate_reduce(x_cube, s);
 
   FixArray x_four = fix->mul(x_square, x_square, ell+s, all_0.data, all_0.data);
-  x_four = fix->truncate_reduce(x_four, s, all_1.data);
+  x_four = fix->truncate_reduce(x_four, s);
 
   FixArray x_five = fix->mul(x_four, x, ell+s, all_0.data, all_0.data);
-  x_five = fix->truncate_reduce(x_five, s, all_1.data);
+  x_five = fix->truncate_reduce(x_five, s);
 
   FixArray x_five_a = fix->mul(x_five, a, ell+s, all_0.data, all_1.data);
-  x_five_a = fix->truncate_reduce(x_five_a, s, all_1.data);
+  x_five_a = fix->truncate_reduce(x_five_a, s);
 
   FixArray x_four_b = fix->mul(x_four, b, ell+s, all_0.data, all_0.data);
-  x_four_b = fix->truncate_reduce(x_four_b, s, all_1.data);
+  x_four_b = fix->truncate_reduce(x_four_b, s);
 
   FixArray x_cube_c = fix->mul(x_cube, c, ell+s, all_0.data, all_1.data);
-  x_cube_c = fix->truncate_reduce(x_cube_c, s, all_1.data);
+  x_cube_c = fix->truncate_reduce(x_cube_c, s);
 
   FixArray x_square_d = fix->mul(x_square, d, ell+s, all_0.data, all_1.data);
-  x_square_d = fix->truncate_reduce(x_square_d, s, all_1.data);
+  x_square_d = fix->truncate_reduce(x_square_d, s);
 
   FixArray x_e = fix->mul(x, e, ell+s, all_0.data, all_0.data);
-  x_e = fix->truncate_reduce(x_e, s, all_1.data);
+  x_e = fix->truncate_reduce(x_e, s);
 
   f = fix->add(f, x_e);
   f = fix->add(f, x_square_d);
@@ -1635,13 +1635,13 @@ FixArray FPMath::tanh_approx(const FixArray& x){
   FixArray cond_fix = fix->B2A(pos, true, ell);
   cond_fix = fix->scale_up(cond_fix, ell, s);
   FixArray sign_x = fix->mul(cond_fix, cons_2, ell + s, all_0.data, all_0.data);
-  sign_x = fix->truncate_reduce(sign_x, s, all_1.data);
+  sign_x = fix->truncate_reduce(sign_x, s);
   sign_x = fix->add(sign_x, cons_neg_1);
 
   BoolArray gt3 = fix->GT(abs_x, (uint64_t)(2.855 * (1 << s)));
   FixArray abs_tanh = fix->if_else(gt3, cons_1, tanh_inner(abs_x));
   FixArray ret = fix->mul(abs_tanh, sign_x, ell+s, all_0.data);
-  ret = fix->truncate_reduce(ret, s, all_1.data);
+  ret = fix->truncate_reduce(ret, s);
 
   return ret;
 }
@@ -1660,7 +1660,7 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
 
   FixArray dn = fix->input(PUBLIC, sum.size, uint64_t(((1.0 / n) * pow(2, 2*s))), true, ell, 2*s);
   FixArray avg = fix->mul(sum, dn, ell+2*s, nullptr, all_0.data);
-  avg = fix->truncate_reduce(avg, 2*s, all_1.data);
+  avg = fix->truncate_reduce(avg, 2*s);
 
   FixArray avg_flat(party, N*n, sum.signed_, ell, s);
   for(int i = 0; i < N; i++){
@@ -1672,7 +1672,7 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
   FixArray x_flat = concat(x);
   FixArray x_flat_avg = fix->sub(x_flat, avg_flat);
   FixArray x_flat_avg_square = fix->mul(x_flat_avg, x_flat_avg, ell + s);
-  x_flat_avg_square = fix->truncate_reduce(x_flat_avg_square, s, all_1.data);
+  x_flat_avg_square = fix->truncate_reduce(x_flat_avg_square, s);
 
   vector<FixArray> square_group(N);
   for(int i = 0; i < N; i++){
@@ -1682,7 +1682,7 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
 
   FixArray square_sum = fix->tree_sum(square_group);
   square_sum = fix->mul(square_sum, dn, ell+2*s, all_0.data, all_0.data);
-  square_sum = fix->truncate_reduce(square_sum, 2*s, all_1.data);
+  square_sum = fix->truncate_reduce(square_sum, 2*s);
   FixArray sigma = sqrt(square_sum, true);
 
   FixArray sigma_flat(party, N*n, sum.signed_, ell, s);
@@ -1693,11 +1693,11 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
   }
 
   FixArray x_avg_sigma = fix->mul(x_flat_avg, sigma_flat, ell+s, nullptr, all_0.data);
-  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s, all_1.data);
+  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s);
 
   // Weight and Bias
   x_avg_sigma = fix->mul(x_avg_sigma, w, ell+s);
-  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s, all_1.data);
+  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s);
   x_avg_sigma = fix->add(x_avg_sigma, b);
 
   // Hack!

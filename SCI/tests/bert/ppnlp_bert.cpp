@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
 
     
 
-    Bert bt(party, port, address, "/home/ubuntu/mrpc/biased_weights_txt/");
+    Bert bt(party, port, address, "/home/ubuntu/mrpc_robust/weights_txt/");
 
     auto start = high_resolution_clock::now();
     // if(party == ALICE){
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     vector<int> predicted_labels;
 
     if(party == ALICE){
-        for(int i = 0; i < 408; i++ ){
+        for(int i = 36; i < 37; i++ ){
             cout << "==>> Inference sample #" << i << endl;
             vector<double> result = bt.run("", "");
             if(i % 10 == 0){
@@ -52,16 +52,16 @@ int main(int argc, char **argv) {
         }
         cout << "Conv Error: " << bt.conv_err << endl;
     } else{
-        ofstream file("/home/ubuntu/clive/EzPC/secure.txt");
+        ofstream file("/home/ubuntu/clive/EzPC/mrpc_robust_secure.txt");
         if (!file) {
             std::cerr << "Could not open the file!" << std::endl;
             return {};
         }
-        for(int i = 0; i < 408; i++ ){
+        for(int i = 36; i < 37; i++ ){
             cout << "==>> Inference sample #" << i << endl;
             vector<double> result = bt.run(
-                "/home/ubuntu/mrpc/biased_weights_txt/inputs_" + to_string(i) + "_data.txt",
-                "/home/ubuntu/mrpc/biased_weights_txt/inputs_" + to_string(i) +  "_mask.txt"
+                "/home/ubuntu/mrpc_robust/weights_txt/inputs_" + to_string(i) + "_data.txt",
+                "/home/ubuntu/mrpc_robust/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
                 );
             // inference_results.push_back(result);
             auto max_ele = max_element(result.begin(), result.end());

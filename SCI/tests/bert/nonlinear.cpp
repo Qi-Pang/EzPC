@@ -405,7 +405,7 @@ void mul_thread(int tid, int party, uint64_t *x, uint64_t* z, uint64_t *y, int n
   BoolArray msb_x = fpmath->fix->MSB(input_x);
   BoolArray msb_y = fpmath->fix->MSB(input_y);
   FixArray output = fpmath->fix->mul(input_x, input_y, ell + s, msb_x.data, msb_y.data);
-  output = fpmath->fix->truncate_reduce(output, s, all_0.data);
+  output = fpmath->fix->truncate_reduce(output, s);
   output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
@@ -553,7 +553,7 @@ void matmul_thread(
     BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
     BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
     FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
-    ret = fpmath->fix->truncate_reduce(ret, extra_scale, all_0.data);
+    ret = fpmath->fix->truncate_reduce(ret, extra_scale);
     ret = fpmath->fix->extend(ret, 64);
     memcpy(c, ret.data, (dim1*dim3)*sizeof(uint64_t));
 }
@@ -772,5 +772,46 @@ void NonLinear::layer_norm_plain(
       for(int i = 0; i < dim*array_size; i++){
         output[i] = (int64_t)(res_dbl[i] * (1LL << s));
       }
+    }
+}
+
+void mul_const_thread(int tid, int party, uint64_t *x, uint64_t k, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  FixArray output = fpmath->fix->mul(input, k);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+void NonLinear::mul(int nthreads, uint64_t* input, uint64_t x, uint64_t* output, int size, int ell, int s){
+  std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                mul_const_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                x,
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
     }
 }

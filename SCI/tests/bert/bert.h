@@ -79,6 +79,8 @@ public:
     );
 
     vector<double> run(string input_fname, string mask_fname);
+
+    vector<double> run_fast(string input_fname, string mask_fname);
 	
 };
 
