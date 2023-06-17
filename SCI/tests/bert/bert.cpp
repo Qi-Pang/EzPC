@@ -360,6 +360,7 @@ void Bert::pc_bw_share_server(
         bc[i] = (bm.b_c[i]- random_share[offset]) & mask_x;
         offset++;
     } 
+    delete[] random_share;
 }
 
 void Bert::pc_bw_share_client(
@@ -380,6 +381,7 @@ void Bert::pc_bw_share_client(
     memcpy(bp, &share[wp_len], bp_len*sizeof(uint64_t));
     memcpy(wc, &share[wp_len + bp_len], wc_len*sizeof(uint64_t));
     memcpy(bc, &share[wp_len + bp_len + wc_len], bc_len*sizeof(uint64_t));
+    delete[] share;
 }
 
 vector<double> Bert::run(string input_fname, string mask_fname){
@@ -1602,8 +1604,18 @@ vector<double> Bert::run_fast(string input_fname, string mask_fname){
     cout << "> [TIMING]: Pooling and Classification takes:" << interval(t_pc) << " sec" << endl; 
     #endif 
 
+    delete[] wp;
+    delete[] bp;
+    delete[] wc;
+    delete[] bc;
+
+    delete[] h99;
+    delete[] h100;
+
     if(party == ALICE){
         io->send_data(h101, NUM_CLASS*sizeof(uint64_t));
+        delete[] h101;
+        delete[] res;
         return {};
     } else{
         uint64_t* res = new uint64_t[NUM_CLASS];
@@ -1613,6 +1625,8 @@ vector<double> Bert::run_fast(string input_fname, string mask_fname){
         for(int i = 0; i < NUM_CLASS; i++){
             dbl_result.push_back((signed_val(res[i] + h101[i], NL_ELL)) / double(1LL << NL_SCALE));
         }
+        delete[] h101;
+        delete[] res;
         return dbl_result;
     }
 }
