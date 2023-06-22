@@ -1513,6 +1513,63 @@ FixArray FPMath::gelu_approx(const FixArray& x){
   return ret;
 }
 
+FixArray FPMath::gelu_approx_2(const FixArray& x){
+  int N = x.size;
+  int ell = x.ell;
+  int s = x.s;
+
+  BoolArray all_0 = bool_op->input(ALICE, N, uint8_t(0));
+  BoolArray all_1 = bool_op->input(ALICE, N, 1);
+
+  FixArray y = fix->abs(x);
+
+  // z(y) = (0.14439048359960427*y - 0.7077117131613893) * y + 4.5702822654246535
+
+  FixArray cons_1 = fix->input(PUBLIC, N, uint64_t((0.14439048359960427) * (1 << s)), true, ell, s);
+  FixArray cons_2 = fix->input(PUBLIC, N, uint64_t((-0.7077117131613893) * (1 << s)), true, ell, s);
+  FixArray cons_3 = fix->input(PUBLIC, N, uint64_t((4.5702822654246535) * (1 << s)), true, ell, s);
+  FixArray cons_4 = fix->input(PUBLIC, N, uint64_t((-8.15444702051307) * (1 << s)), true, ell, s);
+  FixArray cons_5 = fix->input(PUBLIC, N, uint64_t((16.382265425072532) * (1 << s)), true, ell, s);
+
+  FixArray y_cons1 = fix->mul(y, cons_1, ell+s, all_0.data, all_0.data);
+  y_cons1 = fix->truncate_reduce(y_cons1, s);
+  FixArray zy_left = fix->add(y_cons1, cons_2);
+  // < 0
+
+  zy_left = fix->mul(zy_left, y, ell+s, all_1.data, all_0.data);
+  zy_left = fix->truncate_reduce(zy_left, s);
+  FixArray z_y = fix->add(zy_left, cons_3);
+  // > 0
+
+  // Gelu(x) = (z(y) + 0.14439048359960427 |x| - 8.15444702051307) * y + 16.382265425072532  + 0.5x
+
+  FixArray p_y_left = fix->add(z_y, y_cons1);
+  p_y_left = fix->add(p_y_left, cons_4);
+  p_y_left = fix->mul(p_y_left, z_y, ell+s, all_1.data ,all_0.data);
+  p_y_left = fix->truncate_reduce(p_y_left, s);
+
+  FixArray p_y = fix->add(p_y_left, cons_5);
+
+  // 0.5x
+  FixArray cons_6 = fix->input(PUBLIC, N, uint64_t((0.5) * (1 << s)), true, ell, s);
+  FixArray half_x = fix->mul(x, cons_6, ell+s, nullptr, all_0.data);
+  half_x = fix->truncate_reduce(half_x, s);
+
+  // 0.5x + p(y)
+  FixArray gelu_y = fix->add(half_x, p_y);
+
+  BoolArray gt27 = fix->GT(y, 2.7*(1 << s));
+
+
+  FixArray x_plus_y = fix->add(x, y);
+  FixArray half_x_plus_y = fix->right_shift(x_plus_y, 1, all_0.data);
+  half_x_plus_y.s = s;
+
+  FixArray ret = fix->if_else(gt27, half_x_plus_y, gelu_y);
+
+  return ret;
+}
+
 FixArray FPMath::tanh_inner_preprocess(const FixArray& x){
   int N = x.size;
   int ell = x.ell;

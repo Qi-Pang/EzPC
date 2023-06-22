@@ -82,6 +82,7 @@ public:
   FixArray gelu_iron(const FixArray& x);
 
   FixArray gelu_approx(const FixArray& x);
+  FixArray gelu_approx_2(const FixArray& x);
 
   FixArray tanh_inner(const FixArray& x);
 

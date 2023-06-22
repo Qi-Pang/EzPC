@@ -123,9 +123,6 @@ Bert::~Bert() {
 void Bert::he_to_ss_server_plain(HE* he, uint64_t* input, uint64_t* output, int length){
     PRG128 prg;
     prg.random_mod_p<uint64_t>(output, length, he->plain_mod);
-    // for(int i = 0; i < length; i++){
-    //     output[i] = 0;
-    // }
 
     uint64_t* tmp = new uint64_t[length];
 
@@ -169,9 +166,6 @@ void Bert::he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output){
     int dim = in.size();
     int slot_count = he->poly_modulus_degree;
 	prg.random_mod_p<uint64_t>(output, dim*slot_count, he->plain_mod);
-    // for(int i = 0; i < dim*slot_count; i++){
-    //     output[i] = 0;
-    // }
 
     Plaintext pt_p_2;
     vector<uint64_t> p_2(slot_count, he->plain_mod_2);
@@ -267,10 +261,6 @@ void Bert::ln_share_server(
         random_share[i] &= mask_x;
     }
 
-    // for(int i = 0; i < length; i++){
-    //     random_share[i] = 0;
-    // }
-
     io->send_data(random_share, length*sizeof(uint64_t));
 
     for(int i = 0; i < COMMON_DIM; i++){
@@ -324,10 +314,6 @@ void Bert::pc_bw_share_server(
     for(int i = 0; i < length; i++){
         random_share[i] &= mask_x;
     }
-
-    // for(int i = 0; i < length; i++){
-    //     random_share[i] = 0;
-    // }
 
     io->send_data(random_share, length*sizeof(uint64_t));
 
@@ -517,7 +503,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
-
             if (party == BOB){
                 // Add mask
                 for(int i = 0; i < PACKING_NUM; i++){
@@ -541,7 +526,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 INPUT_DIM,
                 NL_ELL,
                 NL_SCALE);
-
 
             // Rescale to 6
             nl.n_matrix_mul_iron(
@@ -686,7 +670,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 64,
                 NL_SCALE
             );
-
 
             // FixArray tmp = nl.to_public(ln_output_row, 128*768, 64, 5);
             // save_to_file(tmp.data, 128, 768, "./inter_result/linear3_input.txt");
@@ -931,12 +914,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
-            if(party == ALICE){
-                for(int i = 0; i < ln_2_input_size; i++){
-                    ln_2_output_row[i] +=1;
-                }
-            }
-
             if(layer_id == 11){
                 // Using Scale of 12 as 
                 memcpy(h98, h1_cache_12, COMMON_DIM*sizeof(uint64_t));
@@ -969,9 +946,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             delete[] ln_bias_2;
         }
     }
-
-    // nl.print_ss(h1_cache_12, 16, NL_ELL, NL_SCALE);
-    // return {};
 
     // Secret share Pool and Classification model
     uint64_t* wp = new uint64_t[COMMON_DIM*COMMON_DIM];
