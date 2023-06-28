@@ -553,7 +553,9 @@ void matmul_thread(
     BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
     BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
     FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
-    ret = fpmath->fix->truncate_reduce(ret, extra_scale);
+    if(extra_scale > 0){
+      ret = fpmath->fix->truncate_reduce(ret, extra_scale);
+    }
     ret = fpmath->fix->extend(ret, 64);
     memcpy(c, ret.data, (dim1*dim3)*sizeof(uint64_t));
 }

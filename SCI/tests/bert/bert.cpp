@@ -397,8 +397,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         uint64_t input_row[COMMON_DIM * INPUT_DIM];
         for (int j = 0; j < COMMON_DIM; j++){
             for (int i = 0; i < INPUT_DIM; i++){
-                input_row[i*COMMON_DIM + j] = input_plain[i][j];
-                h1_cache_12[i*COMMON_DIM + j] = input_plain[i][j] << 7;
+                // rescale input from 12 to 5
+                input_row[i*COMMON_DIM + j] = ((int64_t)input_plain[i][j]) >> 7;
+                h1_cache_12[i*COMMON_DIM + j] = input_plain[i][j];
             }
         }
 
@@ -493,15 +494,27 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             
             // Rescale QK to 12
-            nl.right_shift(
-                NL_NTHREADS,
-                softmax_input_row,
-                22 - NL_SCALE,
-                softmax_input_row,
-                qk_size,
-                NL_ELL,
-                NL_SCALE
-            );
+            if(layer_id == 2){
+                nl.right_shift(
+                    NL_NTHREADS,
+                    softmax_input_row,
+                    21 - NL_SCALE,
+                    softmax_input_row,
+                    qk_size,
+                    NL_ELL,
+                    21
+                );
+            } else{
+                nl.right_shift(
+                    NL_NTHREADS,
+                    softmax_input_row,
+                    22 - NL_SCALE,
+                    softmax_input_row,
+                    qk_size,
+                    NL_ELL,
+                    22
+                );
+            }
 
             if (party == BOB){
                 // Add mask
@@ -511,7 +524,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                         int offset_row = j*INPUT_DIM;
                         for (int k = 0; k < INPUT_DIM; k++){
                             softmax_input_row[offset_nm + offset_row + k] += 
-                                softmax_mask[k] * 100;
+                                softmax_mask[k] * 4096;
                         }
                     }
                 }
@@ -733,9 +746,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     gelu_input_size);
 
             } else{
-                // for(int i = 0; i < gelu_input_size; i++){
-                //     gelu_input_col[i] = 0;
-                // }
                 he_to_ss_client_plain(
                     lin.he_8192_tiny, 
                     gelu_input_col, 
@@ -751,7 +761,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 gelu_input_size,
                 NL_ELL,
                 11,
-                11
+                NL_SCALE
             );
 
             nl.gelu(
@@ -760,29 +770,20 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 gelu_output_col,
                 gelu_input_size,
                 NL_ELL,
-                11
+                NL_SCALE
             );
 
             nl.right_shift(
                 NL_NTHREADS,
                 gelu_output_col,
-                11 - 4,
+                NL_SCALE - 4,
                 gelu_output_col,
                 gelu_input_size,
                 64,
-                11
+                NL_SCALE
             );
 
-            // FixArray tmp = nl.to_public(gelu_output_col, 128*3072, 64, 4);
-            // save_to_file(tmp.data, 128, 3072, "./inter_result/linear4_input.txt");
-
-            // return 0;
-
             if(party == ALICE){
-                // io->recv_data(h6, gelu_input_size*sizeof(uint64_t));
-                // for(int i = 0; i < gelu_input_size; i++){
-                //     h6[i] += gelu_output_col[i];
-                // }
                 ss_to_he_server_plain(
                     lin.he_8192_tiny,
                     gelu_output_col,
@@ -907,7 +908,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             nl.right_shift(
                 NL_NTHREADS,
                 ln_2_output_row,
-                12 - 5,
+                NL_SCALE - 5,
                 ln_2_output_row,
                 ln_2_input_size,
                 64,
@@ -993,16 +994,26 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         NL_ELL,
         NL_SCALE,
         NL_SCALE,
-        NL_SCALE
+        2*NL_SCALE
     );
 
     #ifdef BERT_TIMING
     cout << "> [TIMING]: Pooling mul takes:" << interval(t_pc) << " sec" << endl; 
     #endif 
 
-    for(int i = 0; i < NUM_CLASS; i++){
+    for(int i = 0; i < COMMON_DIM; i++){
         h99[i] += bp[i];
     }
+
+    nl.right_shift(
+        NL_NTHREADS,
+        h99,
+        NL_SCALE,
+        h99,
+        COMMON_DIM,
+        NL_ELL,
+        2*NL_SCALE
+    );
 
     #ifdef BERT_TIMING
     cout << "> [TIMING]: Pooling takes:" << interval(t_pc) << " sec" << endl; 
@@ -1031,12 +1042,22 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         NL_ELL,
         NL_SCALE,
         NL_SCALE,
-        NL_SCALE
+        2*NL_SCALE
     );
 
     for(int i = 0; i < NUM_CLASS; i++){
         h101[i] += bc[i];
     }
+
+    nl.right_shift(
+        1,
+        h101,
+        NL_SCALE,
+        h101,
+        NUM_CLASS,
+        NL_ELL,
+        2*NL_SCALE
+    );
 
     #ifdef BERT_TIMING
     cout << "> [TIMING]: Pooling and Classification takes:" << interval(t_pc) << " sec" << endl; 
