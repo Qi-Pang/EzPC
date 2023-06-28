@@ -492,7 +492,6 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
 
         print_noise_budget_vec(enc_result);
         print_ct(enc_result[0], data.slot_count);
-        return;
 
         auto HE_result = bert_efficient_postprocess(enc_result, data, false);
 

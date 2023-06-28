@@ -128,19 +128,45 @@ vector<Plaintext> IRONINT1::preprocess_bias(const uint64_t *matrix, const FCMeta
 
 /* Generates a masking vector of random noise that will be applied to parts of
  * the ciphertext that contain leakage */
-Ciphertext IRONINT1::preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
+vector<Plaintext> IRONINT1::preprocess_noise(const uint64_t *secret_share, const FCMetadata &data) {
     // Sample randomness into vector
-    vector<int64_t> noise(data.slot_count, 0ULL);
+    vector<Plaintext> enc_noise(data.filter_w / data.kw);
+    for (int ct_index = 0; ct_index < enc_noise.size(); ct_index++) {
+        vector<uint64_t> noise(data.slot_count, 0ULL);
+        for (int i = 0; i < data.slot_count; i++)
+            noise[i] = secret_share[i + ct_index * data.slot_count];
 
-    for (int i = 0; i < data.slot_count; i++)
-    noise[i] = secret_share[i];
-
-    Plaintext pt;
-    encoder->encode(noise, pt);
-    Ciphertext enc_noise;
-    encryptor->encrypt(pt, enc_noise);
-
+        Plaintext pt = encode_vector(noise.data(), data);
+        // Ciphertext ct;
+        // encryptor->encrypt(pt, ct);
+        enc_noise[ct_index] = pt;
+    }
     return enc_noise;
+}
+
+vector<uint64_t> IRONINT1::bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data, const bool &col_packing) {
+    vector<uint64_t> result(data.image_size * data.filter_w);
+    if (col_packing) {
+        for (int ct_ind = 0; ct_ind < enc_noise.size(); ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    result[i + (j + ct_ind * data.kw) * data.image_size] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+    }
+    else {
+        for (int ct_ind = 0; ct_ind < enc_noise.size(); ct_ind++) {
+            Plaintext pt = enc_noise[ct_ind];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    result[i * data.filter_w + (j + ct_ind * data.kw)] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+    }
+    return result;
 }
 
 vector<Ciphertext> IRONINT1::bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &encoded_mat1, vector<Plaintext> &encoded_bias, const FCMetadata &data) {
@@ -189,8 +215,8 @@ vector<Ciphertext> IRONINT1::bert_cipher_plain(vector<Ciphertext> &cts, vector<v
     return result;
 }
 
-uint64_t* IRONINT1::bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing) {
-    uint64_t *result = new uint64_t[data.image_size * data.filter_w];
+vector<uint64_t> IRONINT1::bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing) {
+    vector<uint64_t> result(data.image_size * data.filter_w);
     if (col_packing) {
         for (int ct_ind = 0; ct_ind < cts.size(); ct_ind++) {
             Plaintext pt;
@@ -319,7 +345,7 @@ void IRONINT1::matrix_multiplication(int32_t input_dim,
 
         // HACK
 
-        saveMatrix("/home/qipang/mnt/d1/linear/EzPC/SCI/build/bin/txt/iron-ct-pt-result.txt", HE_result, data.image_size, data.filter_w);
+        saveMatrix("/home/qipang/mnt/d1/linear/EzPC/SCI/build/bin/txt/iron-ct-pt-result.txt", HE_result.data(), data.image_size, data.filter_w);
 
         for (int i = 0; i < 1; i++) {
             for (int j = 0; j < data.filter_w; j++)
@@ -341,7 +367,7 @@ void IRONINT1::matrix_multiplication(int32_t input_dim,
         // if (verify_output)
         //   verify(&vec, nullptr, C);
 
-        delete[] HE_result;
+        // delete[] HE_result;
     } else {
         // Server
         #ifdef HE_TIMING

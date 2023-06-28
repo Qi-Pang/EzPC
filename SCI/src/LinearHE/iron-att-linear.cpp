@@ -180,29 +180,30 @@ vector<Ciphertext> IRONFC::bert_cipher_plain(const vector<Ciphertext> &cts, cons
             evaluator->add_plain_inplace(result[j + data.filter_w / data.kw * 3 * packing_index], encoded_bias1[packing_index][j]);
             evaluator->add_plain_inplace(result[j + data.filter_w / data.kw + data.filter_w / data.kw * 3 * packing_index], encoded_bias2[packing_index][j]);
             evaluator->add_plain_inplace(result[j + data.filter_w / data.kw * 2 + data.filter_w / data.kw * 3 * packing_index], encoded_bias3[packing_index][j]);
+
         }
     }
 
-    int L = result[0].coeff_modulus_size();
-    vector<int> used_indices;
-    for (int i = 0; i < data.image_size; i++) {
-        for (int j = 0; j < data.kw; j++) {
-            used_indices.push_back(i * data.nw * data.kw + (j + 1) * data.nw - 1);
-        }
-    }
-    std::sort(used_indices.begin(), used_indices.end());
+    // int L = result[0].coeff_modulus_size();
+    // vector<int> used_indices;
+    // for (int i = 0; i < data.image_size; i++) {
+    //     for (int j = 0; j < data.kw; j++) {
+    //         used_indices.push_back(i * data.nw * data.kw + (j + 1) * data.nw - 1);
+    //     }
+    // }
+    // std::sort(used_indices.begin(), used_indices.end());
 
-    for (int i = 0; i < result.size(); i++) {
-        for (int j = 0; j < data.slot_count; j++) {
-            if (std::binary_search(used_indices.cbegin(), used_indices.cend(), j))
-                continue;
-            auto rns_ptr = result[i].data(0);
-            for (int k = 0; k < L; k++) {
-                rns_ptr[j] = 0;
-                rns_ptr += data.slot_count;
-            }
-        }
-    }
+    // for (int i = 0; i < result.size(); i++) {
+    //     for (int j = 0; j < data.slot_count; j++) {
+    //         if (std::binary_search(used_indices.cbegin(), used_indices.cend(), j))
+    //             continue;
+    //         auto rns_ptr = result[i].data(0);
+    //         for (int k = 0; k < L; k++) {
+    //             rns_ptr[j] = 0;
+    //             rns_ptr += data.slot_count;
+    //         }
+    //     }
+    // }
     return result;
 }
 
@@ -210,6 +211,7 @@ vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess(vector<Ciphertext> &ct
     vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>>(3, vector<uint64_t>(data.image_size * data.filter_w)));
     
     for (int packing_index = 0; packing_index < 12; packing_index++) {
+        // cout << "helo1" << endl;
         for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
             Plaintext pt;
             decryptor->decrypt(cts[ct_ind + packing_index * cts.size() / 12], pt);
@@ -222,7 +224,7 @@ vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess(vector<Ciphertext> &ct
                 }
             }
         }
-
+        // cout << "helo2" << endl;
         for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
             Plaintext pt;
             decryptor->decrypt(cts[ct_ind + cts.size() / 3 / 12 + packing_index * cts.size() / 12], pt);
@@ -236,24 +238,35 @@ vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess(vector<Ciphertext> &ct
             }
         }
 
+        // cout << "helo3" << endl;
         for (int ct_ind = 0; ct_ind < cts.size() / 3 / 12; ct_ind++) {
             Plaintext pt;
             decryptor->decrypt(cts[ct_ind + cts.size() / 3 / 12 * 2 + packing_index * cts.size() / 12], pt);
             for (int i = 0; i < data.image_size; i++) {
                 for (int j = 0; j < data.kw; j++) {
                     if (col_packing)
+                    {
+                        // cout << " sss" <<  i * data.nw * data.kw + (j + 1) * data.nw - 1 << endl;
+                        // cout << pt.data()[i * data.nw * data.kw + (j + 1) * data.nw - 1] << endl;
+                        // cout << "coeff count " << pt.coeff_count() << endl;
                         result[packing_index][2][i + (j + ct_ind * data.kw) * data.image_size] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
-                    else
+                    }
+                    else{
                         result[packing_index][2][i * data.filter_w + (j + ct_ind * data.kw)] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    }
+                        
                 }
             }
         }
     }
 
+    cout << "helo4" << endl;
+
+
     return result;
 }
 
-vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data) {
+vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data, const bool &col_packing) {
     // uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3 * 12];
     vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>>(3, vector<uint64_t>(data.image_size * data.filter_w)));
     
@@ -262,7 +275,10 @@ vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess_noise(vector<Plaintext
             Plaintext pt = enc_noise[ct_ind + packing_index * enc_noise.size() / 12];
             for (int i = 0; i < data.image_size; i++) {
                 for (int j = 0; j < data.kw; j++) {
-                    result[packing_index][0][i + (j + ct_ind * data.kw) * data.image_size] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    if (col_packing)
+                        result[packing_index][0][i + (j + ct_ind * data.kw) * data.image_size] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    else
+                        result[packing_index][0][i * data.filter_w + (j + ct_ind * data.kw)] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
                 }
             }
         }
@@ -271,7 +287,10 @@ vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess_noise(vector<Plaintext
             Plaintext pt = enc_noise[ct_ind + enc_noise.size() / 3 / 12 + packing_index * enc_noise.size() / 12];
             for (int i = 0; i < data.image_size; i++) {
                 for (int j = 0; j < data.kw; j++) {
-                    result[packing_index][1][i + (j + ct_ind * data.kw) * data.image_size] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    if (col_packing)
+                        result[packing_index][1][i + (j + ct_ind * data.kw) * data.image_size] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    else
+                        result[packing_index][1][i * data.filter_w + (j + ct_ind * data.kw)] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
                 }
             }
         }
@@ -280,7 +299,10 @@ vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess_noise(vector<Plaintext
             Plaintext pt = enc_noise[ct_ind + enc_noise.size() / 3 / 12 * 2 + packing_index * enc_noise.size() / 12];
             for (int i = 0; i < data.image_size; i++) {
                 for (int j = 0; j < data.kw; j++) {
-                    result[packing_index][2][i + (j + ct_ind * data.kw) * data.image_size] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    if (col_packing)
+                        result[packing_index][2][i + (j + ct_ind * data.kw) * data.image_size] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                    else
+                        result[packing_index][2][i * data.filter_w + (j + ct_ind * data.kw)] = prime_mod - pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
                 }
             }
         }
@@ -386,18 +408,18 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
         auto HE_result = bert_postprocess(enc_result, data);
 
         // HACK
-        // for (int i = 124; i < 127; i++) {
-        //     for (int j = 0; j < 64; j++)
-        //         cout << ((int64_t) HE_result[0][1][i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-        //     cout << endl;
-        // }
+        for (int i = 0; i < 1; i++) {
+            for (int j = 0; j < 64; j++)
+                cout << ((int64_t) HE_result[0][1][i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            cout << endl;
+        }
 
         // prod->matrix_multiplication(dim1, dim2, dim3, inA, inB, outC, bwA, bwB, bwC,
         //                       signed_arithmetic, signed_B, ::accumulate, mode,
         //                       msbA, msbB);
 
         #ifdef HE_DEBUG
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < ; i++) {
             for (int j = 0; j < 64; j++)
                 cout << ((int64_t) HE_result[i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
@@ -500,14 +522,35 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
 
         auto Cipher_plain_results = bert_cipher_plain(cts, encoded_mats1, encoded_mats2, encoded_mats3, encoded_bias1, encoded_bias2, encoded_bias3, data);
 
+        // uint64_t *secret_share = new uint64_t[data.slot_count];
+        // for(int i = 0; i < data.slot_count; i++){
+        //     secret_share[i] = 1;
+        // }
+
+        // vector<uint64_t> secret_share(data.slot_count, 0ULL);
+
+        // for (int i = 0; i < secret_share.size(); i++)
+        //     secret_share[i] = 1;
+
+        // Plaintext cons_1 = encode_vector(secret_share.data(), data);
+
+        // // for (int i = 0; i < 4096; i++)
+        // //     cout << cons_1[i] << " ";
+        // // cout << endl;
+        // cout << cons_1.coeff_count() << endl;
+
         // for (int ct_index = 0; ct_index < Cipher_plain_results.size(); ct_index++) {
-        //     evaluator->add_plain_inplace(Cipher_plain_results[ct_index], enc_noise[ct_index]);
+        //     // cout << "before " << Cipher_plain_results[ct_index].poly_modulus_degree() << endl;
+        //     evaluator->add_plain_inplace(Cipher_plain_results[ct_index], cons_1);
+        //     // cout << "after " << Cipher_plain_results[ct_index].poly_modulus_degree() << endl;
         // }
 
         #ifdef HE_TIMING
         auto t2_cipher_plain = high_resolution_clock::now();
         interval = (t2_cipher_plain - t1_cipher_plain)/1e+9;
         cout << "[Server] Cipher-Plaintext Matmul takes " << interval.count() << "sec" << endl;
+
+        cout << "[Server] Cipher-Plaintext Matmul result size" << interval.count() << "sec" << endl;
 
         auto t1_cipher_cipher = high_resolution_clock::now();
         #endif 

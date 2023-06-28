@@ -81,7 +81,7 @@ public:
 
   vector<Plaintext> preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
-  vector<vector<vector<uint64_t>>> bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data);
+  vector<vector<vector<uint64_t>>> bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data, const bool &col_packing = true);
 
   vector<Ciphertext> bert_cipher_plain(const vector<Ciphertext> &cts, const vector<vector<vector<Plaintext>>> &enc_mats1, const vector<vector<vector<Plaintext>>> &enc_mats2, const vector<vector<vector<Plaintext>>> &enc_mats3, vector<vector<Plaintext>> &encoded_bias1, vector<vector<Plaintext>> &encoded_bias2, vector<vector<Plaintext>> &encoded_bias3, const FCMetadata &data);
 

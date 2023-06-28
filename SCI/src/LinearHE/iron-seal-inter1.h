@@ -51,11 +51,13 @@ public:
 
     vector<Plaintext> preprocess_bias(const uint64_t *matrix, const FCMetadata &data);
 
-    Ciphertext preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
+    vector<Plaintext> preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
 
     vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &encoded_mat1, vector<Plaintext> &encoded_bias, const FCMetadata &data);
 
-    uint64_t* bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing);
+    vector<uint64_t> bert_postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing = true);
+
+    vector<uint64_t> bert_postprocess_noise(vector<Plaintext> &enc_noise, const FCMetadata &data, const bool &col_packing = true);
 
     vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 

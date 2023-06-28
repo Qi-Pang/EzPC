@@ -1124,6 +1124,10 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         // auto HE_result = bert_efficient_cipher(data, Cipher_plain_results, rotation_masks, cipher_masks);
         // auto HE_result = bert_efficient_cipher_depth3(data, Cipher_plain_results, depth3_masks);
+
+        for (int i = 0; i < Cipher_plain_results.size(); i++)
+            evaluator->mod_switch_to_next_inplace(Cipher_plain_results[i]);
+
         vector<Ciphertext> HE_result(3 * 12);
         bert_cipher_cipher_cross_packing(data, Cipher_plain_results, cross_masks, HE_result);
 
@@ -1134,7 +1138,7 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         #pragma omp parallel for
         for (int i = 0; i < HE_result.size(); i++) {
-            evaluator->mod_switch_to_next_inplace(HE_result[i]);
+            // evaluator->mod_switch_to_next_inplace(HE_result[i]);
             evaluator->mod_switch_to_next_inplace(HE_result[i]);
         }
 
