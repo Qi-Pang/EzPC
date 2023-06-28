@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
 
     
 
-    Bert bt(party, port, address, "/home/ubuntu/mrpc/weights_txt/");
+    Bert bt(party, port, address, "/home/ubuntu/mrpc_iron/weights_txt_right/");
 
     auto start = high_resolution_clock::now();
     // if(party == ALICE){
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
         vector<double> result = bt.run("", "");
     }
     } else{
-        ofstream file("./result/output.txt");
+        ofstream file("/home/ubuntu/clive/EzPC/iron_testing.txt");
         if (!file) {
             std::cerr << "Could not open the file!" << std::endl;
             return {};
@@ -56,8 +56,8 @@ int main(int argc, char **argv) {
         for(int i = 0; i < 1; i++ ){
         cout << "==>> Inference sample #" << i << endl;
         vector<double> result = bt.run(
-            "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
-            "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
+            "/home/ubuntu/mrpc_iron/weights_txt_right/inputs_" + to_string(i) + "_data.txt",
+            "/home/ubuntu/mrpc_iron/weights_txt_right/inputs_" + to_string(i) +  "_mask.txt"
             );
         // inference_results.push_back(result);
         auto max_ele = max_element(result.begin(), result.end());

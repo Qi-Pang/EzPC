@@ -32,9 +32,6 @@ public:
 	Encryptor *encryptor;
 	Decryptor *decryptor;
 	Evaluator *evaluator;
-	BatchEncoder *encoder;
-	GaloisKeys *gal_keys;
-	RelinKeys *relin_keys;
 	Ciphertext *zero;
 
     HE();

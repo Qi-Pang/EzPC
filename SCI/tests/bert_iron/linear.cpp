@@ -2,18 +2,18 @@
 
 
 void print_pt_l(HE* he, Plaintext &pt, int len) {
-    vector<int64_t> dest(len, 0ULL);
-    he->encoder->decode(pt, dest);
-    cout << "Decode first 5 rows: ";
-    int non_zero_count;
-    for(int i = 0; i < 10; i++){
-        cout << dest[i] << " ";
-        // if(dest[i] != 0){
-        //     non_zero_count += 1;
-        // }
-    }
-    // cout << "Non zero count: " << non_zero_count;
-    cout << endl;
+    // vector<int64_t> dest(len, 0ULL);
+    // he->encoder->decode(pt, dest);
+    // cout << "Decode first 5 rows: ";
+    // int non_zero_count;
+    // for(int i = 0; i < 10; i++){
+    //     cout << dest[i] << " ";
+    //     // if(dest[i] != 0){
+    //     //     non_zero_count += 1;
+    //     // }
+    // }
+    // // cout << "Non zero count: " << non_zero_count;
+    // cout << endl;
 }
 
 void print_ct_l(HE* he, Ciphertext &ct, int len){
@@ -37,6 +37,8 @@ Linear::Linear(int party, NetIO *io) {
 		{40, 39, 30},
 		(uint64_t) pow(2, 37)
     );
+
+    cout << "Set up he done" << endl;
 
     this->p_mod = prime_mod;
 
@@ -172,12 +174,9 @@ PreprocessParams_2 Linear::params_preprocessing_ct_pt_2(
         b[i] = neg_mod((int64_t)b[i], (int64_t)plain_mod);
     }
 
-    // PRG128 prg;
-    // uint64_t *secret_share = new uint64_t[input_dim*output_dim];
-    // prg.random_mod_p<uint64_t>(secret_share, input_dim*output_dim, prime_mod);
-
     pp.encoded_mat = preprocess_matrix(he, matrix_mod_p1.data(), data);
     pp.encoded_bias = preprocess_bias(he, b.data(), data);
+    return pp;
 }
 
 vector<vector<Plaintext>> Linear::preprocess_matrix(HE* he, const uint64_t *const *matrix, const FCMetadata &data){
@@ -378,6 +377,22 @@ vector<Ciphertext> Linear::preprocess_ptr(HE* he, uint64_t* input, const FCMetad
     return cts;
 }
 
+vector<Plaintext> Linear::preprocess_ptr_plaintext(HE* he, uint64_t* input, const FCMetadata &data){
+    vector<Plaintext> pts;
+    for (int i = 0; i < (data.filter_h / data.nw); i++) {
+        vector<uint64_t> pod_matrix(data.slot_count, 0ULL);
+        for (int row_index = 0; row_index < data.image_size; row_index++) {
+            for (int col_index = 0; col_index < data.nw; col_index++) {
+                pod_matrix[row_index * data.nw * data.kw + (data.nw - 1) - col_index] = input[row_index + (i * data.nw + col_index) * data.image_size];
+            }
+        }
+        Plaintext pt = encode_vector(he, pod_matrix.data(), data);
+
+        pts.push_back(pt);
+    }
+    return pts;
+}
+
 void Linear::weights_preprocess(BertModel &bm){
     #pragma omp parallel for
     for(int i = 0; i < ATTENTION_LAYERS; i++){
@@ -436,9 +451,25 @@ void Linear::weights_preprocess(BertModel &bm){
 }
 
 
-vector<Plaintext> Linear::preprocess_noise(HE* he, const uint64_t *secret_share, const FCMetadata &data){
+vector<Plaintext> Linear::preprocess_noise_1(HE* he, const uint64_t *secret_share, const FCMetadata &data){
     // Sample randomness into vector
     vector<Plaintext> enc_noise(data.filter_w / data.kw * 3 * 12);
+    for (int ct_index = 0; ct_index < enc_noise.size(); ct_index++) {
+        vector<uint64_t> noise(data.slot_count, 0ULL);
+        for (int i = 0; i < data.slot_count; i++)
+            noise[i] = secret_share[i + ct_index * data.slot_count];
+
+        Plaintext pt = encode_vector(he, noise.data(), data);
+        // Ciphertext ct;
+        // encryptor->encrypt(pt, ct);
+        enc_noise[ct_index] = pt;
+    }
+    return enc_noise;
+}
+
+vector<Plaintext> Linear::preprocess_noise_2(HE* he, const uint64_t *secret_share, const FCMetadata &data){
+    // Sample randomness into vector
+    vector<Plaintext> enc_noise(data.filter_w / data.kw);
     for (int ct_index = 0; ct_index < enc_noise.size(); ct_index++) {
         vector<uint64_t> noise(data.slot_count, 0ULL);
         for (int i = 0; i < data.slot_count; i++)
@@ -495,7 +526,7 @@ Linear::pt_postprocess_1(
     const FCMetadata &data, 
 	const bool &col_packing){
     vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>>(3, vector<uint64_t>(data.image_size * data.filter_w)));
-    
+
     for (int packing_index = 0; packing_index < 12; packing_index++) {
         for (int ct_ind = 0; ct_ind < pts.size() / 3 / 12; ct_ind++) {
             Plaintext pt = pts[ct_ind + packing_index * pts.size() / 12];
@@ -508,7 +539,6 @@ Linear::pt_postprocess_1(
                 }
             }
         }
-
         for (int ct_ind = 0; ct_ind < pts.size() / 3 / 12; ct_ind++) {
             Plaintext pt = pts[ct_ind + pts.size() / 3 / 12 + packing_index * pts.size() / 12];
             for (int i = 0; i < data.image_size; i++) {
@@ -535,6 +565,35 @@ Linear::pt_postprocess_1(
     }
 
     return result;
+}
+
+void Linear::pt_postprocess_2(
+		HE* he,
+        vector<Plaintext> &pts, 
+		uint64_t* output,
+        const FCMetadata &data, 
+		const bool &col_packing){
+    
+    if (col_packing) {
+        for (int ct_ind = 0; ct_ind < pts.size(); ct_ind++) {
+            Plaintext pt = pts[ct_ind];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    output[i + (j + ct_ind * data.kw) * data.image_size] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+    }
+    else {
+        for (int ct_ind = 0; ct_ind < pts.size(); ct_ind++) {
+            Plaintext pt = pts[ct_ind];
+            for (int i = 0; i < data.image_size; i++) {
+                for (int j = 0; j < data.kw; j++) {
+                    output[i * data.filter_w + (j + ct_ind * data.kw)] = pt[i * data.nw * data.kw + (j + 1) * data.nw - 1];
+                }
+            }
+        }
+    }
 }
 
 void Linear::concat( 
