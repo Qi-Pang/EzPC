@@ -260,9 +260,6 @@ vector<vector<vector<uint64_t>>> IRONFC::bert_postprocess(vector<Ciphertext> &ct
         }
     }
 
-    cout << "helo4" << endl;
-
-
     return result;
 }
 
@@ -409,8 +406,8 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
 
         // HACK
         for (int i = 0; i < 1; i++) {
-            for (int j = 0; j < 64; j++)
-                cout << ((int64_t) HE_result[0][1][i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            for (int j = 0; j < 12; j++)
+                cout << (int64_t) (((int64_t) HE_result[0][2][i + j * 128] + (int64_t) prime_mod) % (int64_t) prime_mod) << " ";
             cout << endl;
         }
 
@@ -483,7 +480,7 @@ void IRONFC::matrix_multiplication(int32_t input_dim,
 
             auto encoded_mat1 = preprocess_matrix(matrix_mod_p1.data(), data);
             auto encoded_mat2 = preprocess_matrix(matrix_mod_p2.data(), data);
-            auto encoded_mat3 = preprocess_matrix(matrix_mod_p2.data(), data);
+            auto encoded_mat3 = preprocess_matrix(matrix_mod_p3.data(), data);
 
             auto temp_bias1 = preprocess_bias(bias_mod_p1.data(), data);
             auto temp_bias2 = preprocess_bias(bias_mod_p2.data(), data);

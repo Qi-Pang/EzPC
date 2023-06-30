@@ -33,8 +33,8 @@ IOPack *iopack;
 OTPack *otpack;
 LinearOT *prod;
 
-int dim1 = 128;
-int dim2 = 128;
+int dim1 = 1;
+int dim2 = 768;
 int dim3 = 768;
 int bwA = 37;
 int bwB = 37;
@@ -245,7 +245,7 @@ int main(int argc, char **argv) {
   cout << "Accumulate: " << ::accumulate << endl;
   mode = MultMode::None;
   cout << "Mode: None" << endl;
-  test_matrix_multiplication(inA, inB, false);
+  // test_matrix_multiplication(inA, inB, false);
   test_matrix_multiplication(inA, inB, true);
   // mode = MultMode::Alice_has_A;
   // cout << "Mode: Alice_has_A" << endl;

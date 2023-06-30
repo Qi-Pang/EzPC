@@ -168,6 +168,8 @@ int main(int argc, char **argv) {
     // 19 bits
     prime_mod = 557057;
 
+    // prime_mod = 786433;
+
     // 28 bits
     // prime_mod = 268582913;
 
