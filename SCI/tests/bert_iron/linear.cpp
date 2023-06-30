@@ -133,7 +133,7 @@ PreprocessParams_1 Linear::params_preprocessing_ct_pt_1(
 
         auto encoded_mat1 = preprocess_matrix(he, matrix_mod_p1.data(), data);
         auto encoded_mat2 = preprocess_matrix(he, matrix_mod_p2.data(), data);
-        auto encoded_mat3 = preprocess_matrix(he, matrix_mod_p2.data(), data);
+        auto encoded_mat3 = preprocess_matrix(he, matrix_mod_p3.data(), data);
 
         auto temp_bias1 = preprocess_bias(he, bias_mod_p1.data(), data);
         auto temp_bias2 = preprocess_bias(he, bias_mod_p2.data(), data);

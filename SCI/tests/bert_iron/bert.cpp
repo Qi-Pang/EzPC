@@ -101,9 +101,6 @@ vector<Plaintext> Bert::he_to_ss_server(HE* he, vector<Ciphertext> in, const FCM
     uint64_t *secret_share = new uint64_t[dim*slot_count];
 	prg.random_data(secret_share, dim*slot_count*sizeof(uint64_t));
     uint64_t mask_x = (NL_ELL == 64 ? -1 : ((1ULL << NL_ELL) - 1));
-    // for(int i = 0; i < dim*slot_count; i++){
-    //     secret_share[i] = 0;
-    // }
 
     for(int i = 0; i < dim*slot_count; i++){
         secret_share[i] &= mask_x;
@@ -181,10 +178,6 @@ void Bert::ln_share_server(
         random_share[i] &= mask_x;
     }
 
-    // for(int i = 0; i < length; i++){
-    //     random_share[i] = 0;
-    // }
-
     io->send_data(random_share, length*sizeof(uint64_t));
 
     for(int i = 0; i < COMMON_DIM; i++){
@@ -232,20 +225,16 @@ void Bert::pc_bw_share_server(
     int length =  wp_len + bp_len + wc_len + bc_len;
     uint64_t* random_share = new uint64_t[length];
 
-    // PRG128 prg;
-    // prg.random_data(random_share, length * sizeof(uint64_t));
-
-    // for(int i = 0; i < length; i++){
-    //     random_share[i] &= mask_x;
-    // }
+    PRG128 prg;
+    prg.random_data(random_share, length * sizeof(uint64_t));
 
     for(int i = 0; i < length; i++){
-        random_share[i] = 0;
+        random_share[i] &= mask_x;
     }
 
     io->send_data(random_share, length*sizeof(uint64_t));
 
-    // cout << "share 1 " << endl;
+
     // Write wp share
     int offset = 0;
     for(int i = 0; i < COMMON_DIM; i++){
@@ -254,13 +243,13 @@ void Bert::pc_bw_share_server(
             offset++;
         }
     }
-    //  cout << "share 2 " << endl;
+
     // Write bp share
     for(int i = 0; i < COMMON_DIM; i++){
         bp[i] = (lin.b_p[i] - random_share[offset]) & mask_x;
         offset++;
     }
-    //  cout << "share 3 " << endl;
+
     // Write w_c share
     for(int i = 0; i < COMMON_DIM; i++){
         for(int j = 0; j < NUM_CLASS; j++){
@@ -268,7 +257,7 @@ void Bert::pc_bw_share_server(
             offset++;
         }
     }
-    //  cout << "share 4 " << endl;
+
     // Write b_c share
     for(int i = 0; i < NUM_CLASS; i++){
         bc[i] = (lin.b_c[i]- random_share[offset]) & mask_x;
@@ -435,6 +424,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 2*NL_SCALE
             );
+            // nl.print_ss(q_matrix_row, 16, NL_ELL, NL_SCALE);
+            // nl.print_ss(k_matrix_row, 16, NL_ELL, NL_SCALE);
+            // nl.print_ss(v_matrix_row, 16, NL_ELL, NL_SCALE);
+            // return {};
 
             nl.n_matrix_mul_iron(
                 NL_NTHREADS,
@@ -464,9 +457,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     }
                 }
             }
-
+            
             // Softmax
-            nl.softmax(
+            nl.softmax_iron(
                 NL_NTHREADS,
                 softmax_input_row,
                 softmax_output_row,
@@ -474,7 +467,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 INPUT_DIM,
                 NL_ELL,
                 NL_SCALE);
-
 
             // Rescale to 6
             nl.n_matrix_mul_iron(
@@ -666,7 +658,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 2*NL_SCALE
             );
 
-            nl.gelu(
+            nl.gelu_iron(
                 NL_NTHREADS,
                 gelu_input_col,
                 gelu_output_col,
@@ -853,15 +845,25 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         NL_ELL,
         NL_SCALE,
         NL_SCALE,
-        NL_SCALE
+        2*NL_SCALE
     );
 
-    for(int i = 0; i < NUM_CLASS; i++){
+    for(int i = 0; i < COMMON_DIM; i++){
         h99[i] += bp[i];
     }
 
+    nl.right_shift(
+        NL_NTHREADS,
+        h99,
+        NL_SCALE,
+        h99,
+        COMMON_DIM,
+        NL_ELL,
+        2*NL_SCALE
+    );
+
     // -------------------- TANH -------------------- //
-    nl.tanh(
+    nl.tanh_iron(
         NL_NTHREADS,
         h99,
         h100,
@@ -883,12 +885,22 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         NL_ELL,
         NL_SCALE,
         NL_SCALE,
-        NL_SCALE
+        2*NL_SCALE
     );
 
     for(int i = 0; i < NUM_CLASS; i++){
         h101[i] += bc[i];
     }
+
+    nl.right_shift(
+        1,
+        h101,
+        NL_SCALE,
+        h101,
+        NUM_CLASS,
+        NL_ELL,
+        2*NL_SCALE
+    );
 
     if(party == ALICE){
         io->send_data(h101, NUM_CLASS*sizeof(uint64_t));
