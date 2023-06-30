@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     vector<int> predicted_labels;
 
     if(party == ALICE){
-        for(int i = 0; i < 10; i++ ){
+        for(int i = 0; i < 1; i++ ){
         cout << "==>> Inference sample #" << i << endl;
         vector<double> result = bt.run("", "");
     }
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
             std::cerr << "Could not open the file!" << std::endl;
             return {};
         }
-        for(int i = 0; i < 10; i++ ){
+        for(int i = 0; i < 1; i++ ){
         cout << "==>> Inference sample #" << i << endl;
         vector<double> result = bt.run(
             "/home/ubuntu/iron/mrpc/weights_txt_right/inputs_" + to_string(i) + "_data.txt",

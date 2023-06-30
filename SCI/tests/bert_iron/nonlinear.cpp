@@ -180,7 +180,7 @@ void gelu_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int 
     this_party = party;
   }
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
-  FixArray output = fpmath->gelu_approx(input);
+  FixArray output = fpmath->gelu_approx_2(input);
   output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }

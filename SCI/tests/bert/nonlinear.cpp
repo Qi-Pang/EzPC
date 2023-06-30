@@ -180,7 +180,7 @@ void gelu_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int 
     this_party = party;
   }
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
-  FixArray output = fpmath->gelu_approx(input);
+  FixArray output = fpmath->gelu_approx_2(input);
   output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
@@ -393,12 +393,13 @@ void mul_thread(int tid, int party, uint64_t *x, uint64_t* z, uint64_t *y, int n
     this_party = party;
   }
   BoolArray all_1 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(1));
+  BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
   FixArray input_x = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray input_y = fpmath->fix->input(this_party, num_ops, z, true, ell, s);
   BoolArray msb_x = fpmath->fix->MSB(input_x);
   BoolArray msb_y = fpmath->fix->MSB(input_y);
   FixArray output = fpmath->fix->mul(input_x, input_y, ell + s, msb_x.data, msb_y.data);
-  output = fpmath->fix->truncate_reduce(output, s, all_1.data);
+  output = fpmath->fix->truncate_reduce(output, s);
   output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
@@ -527,6 +528,7 @@ void matmul_thread(
     this_party = party;
   }
   int extra_scale = s_in_1 + s_in_2 - s_out;
+  // auto t_pc = high_resolution_clock::now();
   fpmath->fix->mult->matrix_multiplication(
       dim1,
       dim2,
@@ -541,9 +543,13 @@ void matmul_thread(
       true,
       true
     );
+    // cout << "> [TIMING]: mul takes:" << interval_2(t_pc) << " sec" << endl; 
+    BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
     BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
     FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
-    ret = fpmath->fix->truncate_reduce(ret, extra_scale, all_1.data);
+    if(extra_scale > 0){
+      ret = fpmath->fix->truncate_reduce(ret, extra_scale);
+    }
     ret = fpmath->fix->extend(ret, 64);
     memcpy(c, ret.data, (dim1*dim3)*sizeof(uint64_t));
 }
@@ -585,11 +591,6 @@ void  NonLinear::n_matrix_mul_iron(
   for (int i = 0; i < n; ++i) {
       threads[i].join();
   }
-
-  // FixArray ret = fpmath[0]->fix->input(party, n*dim1*dim3, output, true, ell+s, s);
-  // ret = fpmath[0]->fix->truncate_reduce(ret, s);
-  // ret = fpmath[0]->fix->extend(ret, 64);
-  // memcpy(output, ret.data, (n*dim1*dim3)*sizeof(uint64_t));
 }
 
 void right_shift_thread(int tid, int party, uint64_t *x, int a, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {

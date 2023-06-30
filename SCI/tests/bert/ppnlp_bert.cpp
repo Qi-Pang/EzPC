@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
 
     
 
-    Bert bt(party, port, address, "/home/ubuntu/mrpc/weights_txt/");
+    Bert bt(party, port, address, "/home/ubuntu/quantize/mrpc/weights_txt/");
 
     auto start = high_resolution_clock::now();
     // if(party == ALICE){
@@ -44,32 +44,34 @@ int main(int argc, char **argv) {
 
     if(party == ALICE){
         for(int i = 0; i < 1; i++ ){
-        cout << "==>> Inference sample #" << i << endl;
-        vector<double> result = bt.run("", "");
-    }
+            cout << "==>> Inference sample #" << i << endl;
+            vector<double> result = bt.run("", "");
+        }
     } else{
-        ofstream file("./result/output.txt");
+        ofstream file("/home/ubuntu/clive/EzPC/ppnlp_testing.txt");
         if (!file) {
             std::cerr << "Could not open the file!" << std::endl;
             return {};
         }
         for(int i = 0; i < 1; i++ ){
-        cout << "==>> Inference sample #" << i << endl;
-        vector<double> result = bt.run(
-            "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
-            "/home/ubuntu/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
-            );
-        if(result.size() > 1){
-            // inference_results.push_back(result);
-            auto max_ele = max_element(result.begin(), result.end());
-            int max_index = distance(result.begin(), max_ele);
-            // predicted_labels.push_back(max_index);
-            file << max_index << "," 
-                    << result[0]<< "," 
-                    << result[1]<< "," << endl;
+            cout << "==>> Inference sample #" << i << endl;
+            vector<double> result = bt.run(
+                "/home/ubuntu/quantize/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
+                "/home/ubuntu/quantize/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
+                );
+            if(result.size() == 1){
+                file << result[0]<< endl;
+            } else{
+                // inference_results.push_back(result);
+                auto max_ele = max_element(result.begin(), result.end());
+                int max_index = distance(result.begin(), max_ele);
+                // predicted_labels.push_back(max_index);
+                file << max_index << "," 
+                        << result[0]<< "," 
+                        << result[1] << endl;
+            }
         }
-    }
-    file.close();
+        file.close();
     }
     
     // cout << "Prediction: " << result << endl;

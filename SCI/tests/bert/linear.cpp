@@ -798,13 +798,8 @@ void Linear::bert_cipher_plain_bsgs(
         tmp.clear();
     }
 
-    // auto t2 = high_resolution_clock::now();
-    // auto ms_double = (t2 - t1)/1e+9;
-    // cout << "[Server] Online - rotation done " << ms_double.count() << endl;
-    // t1 = high_resolution_clock::now();
     omp_set_nested(1);
-    // #pragma omp parallel 
-    // #pragma omp single
+
     #pragma omp parallel for num_threads(12)
     for (int packing_index = 0; packing_index < 12; packing_index++) {
         //compute matrix multiplication
@@ -837,6 +832,7 @@ void Linear::bert_cipher_plain_bsgs(
             }
 
             int third_index = data.image_size * data.filter_w / data.slot_count * 2;
+            #pragma omp parallel for num_threads(4)
             for (int l = third_index; l < data.image_size * data.filter_w / data.slot_count * 3; l++) {
                 for (int i = 0; i < n1; i++) {
                     Ciphertext ct1_l;
@@ -867,6 +863,7 @@ void Linear::bert_cipher_plain_bsgs(
             }
             
         }
+
 
         #pragma omp parallel for num_threads(4)
         // #pragma omp taskloop
@@ -1016,13 +1013,8 @@ void Linear::bert_cipher_cipher_cross_packing(
 	const vector<Ciphertext> &Cipher_plain_result, 
 	const vector<Plaintext> &cross_masks, 
 	vector<Ciphertext> &results) {
-
-    // auto t1 = high_resolution_clock::now();
     int packing_gap = data.image_size * data.filter_w / data.slot_count * 3;
 
-    omp_set_nested(1);
-    
-    #pragma omp parallel for num_threads(12)
     for (int packing_index = 0; packing_index < 12; packing_index++) {
         Ciphertext HE_result_1_left = Cipher_plain_result[0 + packing_gap * packing_index];
         Ciphertext HE_result_2_left = Cipher_plain_result[1 + packing_gap * packing_index];
@@ -1037,7 +1029,7 @@ void Linear::bert_cipher_cipher_cross_packing(
         vector<Ciphertext> rotation_results_left(data.image_size + 2);
         vector<Ciphertext> rotation_results_right(data.image_size + 2);
 
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for
         for (int i = 0; i <= data.image_size / 2; i++) {
             vector<Ciphertext> temp_mult = rotation_by_one_depth3(he, data, HE_result_1_right, i);
 
@@ -1063,8 +1055,7 @@ void Linear::bert_cipher_cipher_cross_packing(
         }
 
         int local_rotation = std::ceil(std::log2(32));
-
-        #pragma omp parallel for num_threads(4)
+        #pragma omp parallel for
         for (int i = 0; i < data.image_size + 2; i++) {
             for (int k = 0; k < local_rotation; k++) {
                 Ciphertext temp2;
@@ -1077,7 +1068,6 @@ void Linear::bert_cipher_cipher_cross_packing(
         he->evaluator->add(rotation_results[0], rotation_results[65], results[0 + 2 * packing_index]);
         he->evaluator->add(rotation_results[32], rotation_results[32 + 65], results[1 + 2 * packing_index]);
 
-        #pragma omp parallel for num_threads(4)
         for (int i = 1; i < 32; i++) {
             Ciphertext temp;
             he->evaluator->add_inplace(results[0 + 2 * packing_index], rotation_results[i]);
@@ -1089,9 +1079,6 @@ void Linear::bert_cipher_cipher_cross_packing(
         he->evaluator->add_inplace(results[0 + 2 * packing_index], rotation_results[64]);
         he->evaluator->add_inplace(results[0 + 2 * packing_index], rotation_results[64 + 65]);
     }
-    // auto t2 = high_resolution_clock::now();
-    // auto ms_double = (t2 - t1)/1e+9;
-    // std::cout << "[Server] Cipher-Cipher Packing " << ms_double.count() << std::endl;
 }
 
 vector<Ciphertext> Linear::rotation_by_one_depth3(
@@ -1168,13 +1155,13 @@ void Linear::plain_cross_packing_postprocess(
     bool col_packing,
     const FCMetadata &data) {
     int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
-
-    #pragma omp parallel for collapse(2)
     for (int packing_num = 0; packing_num < 12; packing_num++) {
         for (int i = 0; i < num_cts_per_mat; i++) {
             int offset = i + packing_num * num_cts_per_mat;
             vector<uint64_t> plain(&input[offset* data.slot_count], &input[offset* data.slot_count + data.slot_count]);
+
             if (col_packing) {
+                #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
                     int j = row / data.image_size;
                     int k = row % data.image_size;
@@ -1190,6 +1177,7 @@ void Linear::plain_cross_packing_postprocess(
                 }
             }
             else {
+                #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
                     int j = row / data.image_size;
                     int k = row % data.image_size;
@@ -1215,12 +1203,12 @@ void Linear::plain_cross_packing_postprocess_v(
     const FCMetadata &data) {
     int num_cts_per_mat_V = data.image_size * data.filter_w / data.slot_count;
     int num_cts_per_mat = data.image_size * data.image_size / data.slot_count;
-    #pragma omp parallel for collapse(2)
     for (int packing_num = 0; packing_num < 12; packing_num++) {
         for (int i = 0; i < num_cts_per_mat_V; i++) {
             int offset = i + packing_num * num_cts_per_mat_V;
             vector<uint64_t> plain(&input[offset* data.slot_count], &input[offset* data.slot_count + data.slot_count]);
             if (col_packing) {
+                #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
                     int j = row / data.image_size;
                     int k = row % data.image_size;
@@ -1232,6 +1220,7 @@ void Linear::plain_cross_packing_postprocess_v(
                 }
             }
             else {
+                #pragma omp parallel for
                 for (int row = 0; row < data.slot_count; row++) {
                     int j = row / data.image_size;
                     int k = row % data.image_size;
@@ -1253,8 +1242,6 @@ void Linear::plain_col_packing_preprocess(
     uint64_t plain_mod,
     int input_dim,
     int common_dim){
-    
-    #pragma omp parallel for
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
                 output[j*input_dim + i] = input[i*common_dim +j];
@@ -1266,7 +1253,6 @@ void Linear::plain_col_packing_preprocess_vec(
     uint64_t plain_mod,
     int input_dim,
     int common_dim){
-    #pragma omp parallel for
     for (int j = 0; j < common_dim; j++)
             for (int i = 0; i < input_dim; i++)
                 output[j*input_dim + i] = input[i][j];
