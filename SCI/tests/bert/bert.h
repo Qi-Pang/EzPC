@@ -16,7 +16,7 @@
 #define NUM_CLASS 2
 
 // #define BERT_DEBUG
-// #define BERT_PERF
+#define BERT_PERF
 
 using namespace std;
 
@@ -69,6 +69,8 @@ public:
     );
 
     vector<double> run(string input_fname, string mask_fname);
+
+    inline uint64_t get_comm();
 	
 };
 

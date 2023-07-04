@@ -20,6 +20,23 @@ double t_total_conversion = 0;
 
 double t_total_ln_share = 0;
 
+uint64_t c_linear_1 = 0;
+uint64_t c_linear_2 = 0;
+uint64_t c_linear_3 = 0;
+uint64_t c_linear_4 = 0;
+
+uint64_t c_softmax = 0;
+uint64_t c_gelu = 0;
+uint64_t c_ln1 = 0;
+uint64_t c_ln2 = 0;
+
+uint64_t c_softmax_v = 0;
+
+uint64_t c_shift = 0;
+uint64_t c_gt_sub = 0;
+
+uint64_t c_pc = 0;
+
 double n_rounds = 0;
 double n_comm = 0;
 #endif 
@@ -28,6 +45,16 @@ inline double interval(chrono::_V2::system_clock::time_point start){
     auto end = high_resolution_clock::now();
     auto interval = (end - start)/1e+9;
     return interval.count();
+}
+
+inline uint64_t Bert::get_comm(){
+    uint64_t total_comm = io->counter;
+    for(int i = 0; i < MAX_THREADS; i++){
+        total_comm += nl.iopackArr[i]->get_comm();
+    }
+    uint64_t ret = total_comm - n_comm;
+    n_comm = total_comm;
+    return ret;
 }
 
 void save_to_file(uint64_t* matrix, size_t rows, size_t cols, const char* filename) {
@@ -470,6 +497,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            c_linear_1 += get_comm();
             auto t_gt_sub = high_resolution_clock::now();
             #endif 
 
@@ -534,6 +562,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_shift += interval(t_shift);
+            c_gt_sub += get_comm();
             auto t_softmax = high_resolution_clock::now();
             #endif 
 
@@ -564,6 +593,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             
             #ifdef BERT_PERF
             t_total_softmax += interval(t_softmax);
+            c_softmax += get_comm();
             auto t_mul_v = high_resolution_clock::now();
             #endif 
 
@@ -586,6 +616,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_mul_v += interval(t_mul_v);
+            c_softmax_v += get_comm();
             auto t_repacking_2 = high_resolution_clock::now();
             #endif 
 
@@ -677,6 +708,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_repacking += interval(t_repacking);
+            c_linear_2 += get_comm();
             auto t_gt_sub = high_resolution_clock::now();
             #endif 
 
@@ -693,6 +725,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_gt_sub += interval(t_gt_sub);
+            c_gt_sub += get_comm();
             auto t_ln_1 = high_resolution_clock::now();
             #endif 
 
@@ -715,6 +748,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_ln_1 += interval(t_ln_1);
+            c_ln1 += get_comm();
             auto t_shift = high_resolution_clock::now();
             #endif 
 
@@ -732,6 +766,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_shift += interval(t_shift);
+            c_shift += get_comm();
             auto t_repacking_2 = high_resolution_clock::now();
             #endif 
 
@@ -801,6 +836,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            c_linear_3 += get_comm();
             auto t_repacking = high_resolution_clock::now();
             #endif 
 
@@ -831,6 +867,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_gt_sub += interval(t_gt_sub);
+            c_gt_sub += get_comm();
             auto t_gelu = high_resolution_clock::now();
             #endif 
 
@@ -845,6 +882,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_gelu += interval(t_gelu);
+            c_gelu += get_comm();
             auto t_shift = high_resolution_clock::now();
             #endif 
 
@@ -860,6 +898,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_shift += interval(t_shift);
+            c_shift += get_comm();
             #endif 
 
             // FixArray tmp = nl.to_public(gelu_output_col, 128*3072, 64, 4);
@@ -940,6 +979,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            c_linear_4 += get_comm();
             auto t_repacking = high_resolution_clock::now();
             #endif 
             // Post Processing
@@ -982,6 +1022,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_gt_sub += interval(t_gt_sub);
+            c_gt_sub += get_comm();
             auto t_ln = high_resolution_clock::now();
             #endif 
 
@@ -1003,6 +1044,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_ln_2 += interval(t_ln);
+            c_ln2 += get_comm();
             auto t_shift = high_resolution_clock::now();
             #endif 
 
@@ -1022,6 +1064,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_shift += interval(t_shift);
+            c_shift += get_comm();
             auto t_repacking_2 = high_resolution_clock::now();
             #endif 
 
@@ -1167,6 +1210,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     );
 
     #ifdef BERT_PERF
+    c_pc += get_comm();
     cout << "> [TIMING]: linear1 takes " << t_total_linear1 << " sec" << endl;
     cout << "> [TIMING]: linear2 takes " << t_total_linear2 << " sec" << endl;
     cout << "> [TIMING]: linear3 takes " << t_total_linear3 << " sec" << endl;
@@ -1188,16 +1232,32 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
     cout << "> [TIMING]: " << interval(t_pc) << " sec" << endl; 
 
-    uint64_t total_rounds = io->num_rounds;
-    uint64_t total_comm = io->counter;
+    cout << "> [NETWORK]: Linear 1 consumes: " << c_linear_1 << " bytes" << endl; 
+    cout << "> [NETWORK]: Linear 2 consumes: " << c_linear_2 << " bytes" << endl; 
+    cout << "> [NETWORK]: Linear 3 consumes: " << c_linear_3 << " bytes" << endl; 
+    cout << "> [NETWORK]: Linear 4 consumes: " << c_linear_4 << " bytes" << endl; 
 
-    for(int i = 0; i < MAX_THREADS; i++){
-        total_rounds += nl.iopackArr[i]->get_rounds();
-        total_comm += nl.iopackArr[i]->get_comm();
-    }
+    cout << "> [NETWORK]: Softmax consumes: " << c_softmax << " bytes" << endl; 
+    cout << "> [NETWORK]: GELU consumes: " << c_gelu << " bytes" << endl; 
+    cout << "> [NETWORK]: Layer Norm 1 consumes: " << c_ln1 << " bytes" << endl; 
+    cout << "> [NETWORK]: Layer Norm 2 consumes: " << c_ln2 << " bytes" << endl;
 
-    cout << "> [NETWORK]: Communication rounds: " << total_rounds - n_rounds << endl; 
-    cout << "> [NETWORK]: Communication overhead: " << total_comm - n_comm << " bytes" << endl; 
+    cout << "> [NETWORK]: Softmax * V: " << c_softmax_v << " bytes" << endl; 
+    cout << "> [NETWORK]: Shift consumes: " << c_shift << " bytes" << endl;
+    cout << "> [NETWORK]: gt_sub consumes: " << c_gt_sub << " bytes" << endl;  
+    
+    cout << "> [NETWORK]: Pooling / C consumes: " << c_pc << " bytes" << endl; 
+
+    // uint64_t total_rounds = io->num_rounds;
+    // uint64_t total_comm = io->counter;
+
+    // for(int i = 0; i < MAX_THREADS; i++){
+    //     total_rounds += nl.iopackArr[i]->get_rounds();
+    //     total_comm += nl.iopackArr[i]->get_comm();
+    // }
+
+    // cout << "> [NETWORK]: Communication rounds: " << total_rounds - n_rounds << endl; 
+    // cout << "> [NETWORK]: Communication overhead: " << total_comm - n_comm << " bytes" << endl; 
     #endif 
 
     if(party == ALICE){
