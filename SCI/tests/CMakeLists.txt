@@ -108,8 +108,8 @@ target_link_libraries(BERT-HE-CTPT SCI-HE)
 add_executable(BERT-HE-ATT-CTPT "test_att_ct_pt.cpp")
 target_link_libraries(BERT-HE-ATT-CTPT SCI-HE)
 
-# add_executable(BERT-HE-CTPT-INTER1 "test_bert_ctpt_inter1.cpp")
-# target_link_libraries(BERT-HE-CTPT-INTER1 SCI-HE)
+add_executable(BERT-HE-CTPT-INTER1 "test_bert_ctpt_inter1.cpp")
+target_link_libraries(BERT-HE-CTPT-INTER1 SCI-HE)
 
 # add_executable(BERT-HE-CTPT-ATTOUT "test_bert_ctpt_attoutput.cpp")
 # target_link_libraries(BERT-HE-CTPT-ATTOUT SCI-HE)

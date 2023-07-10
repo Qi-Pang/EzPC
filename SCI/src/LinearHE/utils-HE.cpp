@@ -25,7 +25,7 @@ using namespace std;
 using namespace sci;
 using namespace seal;
 using namespace seal::util;
-// #define HE_DEBUG
+#define HE_DEBUG
 
 void generate_new_keys(int party, NetIO *io, int slot_count,
                        SEALContext *&context_,

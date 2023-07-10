@@ -33,9 +33,9 @@ IOPack *iopack;
 OTPack *otpack;
 LinearOT *prod;
 
-int dim1 = 1;
-int dim2 = 768;
-int dim3 = 768;
+int dim1 = 128;
+int dim2 = 64;
+int dim3 = 128;
 int bwA = 37;
 int bwB = 37;
 int bwC = 37;

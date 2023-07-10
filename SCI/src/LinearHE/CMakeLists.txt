@@ -43,7 +43,7 @@ add_library(SCI-LinearHE
     bert-ct-pt.cpp
     bert-att-ct-pt.cpp
     iron-att-linear.cpp
-    # bert-ct-pt-inter1.cpp
+    bert-ct-pt-inter1.cpp
     # bert-att-output.cpp
     # utils-HE-openfhe.cpp
 )
