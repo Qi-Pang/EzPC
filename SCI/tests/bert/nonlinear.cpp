@@ -179,9 +179,10 @@ void gelu_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int 
   } else {
     this_party = party;
   }
+  BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray output = fpmath->gelu_approx_2(input);
-  output = fpmath->fix->extend(output, 64);
+  // output = fpmath->fix->extend(output, 64);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
 
@@ -347,11 +348,19 @@ void gt_p_sub_thread(int tid, int party, uint64_t *x, uint64_t p, uint64_t *y, i
   FixArray p_2_array = fpmath->fix->input(PUBLIC, num_ops, (p-1)/2, true, ell, s_in);
   FixArray output = fpmath->gt_p_sub(input, p_array);
   output = fpmath->fix->sub(output, p_2_array);
+
+  // FixArray input = fpmath->fix->input(this_party, num_ops, x, false, 29, s_in);
+  // FixArray output = fpmath->fix->extend(input, ell);
+  // output.signed_ = true;
+  // FixArray p_2_array = fpmath->fix->input(PUBLIC, num_ops, (p-1)/2, true, ell, s_in);
+  // output = fpmath->fix->sub(output, p_2_array);
+
   if(s_in > s_out){
     output = fpmath->fix->right_shift(output, s_in - s_out);
   } else if(s_in < s_out){
     output = fpmath->fix->mul(output, 1<<(s_out - s_in));
   }
+  
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
 
@@ -515,7 +524,9 @@ void matmul_thread(
   int dim1, 
   int dim2, 
   int dim3, 
-  int ell, 
+  int ell_in_1, 
+  int ell_in_2, 
+  int ell_out, 
   int s_in_1,
   int s_in_2,
   int s_out, 
@@ -529,6 +540,9 @@ void matmul_thread(
   }
   int extra_scale = s_in_1 + s_in_2 - s_out;
   // auto t_pc = high_resolution_clock::now();
+  // cout << "> [TIMING]: mul takes:" << interval_2(t_pc) << " sec" << endl; 
+  BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
+  BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
   fpmath->fix->mult->matrix_multiplication(
       dim1,
       dim2,
@@ -536,21 +550,22 @@ void matmul_thread(
       a,
       b,
       c,
-      ell,
-      ell,
-      ell + extra_scale,
+      ell_in_1,
+      ell_in_2,
+      ell_out + extra_scale,
       true,
       true,
-      true
+      true,
+      MultMode::None, 
+      all_0.data,
+      nullptr
     );
-    // cout << "> [TIMING]: mul takes:" << interval_2(t_pc) << " sec" << endl; 
-    BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
-    BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
-    FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell+extra_scale, s_in_1 + s_in_2);
+    
+    FixArray ret = fpmath->fix->input(this_party, dim1*dim3, c, true, ell_out+extra_scale, s_in_1 + s_in_2);
     if(extra_scale > 0){
       ret = fpmath->fix->truncate_reduce(ret, extra_scale);
     }
-    ret = fpmath->fix->extend(ret, 64);
+    // ret = fpmath->fix->extend(ret, 64);
     memcpy(c, ret.data, (dim1*dim3)*sizeof(uint64_t));
 }
 
@@ -563,7 +578,9 @@ void  NonLinear::n_matrix_mul_iron(
   int dim1, 
   int dim2, 
   int dim3, 
-  int ell, 
+  int ell_in_1, 
+  int ell_in_2, 
+  int ell_out, 
   int s_in_1,
   int s_in_2,
   int s_out){
@@ -582,7 +599,9 @@ void  NonLinear::n_matrix_mul_iron(
               dim1,
               dim2,
               dim3,
-              ell,
+              ell_in_1,
+              ell_in_2,
+              ell_out,
               s_in_1,
               s_in_2,
               s_out,
@@ -626,6 +645,48 @@ void NonLinear::right_shift(int nthreads, uint64_t* input, int a, uint64_t* outp
                 &output[offset], 
                 lnum_ops,
                 ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
+}
+
+void reduce_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int ell_in, int ell_out, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell_in, s);
+  FixArray output = fpmath->fix->reduce(input, ell_out);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+
+void NonLinear::reduce(int nthreads, uint64_t* input, uint64_t* output, int size, int ell_in, int ell_out, int s){
+  std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                reduce_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                &output[offset], 
+                lnum_ops,
+                ell_in,
+                ell_out,
                 s,
                 this->fpmath[i]);
     }

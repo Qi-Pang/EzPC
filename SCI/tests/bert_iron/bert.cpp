@@ -24,18 +24,27 @@ uint64_t c_linear_1 = 0;
 uint64_t c_linear_2 = 0;
 uint64_t c_linear_3 = 0;
 uint64_t c_linear_4 = 0;
-
 uint64_t c_softmax = 0;
 uint64_t c_gelu = 0;
 uint64_t c_ln1 = 0;
 uint64_t c_ln2 = 0;
-
-uint64_t c_qk = 0;
 uint64_t c_softmax_v = 0;
-
 uint64_t c_shift = 0;
-
+uint64_t c_qk = 0;
 uint64_t c_pc = 0;
+
+uint64_t r_linear_1 = 0;
+uint64_t r_linear_2 = 0;
+uint64_t r_linear_3 = 0;
+uint64_t r_linear_4 = 0;
+uint64_t r_softmax = 0;
+uint64_t r_gelu = 0;
+uint64_t r_ln1 = 0;
+uint64_t r_ln2 = 0;
+uint64_t r_softmax_v = 0;
+uint64_t r_shift = 0;
+uint64_t r_qk = 0;
+uint64_t r_pc = 0;
 
 uint64_t n_rounds = 0;
 uint64_t n_comm = 0;
@@ -55,6 +64,16 @@ inline uint64_t Bert::get_comm(){
     uint64_t ret = total_comm - n_comm;
     n_comm = total_comm;
     return ret;
+}
+
+inline uint64_t Bert::get_round(){
+    uint64_t total_round = io->num_rounds;
+    for(int i = 0; i < MAX_THREADS; i++){
+        total_round += nl.iopackArr[i]->get_rounds();
+    }
+    uint64_t ret_round = total_round - n_rounds;
+    n_rounds = total_round;
+    return ret_round;
 }
 
 Bert::Bert(int party, int port, string address, string model_path){
@@ -431,6 +450,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             c_linear_1 += get_comm();
+            r_linear_1 += get_round();
             auto t_preproc = high_resolution_clock::now();
             #endif 
 
@@ -498,6 +518,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
+            r_shift += get_round();
             auto t_mul_qk = high_resolution_clock::now();
             #endif 
 
@@ -519,6 +540,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_mul_qk += interval(t_mul_qk);
             c_qk += get_comm();
+            r_qk += get_round();
             auto t_softmax = high_resolution_clock::now();
             #endif 
 
@@ -549,6 +571,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_softmax += interval(t_softmax);
             c_softmax += get_comm();
+            r_softmax += get_round();
             auto t_mul_v = high_resolution_clock::now();
             #endif 
 
@@ -573,6 +596,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_mul_v += interval(t_mul_v);
             c_softmax_v += get_comm();
+            r_softmax_v += get_round();
             auto t_postproc = high_resolution_clock::now();
             #endif  
 
@@ -656,6 +680,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             c_linear_2 += get_comm();
+            r_linear_2 += get_round();
             auto t_preproc = high_resolution_clock::now();
             #endif 
 
@@ -680,6 +705,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
+            r_shift += get_round();
             auto t_ln_1 = high_resolution_clock::now();
             #endif 
 
@@ -703,6 +729,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_ln_1 += interval(t_ln_1);
             c_ln1 += get_comm();
+            r_ln1 += get_round();
             auto t_postproc = high_resolution_clock::now();
             #endif 
 
@@ -774,6 +801,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             c_linear_3 += get_comm();
+            r_linear_3 += get_round();
             auto t_preproc = high_resolution_clock::now();
             #endif 
 
@@ -798,6 +826,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
+            r_shift += get_round();
             auto t_gelu= high_resolution_clock::now();
             #endif 
 
@@ -813,6 +842,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_gelu += interval(t_gelu);
             c_gelu += get_comm();
+            r_gelu += get_round();
             #endif 
 
             if(party == ALICE){
@@ -884,6 +914,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             c_linear_4 += get_comm();
+            r_linear_4 += get_round();
             auto t_preproc = high_resolution_clock::now();
             #endif 
 
@@ -908,6 +939,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
+            r_shift += get_round();
             auto t_ln_2 = high_resolution_clock::now();
             #endif 
             
@@ -930,6 +962,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             t_total_ln_2 += interval(t_ln_2);
             c_ln2 += get_comm();
+            r_ln2 += get_round();
             auto t_postproc = high_resolution_clock::now();
             #endif 
 
@@ -1079,6 +1112,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
     #ifdef BERT_PERF
     c_pc += get_comm();
+    r_pc += get_round();
     cout << "> [TIMING]: linear1 takes " << t_total_linear1 << " sec" << endl;
     cout << "> [TIMING]: linear2 takes " << t_total_linear2 << " sec" << endl;
     cout << "> [TIMING]: linear3 takes " << t_total_linear3 << " sec" << endl;
@@ -1099,6 +1133,22 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
 
     cout << "> [TIMING]: pool/classification takes" << interval(t_pc) << " sec" << endl; 
+
+    cout << "> [NETWORK]: Linear 1 consumes: " << r_linear_1 << " rounds" << endl; 
+    cout << "> [NETWORK]: Linear 2 consumes: " << r_linear_2 << " rounds" << endl; 
+    cout << "> [NETWORK]: Linear 3 consumes: " << r_linear_3 << " rounds" << endl; 
+    cout << "> [NETWORK]: Linear 4 consumes: " << r_linear_4 << " rounds" << endl; 
+
+    cout << "> [NETWORK]: Softmax consumes: " << r_softmax << " rounds" << endl; 
+    cout << "> [NETWORK]: GELU consumes: " << r_gelu << " rounds" << endl; 
+    cout << "> [NETWORK]: Layer Norm 1 consumes: " << r_ln1 << " rounds" << endl; 
+    cout << "> [NETWORK]: Layer Norm 2 consumes: " << r_ln2 << " rounds" << endl;
+
+    cout << "> [NETWORK]: Softmax * V: " << r_softmax_v << " rounds" << endl; 
+    cout << "> [NETWORK]: Shift consumes: " << r_shift << " rounds" << endl;
+    cout << "> [NETWORK]: qk consumes: " << r_qk << " rounds" << endl;  
+    
+    cout << "> [NETWORK]: Pooling / C consumes: " << r_pc << " rounds" << endl; 
 
     // uint64_t total_rounds = io->num_rounds;
     // uint64_t total_comm = io->counter;
@@ -1126,6 +1176,22 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: Shift consumes: " << c_shift << " bytes" << endl; 
     
     cout << "> [NETWORK]: Pooling / C consumes: " << c_pc << " bytes" << endl; 
+
+        cout << "> [NETWORK]: Linear 1 consumes: " << r_linear_1 << " rounds" << endl; 
+    cout << "> [NETWORK]: Linear 2 consumes: " << r_linear_2 << " rounds" << endl; 
+    cout << "> [NETWORK]: Linear 3 consumes: " << r_linear_3 << " rounds" << endl; 
+    cout << "> [NETWORK]: Linear 4 consumes: " << r_linear_4 << " rounds" << endl; 
+
+    cout << "> [NETWORK]: Softmax consumes: " << r_softmax << " rounds" << endl; 
+    cout << "> [NETWORK]: GELU consumes: " << r_gelu << " rounds" << endl; 
+    cout << "> [NETWORK]: Layer Norm 1 consumes: " << r_ln1 << " rounds" << endl; 
+    cout << "> [NETWORK]: Layer Norm 2 consumes: " << r_ln2 << " rounds" << endl;
+
+    cout << "> [NETWORK]: Softmax * V: " << r_softmax_v << " rounds" << endl; 
+    cout << "> [NETWORK]: Shift consumes: " << r_shift << " rounds" << endl;
+    cout << "> [NETWORK]: qk consumes: " << r_qk << " rounds" << endl;  
+    
+    cout << "> [NETWORK]: Pooling / C consumes: " << r_pc << " rounds" << endl; 
 
     #endif 
 

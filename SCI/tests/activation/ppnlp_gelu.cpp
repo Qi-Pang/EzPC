@@ -66,7 +66,7 @@ void operation_thread(int tid, uint64_t *x, uint64_t *y, int num_ops) {
   }
   fpmath = new FPMath(this_party, iopackArr[tid], otpackArr[tid]);
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, bw_x, s_x);
-  FixArray output = fpmath->gelu_approx(input);
+  FixArray output = fpmath->gelu_approx_2(input);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
   delete fpmath;
 }
@@ -113,9 +113,12 @@ int main(int argc, char **argv) {
   /************** Fork Threads ****************/
   /********************************************/
   uint64_t total_comm = 0;
+   uint64_t total_round = 0;
   uint64_t thread_comm[num_threads];
+  uint64_t thread_round[num_threads];
   for (int i = 0; i < num_threads; i++) {
     thread_comm[i] = iopackArr[i]->get_comm();
+    thread_round[i] = iopackArr[i]->get_rounds();
   }
 
   auto start = clock_start();
@@ -139,6 +142,9 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < num_threads; i++) {
     thread_comm[i] = iopackArr[i]->get_comm() - thread_comm[i];
+    thread_round[i] = iopackArr[i]->get_rounds() - thread_round[i];
+
+    total_round += thread_round[i];
     total_comm += thread_comm[i];
   }
 
@@ -181,6 +187,7 @@ int main(int argc, char **argv) {
   cout << "Number of operation/s:\t" << (double(dim) / t) * 1e6 << std::endl;
   cout << "operation Time\t" << t / (1000.0) << " ms" << endl;
   cout << "operation Bytes Sent\t" << total_comm << " bytes" << endl;
+  cout << "operation rounds\t" << total_round / 12 << " round" << endl;
 
   /******************* Cleanup ****************/
   /********************************************/

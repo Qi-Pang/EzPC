@@ -75,6 +75,7 @@ public:
     vector<double> run(string input_fname, string mask_fname);
 
     inline uint64_t get_comm();
+    inline uint64_t get_round();
 	
 };
 

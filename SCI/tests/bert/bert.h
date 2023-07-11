@@ -10,6 +10,8 @@
 
 #define NL_NTHREADS 12
 #define NL_ELL 37
+
+#define GELU_ELL 20
 #define NL_SCALE 12
 
 
@@ -37,10 +39,10 @@ public:
 
 
     void he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output);
-    vector<Ciphertext> ss_to_he_server(HE* he, uint64_t* input, int length);
+    vector<Ciphertext> ss_to_he_server(HE* he, uint64_t* input, int length, int bw);
 
     void he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadata &data);
-    void ss_to_he_client(HE* he, uint64_t* input, int length);
+    void ss_to_he_client(HE* he, uint64_t* input, int length, int bw);
 
     void pc_bw_share_server(
         uint64_t* wp,
@@ -71,6 +73,7 @@ public:
     vector<double> run(string input_fname, string mask_fname);
 
     inline uint64_t get_comm();
+    inline uint64_t get_round();
 	
 };
 
