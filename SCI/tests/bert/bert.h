@@ -14,7 +14,7 @@
 #define NL_SCALE 12
 
 
-#define NUM_CLASS 2
+#define NUM_CLASS 1
 
 #define BERT_DEBUG
 // #define BERT_TIMING
