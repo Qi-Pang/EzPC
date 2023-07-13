@@ -111,17 +111,17 @@ public:
 
   // vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 
-  vector<Ciphertext> preprocess_softmax_s1(const uint64_t *const *matrix, const FCMetadata &data);
+  vector<Ciphertext> preprocess_softmax_s1(const uint64_t *matrix, const FCMetadata &data);
 
-  vector<vector<vector<Plaintext>>> preprocess_softmax_s2(const uint64_t *const *matrix, const FCMetadata &data, vector<vector<vector<uint64_t>>> &mask);
+  vector<vector<vector<Plaintext>>> preprocess_softmax_s2(const uint64_t *matrix, const FCMetadata &data, vector<vector<vector<uint64_t>>> &mask);
 
   vector<vector<vector<uint64_t>>> softmax_mask(const FCMetadata &data);
 
   void bert_softmax_V(vector<Ciphertext> &softmax_s1, vector<vector<vector<Plaintext>>> &softmax_s2, vector<Ciphertext> &V, vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &R, const FCMetadata &data, vector<Ciphertext> &result);
 
-  vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> preprocess_softmax_v_r(const uint64_t *const *matrix, const FCMetadata &data);
+  vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> preprocess_softmax_v_r(const uint64_t *matrix, const FCMetadata &data);
 
-  uint64_t* client_S1_V_R(const uint64_t *const *softmax_s1, vector<Ciphertext> &V, const FCMetadata &data);
+  uint64_t* client_S1_V_R(const uint64_t *softmax_s1, vector<Ciphertext> &V, const FCMetadata &data);
 
   void print_noise_budget_vec(vector<Ciphertext> v);
 
