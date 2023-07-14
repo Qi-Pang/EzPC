@@ -1010,6 +1010,8 @@ void BEFCField::bert_softmax_V(vector<Ciphertext> &softmax_s1, vector<vector<vec
     int num_ct_per_s1 = data.image_size * data.image_size / data.slot_count;
     int num_ct_per_V = data.image_size * data.filter_w / data.slot_count;
 
+    omp_set_nested(1);
+    #pragma omp parallel for num_threads(4)
     for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
 
         vector<vector<Plaintext>> R1 = R[packing_ind].first;
