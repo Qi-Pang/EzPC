@@ -150,7 +150,7 @@ PreprocessParams_1 Linear::params_preprocessing_ct_ct(
 		}
 
 		auto cross_mat = bert_cross_packing_matrix(he, matrix_mod_p1.data(), matrix_mod_p2.data(), data);
-		auto cross_mat_single = bert_cross_packing_single_matrix(he, matrix_mod_p3.data(), matrix_mod_p4.data(), data);
+		auto cross_mat_single = bert_cross_packing_single_matrix(he, matrix_mod_p3.data(), matrix_mod_p4.data(), data, false);
 		auto bias = bert_cross_packing_bias(he, b_q[packing_index].data(), b_k[packing_index].data(), b_v[packing_index].data(), data);
 		pp.cross_mats.push_back(cross_mat);
 		pp.cross_mats_single.push_back(cross_mat_single);
@@ -275,12 +275,6 @@ vector<Ciphertext> Linear::linear_1(
         HE_result[24 + i] = Cipher_plain_results[2 + i * packing_gap];
     }
 
-	#pragma omp parallel for
-	for (int i = 0; i < HE_result.size(); i++) {
-		he->evaluator->mod_switch_to_next_inplace(HE_result[i]);
-		he->evaluator->mod_switch_to_next_inplace(HE_result[i]);
-	}
-
     return HE_result;
 }
 
@@ -389,14 +383,12 @@ Linear::bert_cross_packing_single_matrix(
 	HE* he,
 	const uint64_t *const *matrix1, 
 	const uint64_t *const *matrix2, 
-	const FCMetadata &data) {
+	const FCMetadata &data,
+    const bool &softmax_V_flag) {
 		
     vector<vector<Plaintext>> weightMatrix1; // 64 x 48
     vector<vector<Plaintext>> weightMatrix2; // 64 x 48
     vector<uint64_t> temp2;
-    int num_diag = data.slot_count / data.image_size / 2; // should be 8
-    int num_matrix_per_row = data.filter_h / num_diag; // should be 48
-    int num_matrix_per_col = data.filter_w / num_diag / 2; // should be 8
 
     int n1;
     int n2;
@@ -408,6 +400,16 @@ Linear::bert_cross_packing_single_matrix(
         n1 = 8;
         n2 = 4;
     }
+
+    int weight_hight = data.filter_h;
+    if (softmax_V_flag) {
+        weight_hight = data.image_size;
+        n1 = 4;
+        n2 = 8;
+    }
+    int num_diag = data.slot_count / data.image_size / 2; // should be 8
+    int num_matrix_per_row = weight_hight / num_diag; // should be 48
+    int num_matrix_per_col = data.filter_w / num_diag / 2; // should be 8
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
         int matrix_flag = 0;
@@ -1329,5 +1331,345 @@ void Linear::concat(
         for(int i = 0; i < n; i++){
             memcpy(&output[j*n*dim2 + i*dim2], &input[i*dim1*dim2 + j*dim2], dim2*sizeof(uint64_t));
         }
+    }
+}
+
+// matrix is row-packed with 12 * 128 rows and 128 cols
+vector<Ciphertext> Linear::preprocess_softmax_s1(HE* he, uint64_t* matrix, const FCMetadata &data) {
+    int num_ct_per_matrix = data.image_size * data.image_size / data.slot_count;
+    vector<Ciphertext> enc_softmax(12 * num_ct_per_matrix);
+    #pragma omp parallel for
+    for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
+        for (int k = 0; k < data.image_size * data.image_size / data.slot_count; k++) {
+            vector<uint64_t> pod_matrix(data.slot_count);
+            for (int j = 0; j < data.slot_count / data.image_size; j++) {
+                for (int i = 0; i < data.image_size; i++) {
+                    pod_matrix[i + j * data.image_size] = matrix[(i + packing_ind * data.image_size) * data.image_size + j + data.slot_count / data.image_size * k];
+                }
+            }
+            Ciphertext ct;
+            Plaintext pt;
+            he->encoder->encode(pod_matrix, pt);
+            he->encryptor->encrypt(pt, ct);
+            enc_softmax[packing_ind * num_ct_per_matrix + k] = ct;
+        }
+    }
+
+    #pragma omp parallel for
+    for (int i = 0; i < enc_softmax.size(); i++) {
+        he->evaluator->mod_switch_to_next_inplace(enc_softmax[i]);
+    }
+    return enc_softmax;
+}
+
+void Linear::client_S1_V_R(HE* he, const uint64_t *softmax_s1, uint64_t* V, uint64_t* result, const FCMetadata &data){
+    int total_packing = 12;
+    uint64_t plain_mod = he->plain_mod;
+    for (int packing_num = 0; packing_num < total_packing; packing_num++) {
+        #pragma omp parallel for
+        for(int i = 0; i < data.image_size; i++) {
+            for(int j = 0; j < data.filter_w; j++) {
+                result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] = 0;
+                for(int k = 0; k < data.image_size; k++) {
+                    result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] += neg_mod((int64_t)softmax_s1[(packing_num * data.image_size + i) * data.image_size + k] * V[k + j * data.image_size + data.image_size * data.filter_w * packing_num], (int64_t)plain_mod);
+                    result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] = neg_mod((int64_t)result[packing_num * data.image_size * data.filter_w + i + j * data.image_size], (int64_t)plain_mod);
+                }
+            }
+        }
+    }
+}
+
+void Linear::bert_postprocess_V(HE* he, uint64_t* input, uint64_t* result, const FCMetadata &data, const bool &col_packing){
+    // int total_packing = cts.size() * data.slot_count / (data.image_size * data.filter_w);
+    int num_cts_per_mat_V = data.image_size * data.filter_w / data.slot_count;
+    for (int packing_num = 0; packing_num < 12; packing_num++) {
+        for (int i = 0; i < num_cts_per_mat_V; i++) {
+            // vector<uint64_t> plain(data.slot_count, 0ULL);
+            // Plaintext pt;
+            // he->decryptor->decrypt(cts[i + packing_num * num_cts_per_mat_V], pt);
+            // he->encoder->decode(pt, plain);
+
+            int offset = i + packing_num * num_cts_per_mat_V;
+            vector<uint64_t> plain(&input[offset* data.slot_count], &input[offset* data.slot_count + data.slot_count]);
+
+            if (col_packing) {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    result[k + j * data.image_size + i * data.slot_count / 2 + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
+            }
+            else {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    j += i * data.slot_count / data.image_size / 2;
+                    result[k * data.filter_w + j + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
+            }
+        }
+    }
+}
+
+void Linear::bert_postprocess_V_enc(HE* he, vector<Ciphertext> cts, uint64_t* result, const FCMetadata &data, const bool &col_packing){
+    // int total_packing = cts.size() * data.slot_count / (data.image_size * data.filter_w);
+    int num_cts_per_mat_V = data.image_size * data.filter_w / data.slot_count;
+    for (int packing_num = 0; packing_num < 12; packing_num++) {
+        for (int i = 0; i < num_cts_per_mat_V; i++) {
+            vector<uint64_t> plain(data.slot_count, 0ULL);
+            Plaintext pt;
+            he->decryptor->decrypt(cts[i + packing_num * num_cts_per_mat_V], pt);
+            he->encoder->decode(pt, plain);
+
+            if (col_packing) {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    result[k + j * data.image_size + i * data.slot_count / 2 + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
+            }
+            else {
+                #pragma omp parallel for
+                for (int row = 0; row < data.slot_count; row++) {
+                    int j = row / data.image_size;
+                    int k = row % data.image_size;
+                    if (row >= data.slot_count / 2) {
+                        j -= data.slot_count / data.image_size / 2;
+                        j += data.filter_w / 2;
+                    }
+                    j += i * data.slot_count / data.image_size / 2;
+                    result[k * data.filter_w + j + packing_num * data.image_size * data.filter_w] = plain[row];
+                }
+            }
+        }
+    }
+}
+
+vector<vector<vector<uint64_t>>> softmax_mask(const FCMetadata &data) {
+    vector<vector<vector<uint64_t>>> mask(2, vector<vector<uint64_t>>(data.image_size, vector<uint64_t>(data.image_size)));
+    for (int i = 0; i < data.image_size; i++) {
+        vector<uint64_t> mask1(data.image_size, 0ULL);
+        vector<uint64_t> mask2(data.image_size, 0ULL);
+        for (int j = 0; j < data.image_size - i; j++) {
+            mask1[j] = 1;
+        }
+        for (int j = data.image_size - i; j < data.image_size; j++) {
+            mask2[j] = 1;
+        }
+        mask[0][i] = mask1;
+        mask[1][i] = mask2;
+    }
+    return mask;
+}
+
+vector<vector<vector<Plaintext>>> 
+Linear::preprocess_softmax_s2(HE* he, const uint64_t *matrix, const FCMetadata &data){
+    
+    auto mask = softmax_mask(data);
+
+    uint64_t *new_matrix = new uint64_t[128 * 12 * 128];
+    for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
+        for (int i = 0; i < 128; i++) {
+            for (int j = 0; j < 128; j++) {
+                new_matrix[i * 128 + j + 128 * 128 * packing_ind] = matrix[j * 128 + i + 128 * 128 * packing_ind];
+            }
+        }
+    }
+    matrix = new_matrix;
+
+    int num_diag = data.image_size;
+    int num_diag_per_ct = data.slot_count / data.image_size;
+    vector<vector<vector<Plaintext>>> s2_pack(12);
+
+    #pragma omp parallel for
+    for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
+        vector<uint64_t> temp2;
+        vector<vector<Plaintext>> weightMatrix1(2, vector<Plaintext>(num_diag));
+        
+        for (int diag_ind = 0; diag_ind < num_diag; diag_ind++) {
+            vector<uint64_t> r1(data.image_size);
+            vector<uint64_t> r2(data.image_size);
+            for (int j = 0; j < num_diag; j++) {
+                temp2.push_back(matrix[((j + diag_ind) % num_diag + packing_ind * data.image_size) * data.image_size + j]);
+            }
+            // std::rotate(temp2.begin(), temp2.begin() + temp2.size() - diag_ind, temp2.end());
+            std::transform(temp2.begin(), temp2.end(), mask[0][diag_ind].begin(), r1.begin(), std::multiplies<uint64_t>());
+            std::transform(temp2.begin(), temp2.end(), mask[1][diag_ind].begin(), r2.begin(), std::multiplies<uint64_t>());
+            for (int j = 0; j < std::log2(num_diag_per_ct); j++) {
+                r1.reserve(r1.size() + distance(r1.begin(), r1.end()));
+                r1.insert(r1.end(), r1.begin(), r1.end());
+                r2.reserve(r2.size() + distance(r2.begin(), r2.end()));
+                r2.insert(r2.end(), r2.begin(), r2.end());
+            }
+
+            Plaintext pt;
+            he->encoder->encode(r1, pt);
+            weightMatrix1[0][diag_ind] = pt;
+            he->encoder->encode(r2, pt);
+            weightMatrix1[1][diag_ind] = pt;
+            temp2.clear();
+            r1.clear();
+            r2.clear();
+        }
+        s2_pack[packing_ind] = weightMatrix1;
+    }
+    return s2_pack;
+}
+
+vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> 
+Linear::preprocess_softmax_v_r(HE* he, const uint64_t *matrix, const FCMetadata &data) {
+    vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> R_pack(12);
+
+    #pragma omp parallel for
+    for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
+        vector<uint64_t *> matrix_1(data.image_size);
+        vector<uint64_t *> matrix_2(data.image_size);
+        for (int i = 0; i < data.image_size; i++) {
+            matrix_1[i] = new uint64_t[data.filter_w / 2];
+            matrix_2[i] = new uint64_t[data.filter_w / 2];
+            for (int j = 0; j < data.filter_w / 2; j++) {
+                matrix_1[i][j] = matrix[(i + packing_ind * data.image_size) * data.filter_w + j];
+                matrix_2[i][j] = matrix[(i + packing_ind * data.image_size) * data.filter_w + j + data.filter_w / 2];
+            }
+        }
+        auto temp_R_pack = bert_cross_packing_single_matrix(he, matrix_1.data(), matrix_2.data(), data, true);
+        R_pack[packing_ind] = temp_R_pack;
+    }
+    return R_pack;
+}
+
+void Linear::bert_softmax_V(HE* he, vector<Ciphertext> &softmax_s1, vector<vector<vector<Plaintext>>> &softmax_s2, vector<Ciphertext> &V, vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &R, const FCMetadata &data, vector<Ciphertext> &result) {
+    // FIXME: pack R according to ours ctxpt
+    // FIXME: compute softmax_s1 x R
+
+    #pragma omp parallel for
+    for (int i = 0; i < V.size(); i++) {
+        he->evaluator->mod_switch_to_next_inplace(V[i]);
+    }
+
+    int num_ct_per_s1 = data.image_size * data.image_size / data.slot_count;
+    int num_ct_per_V = data.image_size * data.filter_w / data.slot_count;
+
+    omp_set_nested(1);
+    #pragma omp parallel for num_threads(4)
+    for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
+
+        vector<vector<Plaintext>> R1 = R[packing_ind].first;
+        vector<vector<Plaintext>> R2 = R[packing_ind].second;
+        vector<vector<Ciphertext>> rotatedIR(num_ct_per_s1);
+        int n1 = 4;
+        int n2 = 8;
+        int num_diag = data.slot_count / data.image_size / 2;
+        auto t1 = high_resolution_clock::now();
+
+        #pragma omp parallel for
+        for (int i = 0; i < num_ct_per_s1; i++) {
+            vector<Ciphertext> tmp;
+            tmp.push_back(softmax_s1[packing_ind * num_ct_per_s1 + i]);
+
+            for (int j = 1; j < n1; j++) {
+                Ciphertext temp_rot;
+                he->evaluator->rotate_rows(softmax_s1[packing_ind * num_ct_per_s1 + i], (num_diag - j) * data.image_size, *(he->gal_keys), temp_rot);
+                tmp.push_back(temp_rot);
+            }
+
+            for (int j = 0; j < n1; j++) {
+                Ciphertext temp_rot;
+                he->evaluator->rotate_columns(tmp[j], *(he->gal_keys), temp_rot);
+                tmp.push_back(temp_rot);
+            }
+
+            rotatedIR[i] = tmp;
+            tmp.clear();
+        }
+
+        //compute matrix multiplication
+        vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w / data.slot_count, vector<Ciphertext>(n2));
+        vector<vector<Ciphertext>> temp_results1(data.image_size * data.filter_w / data.slot_count, vector<Ciphertext>(n2 * num_ct_per_s1));
+
+        #pragma omp parallel for
+        for (int k = 0; k < num_ct_per_s1 * n2; k++) {
+            int j = k / num_ct_per_s1;
+            int ct_i = k % num_ct_per_s1;
+            for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
+                for (int i = 0; i < n1; i++) {
+                    Ciphertext ct1_l;
+                    Ciphertext ct1_r;
+                    he->evaluator->multiply_plain(rotatedIR[ct_i][i], R1[n1 * j + i + l * num_diag][ct_i], ct1_l);
+                    he->evaluator->multiply_plain(rotatedIR[ct_i][i + n1], R2[n1 * j + i + l * num_diag][ct_i], ct1_r);
+                    if (i == 0)
+                        he->evaluator->add(ct1_l, ct1_r, temp_results1[l][k]);
+                    else {
+                        Ciphertext temp_add_ct;
+                        he->evaluator->add(ct1_l, ct1_r, temp_add_ct);
+                        he->evaluator->add_inplace(temp_results1[l][k], temp_add_ct);
+                    }
+                }
+            }
+        }
+
+        #pragma omp parallel for
+        for (int j = 0; j < n2; j++) {
+            for (int ct_i = 0; ct_i < num_ct_per_s1; ct_i++) {
+                for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
+                    if (ct_i == 0)
+                        temp_results[l][j] = temp_results1[l][j * num_ct_per_s1 + ct_i];
+                    else
+                        he->evaluator->add_inplace(temp_results[l][j], temp_results1[l][j * num_ct_per_s1 + ct_i]);
+                }
+            }
+        }
+
+        #pragma omp parallel for
+        for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
+            Ciphertext ct;
+            for (int k = 0; k < n2; k++) {
+                if (k == 0)
+                    ct = temp_results[l][0];
+                else {
+                    Ciphertext temp_rot_ct;
+                    he->evaluator->rotate_rows(temp_results[l][k], -n1 * k * data.image_size, *(he->gal_keys), temp_rot_ct);
+                    he->evaluator->add_inplace(ct, temp_rot_ct);
+                }
+            }
+            result[packing_ind * data.image_size * data.filter_w / data.slot_count + l] = ct;
+        }
+
+        num_diag = data.image_size;
+        for (int ct_ind = 0; ct_ind < num_ct_per_V; ct_ind++) {
+            vector<Ciphertext> rotation_results(num_diag);
+
+            #pragma omp parallel for
+            for (int i = 0; i < num_diag; i++) {
+                Ciphertext temp1;
+                Ciphertext temp2;
+                vector<Ciphertext> temp_mult = rotation_by_one_depth3(he, data, V[packing_ind * num_ct_per_V + ct_ind], i);
+                he->evaluator->multiply_plain(temp_mult[0], softmax_s2[packing_ind][0][i], temp1);
+                he->evaluator->multiply_plain(temp_mult[1], softmax_s2[packing_ind][1][i], temp2);
+                he->evaluator->add(temp1, temp2, rotation_results[i]);
+            }
+            for (int i = 0; i < num_diag; i++) {
+                he->evaluator->add_inplace(result[packing_ind * data.image_size * data.filter_w / data.slot_count + ct_ind], rotation_results[i]);
+            }
+            rotation_results.clear();
+        }
+    }
+    for (int i = 0; i < result.size(); i++) {
+        he->evaluator->mod_switch_to_next_inplace(result[i]);
     }
 }

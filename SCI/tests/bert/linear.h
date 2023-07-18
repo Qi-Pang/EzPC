@@ -235,7 +235,7 @@ public:
 		HE* he,
 		const uint64_t *const *matrix1,
 		const uint64_t *const *matrix2,
-		const FCMetadata &data);
+		const FCMetadata &data, const bool &softmax_V_flag);
 	
 	pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>
 	bert_cross_packing_single_matrix_2(
@@ -282,6 +282,33 @@ public:
 		const vector<Ciphertext> &Cipher_plain_result,
 		const vector<Plaintext> &cross_masks,
 		vector<Ciphertext> &results);
+
+	// Softmax * V
+
+	vector<Ciphertext> preprocess_softmax_s1(
+		HE* he,
+		uint64_t* matrix, 
+		const FCMetadata &data);
+	
+	vector<vector<vector<Plaintext>>> 
+	preprocess_softmax_s2(HE* he, const uint64_t *matrix, const FCMetadata &data);
+
+	void client_S1_V_R(HE* he, const uint64_t *softmax_s1,uint64_t* V, uint64_t* result, const FCMetadata &data);
+
+	void bert_postprocess_V(HE* he,  uint64_t* input, uint64_t* result, const FCMetadata &data, const bool &col_packing);
+	void bert_postprocess_V_enc(HE* he, vector<Ciphertext> cts, uint64_t* result, const FCMetadata &data, const bool &col_packing);
+
+	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> 
+	preprocess_softmax_v_r(HE* he, const uint64_t *matrix, const FCMetadata &data);
+
+	void bert_softmax_V(
+		HE* he, vector<Ciphertext> &softmax_s1, 
+		vector<vector<vector<Plaintext>>> &softmax_s2, 
+		vector<Ciphertext> &V, 
+		vector<pair<vector<vector<Plaintext>>, 
+		vector<vector<Plaintext>>>> &R, 
+		const FCMetadata &data, 
+		vector<Ciphertext> &result);
 
 };
 

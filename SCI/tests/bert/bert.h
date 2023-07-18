@@ -38,7 +38,7 @@ public:
     ~Bert();
 
 
-    void he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output);
+    void he_to_ss_server(HE* he, vector<Ciphertext> in, uint64_t* output, bool ring);
     vector<Ciphertext> ss_to_he_server(HE* he, uint64_t* input, int length, int bw);
 
     void he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadata &data);
@@ -70,10 +70,21 @@ public:
         uint64_t* bln
     );
 
+    void softmax_v(
+        HE* he,
+        vector<Ciphertext> enc_v,
+        uint64_t* s_softmax,
+        uint64_t* s_v,
+        uint64_t* s_softmax_v, 
+        const FCMetadata &data
+    );
+
     vector<double> run(string input_fname, string mask_fname);
 
     inline uint64_t get_comm();
     inline uint64_t get_round();
+
+    void print_p_share(uint64_t* s, uint64_t p, int len);
 	
 };
 
