@@ -85,6 +85,7 @@ public:
     inline uint64_t get_round();
 
     void print_p_share(uint64_t* s, uint64_t p, int len);
+    void check_p_share(uint64_t* s, uint64_t p, int len, uint64_t* ref);
 	
 };
 

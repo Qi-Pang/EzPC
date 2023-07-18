@@ -76,6 +76,12 @@ inline uint64_t Bert::get_round(){
     return ret_round;
 }
 
+string replace_2(string str, string substr1, string substr2) {
+    size_t index = str.find(substr1, 0); 
+    str.replace(index, substr1.length(), substr2);
+    return str;
+}
+
 void save_to_file(uint64_t* matrix, size_t rows, size_t cols, const char* filename) {
     std::ofstream file(filename);
     if (!file) {
@@ -476,6 +482,8 @@ void Bert::softmax_v(
         //     s_softmax_v[i] = 0;
         // }
 
+        delete[] softmax_v_server;
+
     } else{
         // Client
 
@@ -515,7 +523,13 @@ void Bert::softmax_v(
             } else{
                 s_softmax_v[i] += softmax_v_client[i];
             }
+            if (softmax_v_client[i] == he->plain_mod_2) {
+                cout << "HHAHAHAHAHA" << endl;
+            }
         }
+
+        delete[] softmax_v_client;
+        delete[] softmax_v_server;
 
     }
 
@@ -536,6 +550,25 @@ void Bert::print_p_share(uint64_t* s, uint64_t p, int len){
             cout << (int64_t)tmp << " ";
         }
         cout << endl;
+    }
+}
+
+void Bert::check_p_share(uint64_t* s, uint64_t p, int len, uint64_t* ref){
+    if(party == ALICE){
+        io->send_data(s, len*sizeof(uint64_t));
+    } else{
+        uint64_t* s1 = new uint64_t[len];
+        io->recv_data(s1, len*sizeof(uint64_t));
+
+        for(int i = 0; i < len; i++){
+            uint64_t tmp = (s[i] + s1[i]) % p;
+            if(tmp > (p / 2)){
+                tmp -= p;
+            }
+            if((int64_t)tmp != (int64_t)ref[i]){
+                cout << "Error: " << (int64_t)tmp << " " << (int64_t)ref[i] << endl;
+            }
+        }
     }
 }
 
@@ -737,9 +770,16 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 INPUT_DIM,
                 NL_ELL,
                 NL_SCALE);
-
-            nl.print_ss(softmax_output_row, 32, NL_ELL, NL_SCALE);
-            return {};
+                
+            // nl.reduce(
+            //     NL_NTHREADS,
+            //     softmax_output_row,
+            //     softmax_output_row,
+            //     softmax_size,
+            //     NL_ELL,
+            //     14,
+            //     NL_SCALE
+            // );
 
             #ifdef BERT_PERF
             t_total_softmax += interval(t_softmax);
@@ -766,11 +806,14 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             // nl.print_ss(softmax_output_row, 16, NL_ELL, NL_SCALE);
 
+            // FixArray softmax_input_pub = nl.to_public(softmax_output_row, softmax_size, NL_ELL, NL_SCALE);
+
             for(int i = 0; i < softmax_size; i++){
                 softmax_output_row[i] = 
                     neg_mod(signed_val(softmax_output_row[i], NL_ELL), (int64_t)lin.he_8192->plain_mod);
             }
 
+            // check_p_share(softmax_output_row, lin.he_8192->plain_mod, 12*128*128, softmax_input_pub.data);
 
             // print_p_share(v_matrix_row, lin.he_8192->plain_mod, 16);
             // print_p_share(softmax_output_row, lin.he_8192->plain_mod, 16);
@@ -794,12 +837,15 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 att_size,
                 NL_ELL,
                 23,
-                23
+                6
             );
 
+            // FixArray softmax_v_row_pub = nl.to_public(softmax_v_row, att_size, NL_ELL, 6);
+            // save_to_file(softmax_v_row_pub.data, 768*128, 1, replace_2("softmax_v_X.txt", "X", to_string(layer_id)).c_str());
+
             // print_p_share(softmax_v_row, lin.he_8192->plain_mod, 16);
-            nl.print_ss(softmax_v_row, 16, NL_ELL, 23);
-            return {};
+            // nl.print_ss(softmax_v_row, 16, NL_ELL, 23);
+            // return {};
 
             // // Rescale to 6
             // nl.n_matrix_mul_iron(

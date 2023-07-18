@@ -1255,13 +1255,13 @@ FixArray FixOp::poly1(const FixArray& p){
 
   FixArray p_arg2_pow2 = this->mul(p_arg2, p_arg2, ell + scale, all_0.data, all_0.data);
   // Optimization: local truncation
-  p_arg2_pow2 =  this->truncate_reduce(p_arg2_pow2, scale, all_0.data);
+  p_arg2_pow2 =  this->truncate_reduce(p_arg2_pow2, scale);
   // p_arg2_pow2 =  this->reduce(p_arg2_pow2, ell);
   // print_fix(p_arg2_pow2);
 
   FixArray arg1_p_arg2 = this->mul(p_arg2_pow2, arg1, ell + scale, all_0.data, all_0.data);
   // Optimization: local truncation
-  arg1_p_arg2 =  this->truncate_reduce(arg1_p_arg2, scale, all_0.data);
+  arg1_p_arg2 =  this->truncate_reduce(arg1_p_arg2, scale);
   // arg1_p_arg2 =  this->reduce(arg1_p_arg2, ell);
   // print_fix(arg1_p_arg2);
 
