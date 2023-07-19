@@ -47,8 +47,9 @@ add_test_OT(matmul)
 # target_link_libraries(math-float SCI-FloatingPoint ${MPFR_LIBRARIES}) 
 
 # # add_subdirectory(GC)
-add_subdirectory(activation)
+# add_subdirectory(activation)
 add_subdirectory(bert)
+add_subdirectory(bert_iron)
 
 # macro(add_test_secfloat name)
 # 	add_executable(${name}-secfloatml "test_floatml_${name}.cpp")
