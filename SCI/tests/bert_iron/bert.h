@@ -18,6 +18,7 @@
 
 #define BERT_DEBUG
 // #define BERT_TIMING
+// #define BERT_SAVE_RESULTS
 
 using namespace std;
 

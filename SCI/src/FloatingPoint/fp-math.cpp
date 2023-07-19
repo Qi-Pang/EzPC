@@ -1758,7 +1758,7 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
   x_avg_sigma = fix->add(x_avg_sigma, b);
 
   // Hack!
-  x_avg_sigma = fix->extend(x_avg_sigma, 64);
+  // x_avg_sigma = fix->extend(x_avg_sigma, 64);
 
   vector<FixArray> ret(N);
   for(int i = 0; i < N; i++){
