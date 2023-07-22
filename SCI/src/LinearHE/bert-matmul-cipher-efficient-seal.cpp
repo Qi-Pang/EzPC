@@ -889,6 +889,16 @@ vector<vector<vector<uint64_t>>> BEFCField::softmax_mask(const FCMetadata &data)
 // matrix is row-packed with 12 * 128 rows and 128 cols
 vector<vector<vector<Plaintext>>> BEFCField::preprocess_softmax_s2(const uint64_t *matrix, const FCMetadata &data, vector<vector<vector<uint64_t>>> &mask) {
 
+    uint64_t *new_matrix = new uint64_t[128 * 12 * 128];
+    for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
+        for (int i = 0; i < 128; i++) {
+            for (int j = 0; j < 128; j++) {
+                new_matrix[i * 128 + j + 128 * 128 * packing_ind] = matrix[j * 128 + i + 128 * 128 * packing_ind];
+            }
+        }
+    }
+    matrix = new_matrix;
+
     int num_diag = data.image_size;
     int num_diag_per_ct = data.slot_count / data.image_size;
     vector<vector<vector<Plaintext>>> s2_pack(12);
@@ -978,10 +988,9 @@ vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> BEFCField::pr
     return R_pack;
 }
 
-uint64_t* BEFCField::client_S1_V_R(const uint64_t *softmax_s1, vector<Ciphertext> &V, const FCMetadata &data) {
+uint64_t* BEFCField::client_S1_V_R(const uint64_t *softmax_s1, uint64_t* V_R, const FCMetadata &data) {
     uint64_t* result = new uint64_t[12 * data.image_size * data.filter_w];
     // vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>> (data.image_size, vector<uint64_t> (data.filter_w)));
-    auto V_R = bert_postprocess_V(V, data, true);
     int total_packing = 12;
     for (int packing_num = 0; packing_num < total_packing; packing_num++) {
         #pragma omp parallel for
@@ -989,8 +998,8 @@ uint64_t* BEFCField::client_S1_V_R(const uint64_t *softmax_s1, vector<Ciphertext
             for(int j = 0; j < data.filter_w; j++) {
                 result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] = 0;
                 for(int k = 0; k < data.image_size; k++) {
-                    result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] += neg_mod((int64_t)softmax_s1[(packing_num * data.image_size + i) * data.image_size + k] * V_R[k + j * data.image_size + data.image_size * data.filter_w * packing_num], (int64_t)prime_mod);
-                    result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] = neg_mod((int64_t)result[packing_num * data.image_size * data.filter_w + i + j * data.image_size], (int64_t)prime_mod);
+                    result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] = neg_mod((int64_t)softmax_s1[(packing_num * data.image_size + i) * data.image_size + k] * V_R[k + j * data.image_size + data.image_size * data.filter_w * packing_num] + (int64_t)result[packing_num * data.image_size * data.filter_w + i + j * data.image_size], (int64_t)prime_mod);
+                    // result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] = neg_mod((int64_t)result[packing_num * data.image_size * data.filter_w + i + j * data.image_size], (int64_t)prime_mod);
                 }
             }
         }
@@ -1258,15 +1267,37 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         auto io_checkpoint = io->counter;
 
+        PRG128 prg;
+        uint64_t *secret_share = new uint64_t[128 * 12 * 128];
+        prg.random_mod_p<uint64_t>(secret_share, 128 * 12 * 128, prime_mod);
+
+        cout << "client random " << secret_share[1] << endl;
+
+        uint64_t *secret_share_v = new uint64_t[128 * 12 * 64];
+        prg.random_mod_p<uint64_t>(secret_share_v, 128 * 12 * 64, prime_mod);
+
+        io->send_data(secret_share, (128*128*12)*sizeof(uint64_t));
+        io->send_data(secret_share_v, (128*64*12)*sizeof(uint64_t));
+
         uint64_t *softmax_s1 = new uint64_t[128 * 12 * 128];
         for (int i = 0; i < 128 * 12; i++) {
             for (int j = 0; j < 128; j++) {
-                softmax_s1[i * 128 + j] = (i * 100 + j) % 1000;
+                softmax_s1[i * 128 + j] = neg_mod((int64_t)((i * 100 + j) - secret_share[i * 128 + j]), (int64_t)prime_mod);
             }
         }
         vector<Ciphertext> S1_pack = preprocess_softmax_s1(softmax_s1, data);
 
-        auto S1_V_R = client_S1_V_R(softmax_s1, V, data);
+        auto V_R = bert_postprocess_V(V, data, true);
+        for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
+            for (int i = 0; i < 128; i++) {
+                for (int j = 0; j < 64; j++) {
+                    V_R[packing_ind * 128 * 64 + i + j * 128] -= secret_share_v[packing_ind * 128 * 64 + i * 64 + j];
+                    V_R[packing_ind * 128 * 64 + i + j * 128] = neg_mod((int64_t)V_R[packing_ind * 128 * 64 + i + j * 128], (int64_t)prime_mod);
+                }
+            }
+        }
+
+        auto S1_V_R = client_S1_V_R(softmax_s1, V_R, data);
 
         send_encrypted_vector(io, S1_pack);
 
@@ -1469,11 +1500,23 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
         auto io_checkpoint = io->counter;
 
         uint64_t *softmax_S2 = new uint64_t[128 * 12 * 128];
-        for (int i = 0; i < 128 * 12; i++) {
-            for (int j = 0; j < 128; j++) {
-                softmax_S2[i * 128 + j] = i * 1000 + j;
-            }
-        }
+        io->recv_data(softmax_S2, (128*128*12)*sizeof(uint64_t));
+        // for (int i = 0; i < 128 * 12; i++) {
+        //     for (int j = 0; j < 128; j++) {
+        //         softmax_S2[i * 128 + j] = i * 1000 + j;
+        //     }
+        // }
+        cout << "server random " << softmax_S2[1] << endl;
+
+        uint64_t *softmax_v_r = new uint64_t[128 * 12 * 64];
+        io->recv_data(softmax_v_r, (128*64*12)*sizeof(uint64_t));
+        
+        // for (int i = 0; i < 128 * 12; i++) {
+        //     for (int j = 0; j < 64; j++) {
+        //         softmax_v_r[i * 64 + j] = (i * 100 + j);
+        //     }
+        // }
+
         auto soft_mask = softmax_mask(data);
 
         #ifdef HE_TIMING
@@ -1484,13 +1527,6 @@ void BEFCField::matrix_multiplication(int32_t input_dim,
 
         vector<Ciphertext> S1_pack(data.image_size * data.image_size / data.slot_count * 12);
         recv_encrypted_vector(context, io, S1_pack);
-
-        uint64_t *softmax_v_r = new uint64_t[128 * 12 * 64];
-        for (int i = 0; i < 128 * 12; i++) {
-            for (int j = 0; j < 64; j++) {
-                softmax_v_r[i * 64 + j] = (i * 100 + j) % 1000;
-            }
-        }
 
         vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> R_pack = preprocess_softmax_v_r(softmax_v_r, data);
 

@@ -141,26 +141,32 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BEAttCtPt::bert_cross
 
     int n1;
     int n2;
-    if (data.slot_count == 4096) {
+    if (data.filter_h == 3072 && data.filter_w == 768) {
         n1 = 2;
-        n2 = 8;
-    }
-    else {
-        if (data.filter_h == 3072 && data.filter_w == 768) {
-            n1 = 2;
+        n2 = 16;
+        if (data.image_size == 64) {
+            n1 = 4;
             n2 = 16;
         }
-        else if (data.filter_h == 768 && data.filter_w == 3072) {
-            n1 = 8;
+    }
+    else if (data.filter_h == 768 && data.filter_w == 3072) {
+        n1 = 8;
+        n2 = 4;
+        if (data.image_size == 64) {
+            n1 = 16;
             n2 = 4;
         }
-        else if (data.filter_h == 768 && data.filter_w == 768) {
-            n1 = 4;
+    }
+    else if (data.filter_h == 768 && data.filter_w == 768) {
+        n1 = 4;
+        n2 = 8;
+        if (data.image_size == 64) {
+            n1 = 8;
             n2 = 8;
         }
-        else {
-            assert (0);
-        }
+    }
+    else {
+        assert (0);
     }
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
@@ -254,27 +260,34 @@ void BEAttCtPt::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vect
     vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1;
     int n2;
-    if (data.slot_count == 4096) {
+    if (data.filter_h == 3072 && data.filter_w == 768) {
         n1 = 2;
-        n2 = 8;
-    }
-    else {
-        if (data.filter_h == 3072 && data.filter_w == 768) {
-            n1 = 2;
+        n2 = 16;
+        if (data.image_size == 64) {
+            n1 = 4;
             n2 = 16;
         }
-        else if (data.filter_h == 768 && data.filter_w == 3072) {
-            n1 = 8;
+    }
+    else if (data.filter_h == 768 && data.filter_w == 3072) {
+        n1 = 8;
+        n2 = 4;
+        if (data.image_size == 64) {
+            n1 = 16;
             n2 = 4;
         }
-        else if (data.filter_h == 768 && data.filter_w == 768) {
-            n1 = 4;
+    }
+    else if (data.filter_h == 768 && data.filter_w == 768) {
+        n1 = 4;
+        n2 = 8;
+        if (data.image_size == 64) {
+            n1 = 8;
             n2 = 8;
         }
-        else {
-            assert (0);
-        }
     }
+    else {
+        assert (0);
+    }
+
     int num_diag = data.slot_count / data.image_size / 2;
     cout << "[Server] Online Start" << endl;
     auto t1 = high_resolution_clock::now();
@@ -499,7 +512,7 @@ void BEAttCtPt::matrix_multiplication(int32_t input_dim,
 
         // HACK
         for (int i = 0; i < 1; i++) {
-            for (int j = 0; j < 768; j++)
+            for (int j = 0; j < data.filter_w; j++)
                 cout << ((int64_t) HE_result[j] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
             cout << endl;
         }

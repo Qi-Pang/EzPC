@@ -13,8 +13,9 @@ int bitlength = 32;
 int num_threads = 16;
 int port = 8000;
 string address = "127.0.0.1";
-int input_dim = 128;
-int common_dim = 3072;
+// int input_dim = 128;
+int input_dim = 64;
+int common_dim = 768;
 int output_dim = 768;
 int filter_precision = 15;
 
@@ -98,11 +99,11 @@ void MatMul(BEAttCtPt &befc, int32_t input_dim, int32_t common_dim, int32_t outp
 
     // A = read_data("./bin/txt/X_quantize_0.txt");
     // B = read_data("./bin/txt/Q_quantize_0.txt");
-    assert (input_dim == 128);
+    assert (input_dim == 128 || input_dim == 64);
     if (common_dim == 3072 && output_dim == 768)
     {
-        // A = read_data("./bin/txt/random_X_inter1.txt");
-        A = read_data("/home/qipang/mnt/d1/clive/EzPC/inter_result/linear4_input.txt");
+        // A = read_data("/home/qipang/mnt/d1/clive/EzPC/inter_result/linear4_input.txt");
+        A = read_data("./bin/txt/random_X_inter1.txt");
         B = read_data("/home/qipang/mnt/d2/original/mrpc/weights_txt/bert.encoder.layer.0.output.dense.weight.txt");
         Bias = read_bias("/home/qipang/mnt/d2/original/mrpc/weights_txt/bert.encoder.layer.0.output.dense.bias.txt", output_dim);
     }
@@ -116,18 +117,22 @@ void MatMul(BEAttCtPt &befc, int32_t input_dim, int32_t common_dim, int32_t outp
         Bias = read_bias("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.intermediate.dense.bias.txt", output_dim);
     }
     else if (common_dim == 768 && output_dim == 768) {
-        // A = read_data("/home/qipang/mnt/d1/clive/EzPC/SCI/build/bin/weights_txt/softmax_v.txt");
+        A = read_data("/home/qipang/mnt/d1/clive/EzPC/SCI/build/bin/weights_txt/softmax_v.txt");
         // B = read_data("/home/qipang/mnt/d1/clive/EzPC/SCI/build/bin/weights_txt/bert.encoder.layer.0.attention.output.dense.weight.txt");
         // Bias = read_bias("/home/qipang/mnt/d1/clive/EzPC/SCI/build/bin/weights_txt/bert.encoder.layer.0.attention.output.dense.bias.txt", output_dim);
-        A = read_data("/home/qipang/mnt/d1/clive/EzPC/inter_result/linear2_input.txt");
-        B = read_data("/home/qipang/mnt/d2/original/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.weight.txt");
-        Bias = read_bias("/home/qipang/mnt/d2/original/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.bias.txt", output_dim);
+        // A = read_data("/home/qipang/mnt/d1/clive/EzPC/inter_result/linear2_input.txt");
+        // B = read_data("/home/qipang/mnt/d2/original/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.weight.txt");
+        // Bias = read_bias("/home/qipang/mnt/d2/original/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.bias.txt", output_dim);
         // A = read_data("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.weight.txt")
-        // B = read_data("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.weight.txt");
-        // Bias = read_bias("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.bias.txt", output_dim);
+        B = read_data("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.weight.txt");
+        Bias = read_bias("/home/qipang/mnt/d2/sparse/mrpc/weights_txt/bert.encoder.layer.0.attention.output.dense.bias.txt", output_dim);
     }
     else {
         assert (0);
+    }
+
+    if (input_dim == 64) {
+        A = {A.begin(), A.begin() + 64};
     }
 
     cout << "prime: " << prime_mod << endl;
