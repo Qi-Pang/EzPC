@@ -76,6 +76,32 @@ inline uint64_t Bert::get_round(){
     return ret_round;
 }
 
+string replace_2(string str, string substr1, string substr2) {
+    size_t index = str.find(substr1, 0); 
+    str.replace(index, substr1.length(), substr2);
+    return str;
+}
+
+void save_to_file(uint64_t* matrix, size_t rows, size_t cols, const char* filename) {
+    std::ofstream file(filename);
+    if (!file) {
+        std::cerr << "Could not open the file!" << std::endl;
+        return;
+    }
+
+    for (size_t i = 0; i < rows; ++i) {
+        for (size_t j = 0; j < cols; ++j) {
+            file << (int64_t)matrix[i * cols + j];
+            if (j != cols - 1) {
+                file << ',';
+            }
+        }
+        file << '\n';
+    }
+
+    file.close();
+}
+
 Bert::Bert(int party, int port, string address, string model_path){
     this->party = party;
     this->address = address;
@@ -515,6 +541,17 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 2*NL_SCALE
             );
 
+            #ifdef BERT_SAVE_RESULTS
+            FixArray q_matrix_row_pub = nl.to_public(q_matrix_row, v_size, NL_ELL, NL_SCALE);
+            FixArray k_matrix_row_pub = nl.to_public(k_trans_matrix_row, v_size, NL_ELL, NL_SCALE);
+            FixArray v_matrix_row_pub = nl.to_public(v_matrix_row, v_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(q_matrix_row_pub.data, v_size, 1, replace_2("./iron/q_matrix_X.txt", "X", to_string(layer_id)).c_str());
+                save_to_file(k_matrix_row_pub.data, v_size, 1, replace_2("./iron/k_matrix_X.txt", "X", to_string(layer_id)).c_str());
+                save_to_file(v_matrix_row_pub.data, v_size, 1, replace_2("./iron/v_matrix_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
+
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
@@ -552,7 +589,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                         int offset_row = j*INPUT_DIM;
                         for (int k = 0; k < INPUT_DIM; k++){
                             softmax_input_row[offset_nm + offset_row + k] += 
-                                softmax_mask[k] * 100;
+                                softmax_mask[k] * 4096;
                         }
                     }
                 }
@@ -590,6 +627,14 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE,
                 NL_SCALE
             );
+
+            #ifdef BERT_SAVE_RESULTS
+            FixArray softmax_v_row_pub = nl.to_public(softmax_v_row, att_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(softmax_v_row_pub.data, att_size, 1, replace_2("./iron/softmax_v_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
+
 
             lin.concat(softmax_v_row, h2_concate, 12, 128, 64); 
 
@@ -702,6 +747,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 2*NL_SCALE
             );
 
+            #ifdef BERT_SAVE_RESULTS
+            FixArray ln_input_row_pub = nl.to_public(ln_input_row, ln_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(ln_input_row_pub.data, ln_size, 1, replace_2("./iron/ln_input_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
+
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
@@ -725,6 +777,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 NL_SCALE
             );
+
+            #ifdef BERT_SAVE_RESULTS
+            FixArray ln_output_row_pub = nl.to_public(ln_output_row, ln_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(ln_output_row_pub.data, ln_size, 1, replace_2("./iron/ln_output_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
 
             #ifdef BERT_PERF
             t_total_ln_1 += interval(t_ln_1);
@@ -823,6 +882,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 2*NL_SCALE
             );
 
+            #ifdef BERT_SAVE_RESULTS
+            FixArray gelu_input_col_pub = nl.to_public(gelu_input_col, gelu_input_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(gelu_input_col_pub.data, gelu_input_size, 1, replace_2("./iron/gelu_input_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
+
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
@@ -838,6 +904,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 NL_SCALE
             );
+
+            #ifdef BERT_SAVE_RESULTS
+            FixArray gelu_output_col_pub = nl.to_public(gelu_output_col, gelu_input_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(gelu_output_col_pub.data, gelu_input_size, 1, replace_2("./iron/gelu_output_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
 
             #ifdef BERT_PERF
             t_total_gelu += interval(t_gelu);
@@ -936,6 +1009,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 2*NL_SCALE
             );
 
+            #ifdef BERT_SAVE_RESULTS
+            FixArray ln_2_input_row_pub = nl.to_public(ln_2_input_row, ln_2_input_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(ln_2_input_row_pub.data, ln_2_input_size, 1, replace_2("./iron/ln_2_input_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
+
             #ifdef BERT_PERF
             t_total_preproc += interval(t_preproc);
             c_shift += get_comm();
@@ -958,6 +1038,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 NL_SCALE
             );
+
+            #ifdef BERT_SAVE_RESULTS
+            FixArray ln_2_output_row_pub = nl.to_public(ln_2_output_row, ln_2_input_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(ln_2_output_row_pub.data, ln_2_input_size, 1, replace_2("./iron/ln_2_output_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
 
             #ifdef BERT_PERF
             t_total_ln_2 += interval(t_ln_2);

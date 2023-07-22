@@ -179,7 +179,6 @@ void gelu_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int 
   } else {
     this_party = party;
   }
-  BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   FixArray output = fpmath->gelu_approx_2(input);
   // output = fpmath->fix->extend(output, 64);
@@ -705,4 +704,52 @@ FixArray NonLinear::to_public(uint64_t* input, int length, int ell, int s){
   tmp = fpmath[0]->fix->extend(tmp, 64);
   tmp = fpmath[0]->fix->output(PUBLIC, tmp);
   return tmp;
+}
+
+void cancel_wrap_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  // FixArray input_2 = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  // for(int i =0; i < num_ops; i++){
+  //   input_2.data[i] -= 1 << (ell - 1);
+  //   input_2.data[i] &= input_2.ell_mask();
+  // }
+  // BoolArray wrap, zero_test;
+  // tie(wrap, zero_test) = fpmath->fix->wrap_and_zero_test(input);
+  FixArray output = fpmath->fix->extend(input, 27);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+
+void NonLinear::cancel_wrap(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s){
+  std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                cancel_wrap_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
 }

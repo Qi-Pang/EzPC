@@ -17,6 +17,7 @@
 
 // #define BERT_DEBUG
 #define BERT_PERF
+#define BERT_SAVE_RESULTS
 
 using namespace std;
 

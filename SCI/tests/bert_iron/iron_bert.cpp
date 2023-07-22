@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
         vector<double> result = bt.run("", "");
     }
     } else{
-        ofstream file("/home/ubuntu/EzPC/iron_testing.txt");
+        ofstream file("/home/ubuntu/clive/EzPC/iron_testing.txt");
         if (!file) {
             std::cerr << "Could not open the file!" << std::endl;
             return {};

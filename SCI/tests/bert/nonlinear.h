@@ -65,7 +65,11 @@ public:
 
     void reduce(int nthreads, uint64_t* input, uint64_t* output, int size, int ell_in, int ell_out, int s);
 
+    void cancel_wrap(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s);
+
     FixArray to_public(uint64_t* input, int length, int ell, int s);
+
+    
 
     // softmax_iron(vector<FixArray> input, int nthreads);
 
