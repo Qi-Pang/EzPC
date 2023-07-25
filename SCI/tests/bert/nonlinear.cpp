@@ -753,3 +753,99 @@ void NonLinear::cancel_wrap(int nthreads, uint64_t* input, uint64_t* output, int
         threads[i].join();
     }
 }
+
+void NonLinear::pruning(
+  uint64_t* l, 
+  int packing_num,
+  int l_dim,
+  int l_array_size, 
+  int l_ell, 
+  int l_s, 
+  uint64_t* softmax_v,
+  int sv_ell, 
+  int sv_s, 
+  uint64_t* h1,
+  int h1_ell, 
+  int h1_s, 
+  int input_dim,
+  int common_dim,
+  uint64_t* softmax_v_pruned,
+  uint64_t* h1_pruned){
+
+  assert(l_dim == input_dim);
+
+  FPMath *fpmath_ = this->fpmath[0];
+
+  FixArray sum_l = fpmath_->fix->input(party, l_dim, true, l_ell, l_s);
+
+  FixArray softmax_v_fix(party, input_dim*common_dim, true, sv_ell, sv_s);
+  FixArray h1_fix(party, input_dim*common_dim, true, h1_ell, h1_s);
+
+  for(int i = 0; i < packing_num; i++){
+    vector<FixArray> l_fix;
+    for(int j = 0; j < l_dim; j++){
+      int offset = i*l_dim*l_array_size + j*l_array_size;
+      l_fix.push_back(fpmath_->fix->input(party, l_array_size, &l[offset], true, l_ell, l_s));
+    }
+    sum_l = fpmath_->fix->add(sum_l, fpmath_->fix->tree_sum(l_fix));
+  }
+
+  FixArray sorted_sum_l;
+
+  tie(sorted_sum_l, std::ignore, std::ignore) = 
+    fpmath_->bitonic_sort_and_swap(sum_l, FixArray(), FixArray(), false);
+
+  int median_pos = (l_array_size/2) - 1;
+
+  FixArray median = fpmath_->fix->input(
+    party, 
+    sorted_sum_l.size, 
+    sorted_sum_l.data[median_pos],
+    sorted_sum_l.signed_, 
+    sorted_sum_l.ell, 
+    sorted_sum_l.s
+  );
+
+  FixArray all_0 = fpmath_->fix->input(
+    PUBLIC, 
+    sorted_sum_l.size, 
+    (uint64_t)0,
+    sorted_sum_l.signed_, 
+    sorted_sum_l.ell, 
+    sorted_sum_l.s
+  );
+
+  FixArray all_128 = fpmath_->fix->input(
+    PUBLIC, 
+    sorted_sum_l.size, 
+    (uint64_t)128,
+    sorted_sum_l.signed_, 
+    sorted_sum_l.ell, 
+    sorted_sum_l.s
+  );
+
+  FixArray indices = fpmath_->fix->input(
+    PUBLIC, 
+    sorted_sum_l.size, 
+    sorted_sum_l.signed_, 
+    sorted_sum_l.ell, 
+    sorted_sum_l.s
+  );
+
+  for(int i = 0; i < sorted_sum_l.size; i++){
+    indices.data[i] = i;
+  }
+
+  BoolArray cmp = fpmath_->fix->GT(sum_l, median);
+  FixArray indice_plus_scores = fpmath_->fix->if_else(cmp, all_128, all_0);
+  indice_plus_scores = fpmath_->fix->add(indice_plus_scores, indices);
+
+  FixArray res_softmax_v;
+  FixArray res_h1;
+
+  tie(std::ignore, res_softmax_v, res_h1) = 
+    fpmath_->bitonic_sort_and_swap(indice_plus_scores, softmax_v_fix, h1_fix, true);
+
+  memcpy(softmax_v_pruned, res_softmax_v.data, res_softmax_v.size*sizeof(uint64_t));
+  memcpy(h1_pruned, res_h1.data, res_h1.size*sizeof(uint64_t));
+}

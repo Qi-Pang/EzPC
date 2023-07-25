@@ -13,13 +13,12 @@
 
 #define GELU_ELL 20
 #define NL_SCALE 12
-
-
 #define NUM_CLASS 2
 
 // #define BERT_DEBUG
 #define BERT_PERF
 // #define BERT_SAVE_RESULTS
+
 
 using namespace std;
 
@@ -35,7 +34,9 @@ public:
     Linear lin;
     NonLinear nl;
 
-    Bert(int party, int port, string address, string model_path);
+    bool prune;
+
+    Bert(int party, int port, string address, string model_path, bool prune = false);
     ~Bert();
 
 

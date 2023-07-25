@@ -150,16 +150,18 @@ void print_ct(HE* he, Ciphertext &ct, int len){
     print_pt(he, pt, len);
 }
 
-Bert::Bert(int party, int port, string address, string model_path){
+Bert::Bert(int party, int port, string address, string model_path, bool prune){
     this->party = party;
     this->address = address;
     this->port = port;
     this->io = new NetIO(party == 1 ? nullptr : address.c_str(), port);
 
     cout << "> Setup Linear" << endl;
-    this->lin = Linear(party, io);
+    this->lin = Linear(party, io, prune);
     cout << "> Setup NonLinear" << endl;
     this->nl = NonLinear(party, address, port+1);
+
+    this->prune = prune;
 
     if(party == ALICE){
         cout << "> Loading and preprocessing weights on server" << endl;
@@ -454,17 +456,8 @@ void Bert::softmax_v(
 
         recv_encrypted_vector(he->context, io, enc_s1_pack);
 
-        uint64_t* s_v_row = new uint64_t[12*128*64];
-        for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
-            for (int i = 0; i < 128; i++) {
-                for (int j = 0; j < 64; j++) {
-                    s_v_row[i * 64 + j + packing_ind * 128 * 64] = s_v[i + j * 128 + packing_ind * 128 * 64];
-                }
-            }
-        }
-
-        vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> R_pack = 
-            lin.preprocess_softmax_v_r(he, s_v_row, data);
+        vector<vector<vector<Plaintext>>> R_pack = 
+            lin.preprocess_softmax_v_r(he, s_v, data);
 
         vector<Ciphertext> softmax_V_result(12 * data.image_size * data.filter_w / data.slot_count);
 
@@ -574,11 +567,17 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     // Server: Alice
     // Client: Bob
 
+    int input_dim = INPUT_DIM;
+    if (prune){
+        input_dim /= 2;
+    }
+
     vector<uint64_t> softmax_mask;
-    uint64_t h1_cache_12[INPUT_DIM*COMMON_DIM] = {0};
-    uint64_t h4_cache_12[INPUT_DIM*COMMON_DIM] = {0};
+    uint64_t h1_cache_12[input_dim*COMMON_DIM] = {0};
+    uint64_t h4_cache_12[input_dim*COMMON_DIM] = {0};
     uint64_t h98[COMMON_DIM] = {0};
-    vector<Ciphertext> h1(12);
+
+    vector<Ciphertext> h1;
     vector<Ciphertext> h2;
     vector<Ciphertext> h4;
     vector<Ciphertext> h6;
@@ -596,6 +595,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     if(party == ALICE){
         // -------------------- Preparing -------------------- //
         // Receive cipher text input
+        int cts_size = INPUT_DIM*COMMON_DIM / lin.data_lin1_0.slot_count;
+        h1.resize(cts_size);
+        
         recv_encrypted_vector(lin.he_8192->context, io, h1);
         cout << "> Receive input cts from client " << endl;
     } else{
@@ -614,7 +616,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
         // Send cipher text input
         vector<Ciphertext> h1_cts = 
-            lin.bert_efficient_preprocess_vec(lin.he_8192, input_col, lin.data_lin1);
+            lin.bert_efficient_preprocess_vec(lin.he_8192, input_col, lin.data_lin1_0);
         send_encrypted_vector(io, h1_cts);
     }
 
@@ -622,18 +624,51 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
         {
             // -------------------- Linear #1 -------------------- //
-            int qk_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-            int v_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;
-            int softmax_size = PACKING_NUM*INPUT_DIM*INPUT_DIM;
-            int att_size = PACKING_NUM*INPUT_DIM*OUTPUT_DIM;  
+            // w/ input pruning
+
+            // Layer 0:
+            // softmax input: 12*128*128
+            // softmax output: 128*128*128
+            // v: 12*128*64
+            // softmax_v: 12*128*64
+
+            // softmax_v(pruned): 12*64*64
+
+            // Layer 1-11:
+            // softmax input: 12*64*64
+            // softmax output: 128*64*64
+            // v: 12*64*64
+            // softmax_v: 12*64*64
+
+            // w/o input pruning
+            
+            // Layer 0-11:
+            // softmax input: 12*128*128
+            // softmax output(pruned): 128*128*128
+            // v: 12*128*64
+            // softmax_v: 12*128*64
+
+            FCMetadata data = lin.data_lin1_0;
+            if(layer_id > 0){
+                data = lin.data_lin1_1;
+            }
+
+            int softmax_dim = data.image_size;
+
+            int qk_size = PACKING_NUM*softmax_dim*softmax_dim;
+            int v_size = PACKING_NUM*softmax_dim*OUTPUT_DIM;
+
+            int softmax_output_size = PACKING_NUM*softmax_dim*softmax_dim;
+            int softmax_v_size = PACKING_NUM*OUTPUT_DIM*OUTPUT_DIM;  
+
             int qk_v_size = qk_size + v_size;
             uint64_t* qk_v_cross = new uint64_t[qk_v_size];
             uint64_t* v_matrix_row = new uint64_t[v_size];
             uint64_t* softmax_input_row = new uint64_t[qk_size];
-            uint64_t* softmax_output_row = new uint64_t[softmax_size];
-            uint64_t* softmax_v_row = new uint64_t[att_size];
-            uint64_t* h2_concate = new uint64_t[att_size];
-            uint64_t* h2_col = new uint64_t[att_size];
+            uint64_t* softmax_output_row = new uint64_t[softmax_output_size];
+            uint64_t* softmax_v_row = new uint64_t[softmax_v_size];
+            uint64_t* h2_concate = new uint64_t[softmax_v_size];
+            uint64_t* h2_col = new uint64_t[softmax_v_size];
             vector<Ciphertext> enc_v;
                     
             if(party == ALICE){
@@ -645,14 +680,14 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     lin.he_8192,
                     h1,
                     lin.pp_1[layer_id],
-                    lin.data_lin1
+                    data
                 );
                 #ifdef BERT_PERF
                 t_total_linear1 += interval(t_linear1);
                 #endif 
                 cout << "-> Layer - " << layer_id << ": Linear #1 done HE" << endl;
 
-                int qk_offset = lin.data_lin1.image_size * lin.data_lin1.image_size / lin.data_lin1.slot_count * 12;
+                int qk_offset = data.image_size * data.filter_w * 12 * 2 / data.slot_count;
 
                 enc_v = { q_k_v.begin() + qk_offset, q_k_v.end()};
 
@@ -669,8 +704,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             } else{
                 int qk_cts_len = qk_size / lin.he_8192->poly_modulus_degree;
                 int v_cts_len = v_size / lin.he_8192->poly_modulus_degree;
-                he_to_ss_client(lin.he_8192, qk_v_cross, qk_cts_len, lin.data_lin1);
-                he_to_ss_client(lin.he_8192, &qk_v_cross[qk_size], v_cts_len, lin.data_lin1);
+                he_to_ss_client(lin.he_8192, qk_v_cross, qk_cts_len, data);
+                he_to_ss_client(lin.he_8192, &qk_v_cross[qk_size], v_cts_len, data);
             }
 
             #ifdef BERT_PERF
@@ -689,13 +724,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 softmax_input_row,
                 // we need row packing
                 false,
-                lin.data_lin1);
+                data);
             
             lin.plain_cross_packing_postprocess_v(
                 &qk_v_cross[qk_size], 
                 v_matrix_row,
                 true,
-                lin.data_lin1);
+                data);
 
             // Scale: Q*V 22 
             nl.gt_p_sub(
@@ -757,26 +792,28 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             if (party == BOB){
                 // Add mask
                 for(int i = 0; i < PACKING_NUM; i++){
-                    int offset_nm = i*INPUT_DIM*INPUT_DIM;
-                    for(int j = 0; j < INPUT_DIM; j++){
-                        int offset_row = j*INPUT_DIM;
-                        for (int k = 0; k < INPUT_DIM; k++){
+                    int offset_nm = i*softmax_dim*softmax_dim;
+                    for(int j = 0; j < softmax_dim; j++){
+                        int offset_row = j*softmax_dim;
+                        for (int k = 0; k < softmax_dim; k++){
                             softmax_input_row[offset_nm + offset_row + k] += 
-                                softmax_mask[k] * 100;
+                                softmax_mask[k] * 4096;
                         }
                     }
                 }
             }
 
             // Softmax
+            // BUGGY
             nl.softmax(
                 NL_NTHREADS,
                 softmax_input_row,
                 softmax_output_row,
-                12*INPUT_DIM,
-                INPUT_DIM,
+                12*softmax_dim,
+                softmax_dim,
                 NL_ELL,
-                NL_SCALE);
+                NL_SCALE,
+                prune);
 
             #ifdef BERT_PERF
             t_total_softmax += interval(t_softmax);
@@ -785,7 +822,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             auto t_mul_v = high_resolution_clock::now();
             #endif 
 
-            for(int i = 0; i < softmax_size; i++){
+            for(int i = 0; i < softmax_output_size; i++){
                 softmax_output_row[i] = 
                     neg_mod(signed_val(softmax_output_row[i], NL_ELL), (int64_t)lin.he_8192->plain_mod);
             }
@@ -796,7 +833,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 softmax_output_row,
                 v_matrix_row,
                 softmax_v_row,
-                lin.data_lin1
+                data
             );
 
             nl.gt_p_sub(
@@ -804,11 +841,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 softmax_v_row,
                 lin.he_8192->plain_mod,
                 softmax_v_row,
-                att_size,
+                softmax_v_size,
                 NL_ELL,
                 23,
                 6
             );
+
+            // pruning
 
             #ifdef BERT_SAVE_RESULTS
             FixArray softmax_v_row_pub = nl.to_public(softmax_v_row, att_size, NL_ELL, NL_SCALE);
@@ -863,12 +902,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 h2 = ss_to_he_server(
                     lin.he_8192_tiny, 
                     softmax_v_row,
-                    att_size, 
+                    softmax_v_size, 
                     NL_ELL);
             } else{
                 ss_to_he_client(
                     lin.he_8192_tiny, 
-                    softmax_v_row, att_size, 
+                    softmax_v_row, 
+                    softmax_v_size, 
                     NL_ELL);
             }
             delete [] qk_v_cross;
@@ -882,6 +922,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
         // -------------------- Linear #2 -------------------- //
         {
+            FCMetadata data = lin.data_lin2;
+
             int ln_size = INPUT_DIM*COMMON_DIM;
             int ln_cts_size = ln_size / lin.he_8192_tiny->poly_modulus_degree;
             uint64_t* ln_input_cross = new uint64_t[ln_size];
@@ -901,7 +943,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     lin.he_8192_tiny,
                     h2, 
                     lin.pp_2[layer_id],
-                    lin.data_lin2
+                    data
                 );
                 #ifdef BERT_PERF
                 t_total_linear2 += interval(t_linear2);
@@ -932,7 +974,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 ln_input_cross,
                 ln_input_row,
                 false,
-                lin.data_lin2
+                data
             );
 
             #ifdef BERT_PERF
@@ -1055,6 +1097,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
         // -------------------- Linear #3 -------------------- //
         {
+            FCMetadata data = lin.data_lin3;
+
             int gelu_input_size = 128*3072;
             int gelu_cts_size = gelu_input_size / lin.he_8192_tiny->poly_modulus_degree;
             uint64_t* gelu_input_cross =
@@ -1073,7 +1117,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 lin.he_8192_tiny,
                 h4, 
                 lin.pp_3[layer_id],
-                lin.data_lin3
+                data
                 );
                 #ifdef BERT_PERF
                 t_total_linear3 += interval(t_linear3);
@@ -1081,7 +1125,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h5, gelu_input_cross, true);
             } else{
-                he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, lin.data_lin3);
+                he_to_ss_client(lin.he_8192_tiny, gelu_input_cross, gelu_cts_size, data);
             }
 
             #ifdef BERT_PERF
@@ -1095,7 +1139,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 gelu_input_cross,
                 gelu_input_col,
                 true,
-                lin.data_lin3
+                data
             );
 
             #ifdef BERT_PERF
@@ -1248,6 +1292,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         }
 
         {
+            FCMetadata data = lin.data_lin4;
+
             int ln_2_input_size = INPUT_DIM*COMMON_DIM;
             int ln_2_cts_size = ln_2_input_size/lin.he_8192_tiny->poly_modulus_degree;
 
@@ -1273,7 +1319,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     lin.he_8192_tiny,
                     h6, 
                     lin.pp_4[layer_id],
-                    lin.data_lin4
+                    data
                 );
                 
                 #ifdef BERT_PERF
@@ -1290,7 +1336,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     ln_bias_2
                 );
             } else{
-                he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, lin.data_lin4);
+                he_to_ss_client(lin.he_8192_tiny, ln_2_input_cross, ln_2_cts_size, data);
                 ln_share_client(
                     ln_weight_2,
                     ln_bias_2
@@ -1307,7 +1353,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 ln_2_input_cross,
                 ln_2_input_row,
                 false,
-                lin.data_lin4
+                data
             );
 
             #ifdef BERT_PERF

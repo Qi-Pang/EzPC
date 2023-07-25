@@ -1789,3 +1789,138 @@ FixArray FPMath::gt_p_sub(const FixArray& x, const FixArray& p){
 void FPMath::print(const FixArray& x){
   print_fix(x);
 }
+
+BoolArray bitonic_reverse(const BoolArray &x, int array_size, int cur_depth){
+  BoolArray ret(x.party, x.size);
+  int block_size = 2*cur_depth;
+  int num_block = array_size / block_size;
+  for(int i = 0; i < num_block; i++){
+    if(i % 2 == 1){
+      for(int j = 0; j < cur_depth; j++){
+        int index = i*cur_depth + j;
+        ret.data[index] = x.data[index] ^ ((x.party != BOB) ? 1 : 0);
+      }
+    }
+  }
+  return ret;
+}
+
+tuple<FixArray, FixArray, FixArray> FPMath::bitonic_sort_and_swap(
+  const FixArray& x_, FixArray softmax_v_, FixArray h1_, bool swap){
+    FixArray x = x_;
+    FixArray softmax_v = softmax_v_;
+    FixArray h1 = h1_;
+
+    int array_size = x.size;
+    int max_depth = array_size / 2;
+    int cur_depth = 1;
+
+    int common_dim;
+
+    while(cur_depth <= max_depth){
+      int cur_iter = cur_depth;
+      while(cur_iter > 0){
+        int block_size = 2*cur_iter;
+        int num_block = array_size / block_size;
+
+        vector<int> index_left;
+        vector<int> index_right;
+
+        FixArray array_left(party, x.size / 2, x.signed_, x.ell, x.s);
+        FixArray array_right(party, x.size / 2, x.signed_, x.ell, x.s);
+        FixArray array_reverse(party, x.size, x.signed_, x.ell, x.s);
+
+        FixArray softmax_v_reverse;
+        FixArray h1_reverse;
+
+        if(swap){
+          common_dim = softmax_v.size / x.size;
+          assert(common_dim = 768);
+
+          softmax_v_reverse = fix->input(party, softmax_v.size, softmax_v.signed_, softmax_v.ell, softmax_v.s);
+          h1_reverse = fix->input(party, h1.size, h1.signed_, h1.ell, h1.s);
+
+          for(int i = 0; i < num_block; i++){
+            for(int j = 0; j < cur_iter; j++){
+              int pos_x = i*block_size + j;
+              int pos_y = i*block_size + j + cur_iter;
+              index_left.push_back(pos_x);
+              index_right.push_back(pos_y);
+              array_reverse.data[pos_x] = x.data[pos_y];
+              array_reverse.data[pos_y] = x.data[pos_x];
+
+              memcpy(
+                &softmax_v_reverse.data[pos_x*common_dim], 
+                &softmax_v.data[pos_y*common_dim], 
+                common_dim*sizeof(uint64_t)
+              );
+
+              memcpy(
+                &softmax_v_reverse.data[pos_y*common_dim], 
+                &softmax_v.data[pos_x*common_dim], 
+                common_dim*sizeof(uint64_t)
+              );
+
+              memcpy(
+                &h1_reverse.data[pos_x*common_dim], 
+                &h1.data[pos_y*common_dim], 
+                common_dim*sizeof(uint64_t)
+              );
+
+              memcpy(
+                &h1_reverse.data[pos_y*common_dim], 
+                &h1.data[pos_x*common_dim], 
+                common_dim*sizeof(uint64_t)
+              );
+
+            }
+          }
+        } else{
+          for(int i = 0; i < num_block; i++){
+            for(int j = 0; j < cur_iter; j++){
+              index_left.push_back(i*block_size + j);
+              index_right.push_back(i*block_size + j + cur_iter);
+              array_reverse.data[i*block_size + j] = x.data[i*block_size + j + cur_iter];
+              array_reverse.data[i*block_size + j + cur_iter] = x.data[i*block_size + j];
+            }
+          }
+        }
+
+        for(int i = 0; i < array_size / 2; i++){
+          array_left.data[i] = x.data[index_left[i]];
+          array_right.data[i] = x.data[index_right[i]];
+        }
+
+        BoolArray lt = fix->LT(array_left, array_right);
+        BoolArray cmp_extend = BoolArray(party, lt.size*2);
+
+        // Reverse some comparisons
+        BoolArray cmp = bitonic_reverse(lt, array_size, cur_depth);
+        for(int i = 0; i < num_block; i++){
+          for(int j = 0; j < cur_iter; j++){
+            cmp_extend.data[i*block_size + j] = 
+              cmp.data[i*cur_iter + j];
+            cmp_extend.data[i*block_size + j + cur_iter] = 
+              cmp.data[i*cur_iter + j];
+          }
+        }
+
+        x = fix->if_else(cmp_extend, x, array_reverse);
+
+        if(swap){
+          BoolArray cmp_flat = BoolArray(party, cmp_extend.size*common_dim);
+          for(int i = 0; i < cmp_flat.size; i++){
+            cmp_flat.data[i] = cmp_extend.data[i / common_dim];
+          }
+
+          softmax_v = fix->if_else(cmp_extend, softmax_v, softmax_v_reverse);
+          h1 = fix->if_else(cmp_extend, h1, h1_reverse);
+        }
+
+        cur_iter /= 2;
+      }
+      cur_depth*=2;
+    }
+
+    return make_tuple(x, softmax_v, h1);
+}

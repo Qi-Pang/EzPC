@@ -39,10 +39,15 @@ struct FCMetadata
 };
 
 struct PreprocessParams_1{
-    vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats;
-	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> cross_mats_single;
-	vector<vector<Plaintext>> bias_packing;
-    vector<Plaintext> cross_masks;
+   	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> wq_pack;
+	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> wk_pack;
+	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> wv_pack;
+
+	vector<vector<Plaintext>> bq_pack;
+	vector<vector<Plaintext>> bk_pack;
+	vector<vector<Plaintext>> bv_pack;
+
+	vector<Plaintext> cross_masks;
 };
 
 struct PreprocessParams_2{
@@ -55,7 +60,8 @@ class Linear
 public:
 	int party;
 	NetIO *io;
-	FCMetadata data;
+
+	bool prune;
 
 	HE *he_8192;
 	HE *he_8192_tiny;
@@ -64,7 +70,9 @@ public:
 	// Fix linking error
 	uint64_t p_mod;
 
-	FCMetadata data_lin1;
+	FCMetadata data_lin1_0;
+	FCMetadata data_lin1_1;
+
     FCMetadata data_lin2;
     FCMetadata data_lin3;
     FCMetadata data_lin4;
@@ -92,7 +100,7 @@ public:
 
 	Linear();
 
-	Linear(int party, NetIO *io);
+	Linear(int party, NetIO *io, bool prune);
 
 	~Linear();
 
@@ -230,12 +238,11 @@ public:
 		const uint64_t *const *matrix2,
 		const FCMetadata &data);
 
-	pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>
+	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>>
 	bert_cross_packing_single_matrix(
 		HE* he,
-		const uint64_t *const *matrix1,
-		const uint64_t *const *matrix2,
-		const FCMetadata &data, const bool &softmax_V_flag);
+		const vector<vector<vector<uint64_t>>> &weights, 
+		const FCMetadata &data);
 	
 	pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>
 	bert_cross_packing_single_matrix_2(
@@ -244,12 +251,11 @@ public:
 		const uint64_t *const *matrix2,
 		const FCMetadata &data);
 
-	vector<Plaintext> bert_cross_packing_bias(
+	vector<vector<Plaintext>> bert_cross_packing_bias(
 		HE* he,
-		const uint64_t *matrix1, 
-		const uint64_t *matrix2, 
-		const uint64_t *matrix3, 
+		const vector<vector<uint64_t>> &bias, 
 		const FCMetadata &data);
+
 	
 	vector<Plaintext> bert_cross_packing_bias_2(
 		HE* he,
@@ -260,10 +266,14 @@ public:
 		HE* he,
 		const vector<Ciphertext> &cts, 
 		const vector<pair<vector<vector<Plaintext>>, 
-		vector<vector<Plaintext>>>> &cross_mats, 
-		const vector<vector<Plaintext>> &Bias, 
+		vector<vector<Plaintext>>>> &wq_pack, 
+		const vector<pair<vector<vector<Plaintext>>,
+		vector<vector<Plaintext>>>> &wk_pack, 
 		const vector<pair<vector<vector<Plaintext>>, 
-		vector<vector<Plaintext>>>> &cross_mats_single, 
+		vector<vector<Plaintext>>>> &wv_pack, 
+		const vector<vector<Plaintext>> &bq_pack, 
+		const vector<vector<Plaintext>> &bk_pack, 
+		const vector<vector<Plaintext>> &bv_pack, 
 		const FCMetadata &data, 
 		vector<Ciphertext> &result);
 
@@ -298,15 +308,19 @@ public:
 	void bert_postprocess_V(HE* he,  uint64_t* input, uint64_t* result, const FCMetadata &data, const bool &col_packing);
 	void bert_postprocess_V_enc(HE* he, vector<Ciphertext> cts, uint64_t* result, const FCMetadata &data, const bool &col_packing);
 
-	vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> 
+	vector<vector<vector<Plaintext>>>
 	preprocess_softmax_v_r(HE* he, const uint64_t *matrix, const FCMetadata &data);
+
+	vector<vector<vector<Plaintext>>> bert_softmax_v_packing_single_matrix(
+		HE* he,
+		const vector<vector<vector<uint64_t>>> &weights, 
+		const FCMetadata &data);
 
 	void bert_softmax_V(
 		HE* he, vector<Ciphertext> &softmax_s1, 
 		vector<vector<vector<Plaintext>>> &softmax_s2, 
 		vector<Ciphertext> &V, 
-		vector<pair<vector<vector<Plaintext>>, 
-		vector<vector<Plaintext>>>> &R, 
+		vector<vector<vector<Plaintext>>> &R, 
 		const FCMetadata &data, 
 		vector<Ciphertext> &result);
 

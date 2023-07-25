@@ -98,6 +98,9 @@ public:
 
   FixArray sqrt(const FixArray& x, bool recp_sqrt);
 
+  tuple<FixArray, FixArray, FixArray> bitonic_sort_and_swap(
+    const FixArray& x, FixArray softmax_v_, FixArray h1_, bool swap);
+
   void print(const FixArray& x);
 
   // FixArray recip_approx(const FixArray& x);

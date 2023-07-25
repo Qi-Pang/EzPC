@@ -69,6 +69,24 @@ public:
 
     FixArray to_public(uint64_t* input, int length, int ell, int s);
 
+    void pruning(
+        uint64_t* l, 
+        int packing_num,
+        int l_dim,
+        int l_array_size, 
+        int l_ell, 
+        int l_s, 
+        uint64_t* softmax_v,
+        int sv_ell, 
+        int sv_s, 
+        uint64_t* h1,
+        int h1_ell, 
+        int h1_s, 
+        int input_dim,
+        int common_dim,
+        uint64_t* softmax_v_pruned,
+        uint64_t* h1_pruned);
+
     
 
     // softmax_iron(vector<FixArray> input, int nthreads);
