@@ -872,7 +872,9 @@ void NonLinear::pruning(
   tie(std::ignore, res_softmax_v, res_h1) = 
     fpmath_->bitonic_sort_and_swap(indice_plus_scores, softmax_v_fix, h1_fix, true);
 
+  // print_ss(res_softmax_v.data, 16, 37, 6);
+  // return;
+
   memcpy(softmax_v_pruned, res_softmax_v.data, res_softmax_v.size*sizeof(uint64_t) / 2);
   memcpy(h1_pruned, res_h1.data, res_h1.size*sizeof(uint64_t) / 2);
-
 }

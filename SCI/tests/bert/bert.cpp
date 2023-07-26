@@ -859,30 +859,37 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 23,
                 6
             );
-
+        
             int h2_col_size = PACKING_NUM*lin.data_lin1_1.image_size*OUTPUT_DIM;
             uint64_t* h2_col = new uint64_t[h2_col_size];
 
             if(prune && layer_id == 0){
 
                 for(int pack_id = 0; pack_id < PACKING_NUM; pack_id++){
-                    for(int i = 0; i < INPUT_DIM; i ++){
+                    // Why not working ?????????
+                    // for(int i = 0; i < INPUT_DIM; i++){
+                    for(int i = 0; i < data.image_size; i++){
                         for(int j = 0; j < OUTPUT_DIM; j++){
-                            int row_offset = pack_id*INPUT_DIM*OUTPUT_DIM + i*OUTPUT_DIM + j;
-                            int col_offset = pack_id*INPUT_DIM*OUTPUT_DIM + j*INPUT_DIM + i;
-                            softmax_v_row[row_offset] = softmax_v_col[col_offset];
-                        }
-                    }
-
-                    for(int i = 0; i < INPUT_DIM; i ++){
-                        for(int j = 0; j < INPUT_DIM; j++){
-                            int row_offset = pack_id*INPUT_DIM*INPUT_DIM + i*INPUT_DIM + j;
-                            int col_offset = pack_id*INPUT_DIM*INPUT_DIM + j*INPUT_DIM + i;
-                            softmax_l_col[row_offset] = softmax_l_row[col_offset];
+                            // int row_offset = pack_id*INPUT_DIM*OUTPUT_DIM + i*OUTPUT_DIM + j;
+                            // int col_offset = pack_id*INPUT_DIM*OUTPUT_DIM + j*INPUT_DIM + i;
+                            cout << "Why " << INPUT_DIM << " " << i << " " << j << endl;
+                            // softmax_v_row[row_offset] = softmax_v_col[col_offset];
                         }
                     }
                 }
 
+                for(int pack_id = 0; pack_id < PACKING_NUM; pack_id++){
+                    for(int i = 0; i < data.image_size; i++){
+                        cout << i << " " ;
+                        for(int j = 0; j < data.image_size; j++){
+                            // int row_offset = pack_id*INPUT_DIM*INPUT_DIM + i*INPUT_DIM + j;
+                            // int col_offset = pack_id*INPUT_DIM*INPUT_DIM + j*INPUT_DIM + i;
+                            // softmax_l_col[row_offset] = softmax_l_row[col_offset];
+                        }
+                    }
+                }
+
+                return {};
 
                 uint64_t* h2_row = new uint64_t[h2_col_size];
 
@@ -916,6 +923,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 memcpy(h2_col, softmax_v_col, h2_col_size*sizeof(uint64_t));
             }
 
+            nl.print_ss(h1_cache_12, 16, NL_ELL, 12);
             nl.print_ss(h2_col, 16, NL_ELL, 6);
             return {};
 
