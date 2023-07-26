@@ -28,7 +28,7 @@ public:
     NonLinear(int party, string address, int port);
     ~NonLinear();
 
-    void softmax(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s);
+    void softmax(int nthreads, uint64_t* input, uint64_t* output, uint64_t* l, int dim, int array_size, int ell, int s);
     void softmax_iron(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s);
 
     void layer_norm(int nthreads, uint64_t* input, uint64_t* output, uint64_t* weight, uint64_t* bias, int dim, int array_size, int ell, int s);

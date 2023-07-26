@@ -703,7 +703,6 @@ void Linear::bert_cipher_plain_bsgs(
 
     int num_diag = data.slot_count / data.image_size / 2;
     int num_matrix_per_col = data.filter_w / num_diag;
-    cout << "[Server] Online Start" << endl;
     
     omp_set_nested(1);
     #pragma omp parallel for num_threads(2)

@@ -27,7 +27,7 @@ NonLinear::~NonLinear(){
   }
 }
 
-void softmax_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
+void softmax_thread(int tid, int party, uint64_t *x, uint64_t *y, uint64_t* l, int num_ops, int array_size, int ell, int s, FPMath *fpmath) {
   int this_party;
   if (tid & 1) {
     this_party = 3 - party;
@@ -38,13 +38,18 @@ void softmax_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, i
   for(int i = 0; i < num_ops; i++){
     input_array.push_back(fpmath->fix->input(this_party, array_size, &x[i*array_size], true, ell, s));
   }
-  vector<FixArray> output_array = fpmath->softmax_fix(input_array);
+
+  vector<FixArray> output_array;
+  FixArray l_short;
+  tie(output_array, l_short) = fpmath->softmax_fix(input_array);
   for(int i = 0; i < num_ops; i++){
     memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
   }
+
+  memcpy(l, l_short.data, num_ops*array_size * sizeof(uint64_t));
 }
 
-void NonLinear::softmax(int nthreads, uint64_t* input, uint64_t* output, int dim, int array_size, int ell, int s){
+void NonLinear::softmax(int nthreads, uint64_t* input, uint64_t* output, uint64_t* l, int dim, int array_size, int ell, int s){
     std::thread threads[nthreads];
     int chunk_size = dim / nthreads;
     for (int i = 0; i < nthreads; ++i) {
@@ -62,6 +67,7 @@ void NonLinear::softmax(int nthreads, uint64_t* input, uint64_t* output, int dim
                 party, 
                 &input[offset*array_size], 
                 &output[offset*array_size], 
+                &l[offset*array_size], 
                 lnum_ops,
                 array_size,
                 ell,
@@ -776,21 +782,40 @@ void NonLinear::pruning(
 
   FPMath *fpmath_ = this->fpmath[0];
 
-  FixArray sum_l = fpmath_->fix->input(party, l_dim, true, l_ell, l_s);
 
-  FixArray softmax_v_fix(party, input_dim*common_dim, true, sv_ell, sv_s);
-  FixArray h1_fix(party, input_dim*common_dim, true, h1_ell, h1_s);
+  FixArray sum_l = fpmath_->fix->input(party, l_dim, (uint64_t)0 ,false, l_ell, l_s);
+  FixArray softmax_v_fix = fpmath_->fix->input(party, input_dim*common_dim, softmax_v, true, sv_ell, sv_s);
+  FixArray h1_fix= fpmath_->fix->input(party, input_dim*common_dim, h1, true, h1_ell, h1_s);
 
   for(int i = 0; i < packing_num; i++){
     vector<FixArray> l_fix;
     for(int j = 0; j < l_dim; j++){
       int offset = i*l_dim*l_array_size + j*l_array_size;
-      l_fix.push_back(fpmath_->fix->input(party, l_array_size, &l[offset], true, l_ell, l_s));
+      l_fix.push_back(fpmath_->fix->input(party, l_array_size, &l[offset], false, l_ell, l_s));
     }
     sum_l = fpmath_->fix->add(sum_l, fpmath_->fix->tree_sum(l_fix));
   }
 
+
   FixArray sorted_sum_l;
+
+  // FixArray sorted_tmp;
+  // FixArray tmp(party, 128, false, 16, 0);
+  // for(int i =0; i < 128; i++){
+  //   tmp.data[i] = 128 - i;
+  // }
+
+  // tie(sorted_tmp, std::ignore, std::ignore) = 
+  //   fpmath_->bitonic_sort_and_swap(tmp, FixArray(), FixArray(), false);
+
+  // print_ss(tmp.data, 8, 16, 0);
+  // print_ss(sorted_tmp.data, 8, 16, 0);
+  // return;
+
+  // A HACK: fix later
+
+  sum_l = fpmath_->fix->extend(sum_l, l_ell + 1);
+  sum_l.signed_ = true;
 
   tie(sorted_sum_l, std::ignore, std::ignore) = 
     fpmath_->bitonic_sort_and_swap(sum_l, FixArray(), FixArray(), false);
@@ -807,7 +832,7 @@ void NonLinear::pruning(
   );
 
   FixArray all_0 = fpmath_->fix->input(
-    PUBLIC, 
+    party, 
     sorted_sum_l.size, 
     (uint64_t)0,
     sorted_sum_l.signed_, 
@@ -816,17 +841,18 @@ void NonLinear::pruning(
   );
 
   FixArray all_128 = fpmath_->fix->input(
-    PUBLIC, 
+    party, 
     sorted_sum_l.size, 
-    (uint64_t)128,
+    (uint64_t)64,
     sorted_sum_l.signed_, 
     sorted_sum_l.ell, 
     sorted_sum_l.s
   );
 
   FixArray indices = fpmath_->fix->input(
-    PUBLIC, 
+    party, 
     sorted_sum_l.size, 
+    (uint64_t)0,
     sorted_sum_l.signed_, 
     sorted_sum_l.ell, 
     sorted_sum_l.s
@@ -846,6 +872,7 @@ void NonLinear::pruning(
   tie(std::ignore, res_softmax_v, res_h1) = 
     fpmath_->bitonic_sort_and_swap(indice_plus_scores, softmax_v_fix, h1_fix, true);
 
-  memcpy(softmax_v_pruned, res_softmax_v.data, res_softmax_v.size*sizeof(uint64_t));
-  memcpy(h1_pruned, res_h1.data, res_h1.size*sizeof(uint64_t));
+  memcpy(softmax_v_pruned, res_softmax_v.data, res_softmax_v.size*sizeof(uint64_t) / 2);
+  memcpy(h1_pruned, res_h1.data, res_h1.size*sizeof(uint64_t) / 2);
+
 }

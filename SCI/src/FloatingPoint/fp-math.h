@@ -64,7 +64,7 @@ public:
   vector<FPArray> softmax(const vector<FPArray>& x);
 
   FPArray exp3(const FPArray &x);
-  FixArray exp4(const FixArray &x);
+  std::tuple<FixArray, FixArray> exp4(const FixArray &x);
 
   FPArray sigmoid_bf16(const FPArray &x);
   FPArray sigmoid_fp32(const FPArray &x);
@@ -73,7 +73,7 @@ public:
 
   vector<FPArray> softmax_beacon(const vector<FPArray>& x);
   vector<FPArray> softmax_secfloat(const vector<FPArray>& x);
-  vector<FixArray> softmax_fix(const vector<FixArray>& x);
+  std::tuple<vector<FixArray>, FixArray> softmax_fix(const vector<FixArray>& x);
 
   vector<FixArray> softmax_fix_iron_1(const vector<FixArray>& x);
   
@@ -98,7 +98,7 @@ public:
 
   FixArray sqrt(const FixArray& x, bool recp_sqrt);
 
-  tuple<FixArray, FixArray, FixArray> bitonic_sort_and_swap(
+  std::tuple<FixArray, FixArray, FixArray> bitonic_sort_and_swap(
     const FixArray& x, FixArray softmax_v_, FixArray h1_, bool swap);
 
   void print(const FixArray& x);

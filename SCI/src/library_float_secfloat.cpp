@@ -393,7 +393,7 @@ void Softmax3_thread(
 	for (int i = 0; i < mchunk; i++)
 		softin.push_back(fixopArr[tid]->input(WHICHPARTY, n, in_data[i], true, ell, s));
 
-	softout = fpmathArr[tid]->softmax_fix(softin);
+	tie(softout, ignore) = fpmathArr[tid]->softmax_fix(softin);
 	for (int i = 0; i < mchunk; i++)
 	{
 		memcpy(out_data[i], softout[i].data, n * sizeof(uint8_t));

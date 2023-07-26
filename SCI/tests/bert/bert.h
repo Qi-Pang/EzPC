@@ -64,12 +64,14 @@ public:
         vector<uint64_t> &wln_input,
         vector<uint64_t> &bln_input,
         uint64_t* wln,
-        uint64_t* bln
+        uint64_t* bln, 
+        const FCMetadata &data
     );
 
     void ln_share_client(
         uint64_t* wln,
-        uint64_t* bln
+        uint64_t* bln, 
+        const FCMetadata &data
     );
 
     void softmax_v(

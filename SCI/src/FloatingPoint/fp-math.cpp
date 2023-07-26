@@ -630,7 +630,7 @@ FPArray FPMath::cospi(const FPArray &x) {
   return ret;
 }
 
-FixArray FPMath::exp4(const FixArray &x){
+std::tuple<FixArray, FixArray> FPMath::exp4(const FixArray &x){
 
   /*
   l = np.floor((x / -math.log(2)))
@@ -667,6 +667,7 @@ FixArray FPMath::exp4(const FixArray &x){
 
   // Get the integer part and scale back
   FixArray l_short = fix->truncate_reduce(x_inl, scale);
+  FixArray l_short_raw = l_short;
   FixArray l = fix->scale_up(l_short, ell, scale);
 
   // l*math.log(2)
@@ -693,7 +694,7 @@ FixArray FPMath::exp4(const FixArray &x){
 
   FixArray ret = fix->right_shift(poly_p, l_short, scale + 1, all_1.data);
 
-  return ret;
+  return make_tuple(ret, l_short_raw);
 }
 
 FPArray FPMath::exp3(const FPArray &x) {
@@ -1219,7 +1220,7 @@ vector<FPArray> FPMath::softmax_secfloat(const vector<FPArray>& x) {
   return ret;
 }
 
-vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
+std::tuple<vector<FixArray>, FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
   // std::cout << "Entering softmax fix" << std::endl;
   int N = x.size();
   int n = x[0].size;
@@ -1254,7 +1255,10 @@ vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
   FixArray x_flat = concat(x);
   FixArray shifted_x_flat = fix->sub(x_flat, x_max_flat);
 
-  FixArray e_x_flat = exp4(shifted_x_flat);
+  FixArray e_x_flat;
+  FixArray l_short;
+
+  tie(e_x_flat, l_short) = exp4(shifted_x_flat);
   // FixArray e_x_flat = shifted_x_flat;
 
   vector<FixArray> e_x_tr(n);
@@ -1306,7 +1310,7 @@ vector<FixArray> FPMath::softmax_fix(const vector<FixArray>& x) {
   // for (int i = 0; i < N; i++){
   //   print_fix(ret[i]);
   // }
-  return ret;
+  return make_tuple(ret, l_short);
 }
 
 
@@ -1795,11 +1799,14 @@ BoolArray bitonic_reverse(const BoolArray &x, int array_size, int cur_depth){
   int block_size = 2*cur_depth;
   int num_block = array_size / block_size;
   for(int i = 0; i < num_block; i++){
-    if(i % 2 == 1){
+    
       for(int j = 0; j < cur_depth; j++){
         int index = i*cur_depth + j;
-        ret.data[index] = x.data[index] ^ ((x.party != BOB) ? 1 : 0);
-      }
+        if(i % 2 == 1){
+          ret.data[index] = x.data[index] ^ ((x.party != BOB) ? 1 : 0);
+        } else {
+          ret.data[index] = x.data[index];
+        }
     }
   }
   return ret;
@@ -1837,8 +1844,8 @@ tuple<FixArray, FixArray, FixArray> FPMath::bitonic_sort_and_swap(
           common_dim = softmax_v.size / x.size;
           assert(common_dim = 768);
 
-          softmax_v_reverse = fix->input(party, softmax_v.size, softmax_v.signed_, softmax_v.ell, softmax_v.s);
-          h1_reverse = fix->input(party, h1.size, h1.signed_, h1.ell, h1.s);
+          softmax_v_reverse = fix->input(party, softmax_v.size, (uint64_t)0 ,softmax_v.signed_, softmax_v.ell, softmax_v.s);
+          h1_reverse = fix->input(party, h1.size, (uint64_t)0, h1.signed_, h1.ell, h1.s);
 
           for(int i = 0; i < num_block; i++){
             for(int j = 0; j < cur_iter; j++){
@@ -1891,6 +1898,11 @@ tuple<FixArray, FixArray, FixArray> FPMath::bitonic_sort_and_swap(
           array_right.data[i] = x.data[index_right[i]];
         }
 
+        // print_fix(array_left);
+        // print_fix(array_right);
+        // print_fix(array_reverse);
+        
+
         BoolArray lt = fix->LT(array_left, array_right);
         BoolArray cmp_extend = BoolArray(party, lt.size*2);
 
@@ -1904,8 +1916,14 @@ tuple<FixArray, FixArray, FixArray> FPMath::bitonic_sort_and_swap(
               cmp.data[i*cur_iter + j];
           }
         }
+        // print_bool(lt);  
+        // print_bool(cmp);
+        // print_bool(cmp_extend);
+        // assert(0);
 
+        // print_fix(x);
         x = fix->if_else(cmp_extend, x, array_reverse);
+        // print_fix(x);
 
         if(swap){
           BoolArray cmp_flat = BoolArray(party, cmp_extend.size*common_dim);
@@ -1913,8 +1931,8 @@ tuple<FixArray, FixArray, FixArray> FPMath::bitonic_sort_and_swap(
             cmp_flat.data[i] = cmp_extend.data[i / common_dim];
           }
 
-          softmax_v = fix->if_else(cmp_extend, softmax_v, softmax_v_reverse);
-          h1 = fix->if_else(cmp_extend, h1, h1_reverse);
+          softmax_v = fix->if_else(cmp_flat, softmax_v, softmax_v_reverse);
+          h1 = fix->if_else(cmp_flat, h1, h1_reverse);
         }
 
         cur_iter /= 2;

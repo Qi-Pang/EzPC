@@ -25,10 +25,10 @@ SOFTWARE.
 #include "Math/math-functions.h"
 
 #define I 0
-#define J 1
+#define J 8
 #define print_bool(vec)                                                        \
   {                                                                            \
-    auto tmp_pub = bool_op->output(PUBLIC, vec).subset(I, I + J);              \
+    auto tmp_pub = bool_op->output(PUBLIC, vec);              \
     cout << #vec << "_pub: " << tmp_pub << endl;                               \
   }
 
