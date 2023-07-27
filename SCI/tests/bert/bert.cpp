@@ -1646,6 +1646,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [TIMING]: linear4 takes " << t_total_linear4 << " sec" << endl;
 
     cout << "> [TIMING]: softmax takes " << t_total_softmax << " sec" << endl;
+    cout << "> [TIMING]: pruning takes " << t_total_pruning << " sec" << endl;
     cout << "> [TIMING]: mul v takes " << t_total_mul_v << " sec" << endl;
     cout << "> [TIMING]: gelu takes " << t_total_gelu << " sec" << endl;
     cout << "> [TIMING]: ln_1 takes " << t_total_ln_1 << " sec" << endl;
@@ -1659,7 +1660,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [TIMING]: ln_share takes " << t_total_ln_share << " sec" << endl;
 
 
-    cout << "> [TIMING]: " << interval(t_pc) << " sec" << endl; 
+    cout << "> [TIMING]: Pool/Class" << interval(t_pc) << " sec" << endl; 
 
     cout << "> [NETWORK]: Linear 1 consumes: " << c_linear_1 << " bytes" << endl; 
     cout << "> [NETWORK]: Linear 2 consumes: " << c_linear_2 << " bytes" << endl; 
@@ -1672,6 +1673,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: Layer Norm 2 consumes: " << c_ln2 << " bytes" << endl;
 
     cout << "> [NETWORK]: Softmax * V: " << c_softmax_v << " bytes" << endl; 
+    cout << "> [NETWORK]: Pruning: " << c_pruning << " bytes" << endl; 
     cout << "> [NETWORK]: Shift consumes: " << c_shift << " bytes" << endl;
     cout << "> [NETWORK]: gt_sub consumes: " << c_gt_sub << " bytes" << endl;  
     
@@ -1688,6 +1690,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: Layer Norm 2 consumes: " << r_ln2 << " rounds" << endl;
 
     cout << "> [NETWORK]: Softmax * V: " << r_softmax_v << " rounds" << endl; 
+    cout << "> [NETWORK]: Pruning: " << r_pruning << " rounds" << endl; 
     cout << "> [NETWORK]: Shift consumes: " << r_shift << " rounds" << endl;
     cout << "> [NETWORK]: gt_sub consumes: " << r_gt_sub << " rounds" << endl;  
     
