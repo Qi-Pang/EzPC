@@ -515,26 +515,32 @@ Linear::bert_cross_packing_single_matrix_2(
 
     int n1;
     int n2;
-    if (data.slot_count == 4096) {
+    if (data.filter_h == 3072 && data.filter_w == 768) {
         n1 = 2;
-        n2 = 8;
-    }
-    else {
-        if (data.filter_h == 3072 && data.filter_w == 768) {
-            n1 = 2;
+        n2 = 16;
+        if (data.image_size == 64) {
+            n1 = 4;
             n2 = 16;
         }
-        else if (data.filter_h == 768 && data.filter_w == 3072) {
-            n1 = 8;
+    }
+    else if (data.filter_h == 768 && data.filter_w == 3072) {
+        n1 = 8;
+        n2 = 4;
+        if (data.image_size == 64) {
+            n1 = 16;
             n2 = 4;
         }
-        else if (data.filter_h == 768 && data.filter_w == 768) {
-            n1 = 4;
+    }
+    else if (data.filter_h == 768 && data.filter_w == 768) {
+        n1 = 4;
+        n2 = 8;
+        if (data.image_size == 64) {
+            n1 = 8;
             n2 = 8;
         }
-        else {
-            assert (0);
-        }
+    }
+    else {
+        assert (0);
     }
 
     for (int col_ind = 0; col_ind < num_matrix_per_col; col_ind++) {
@@ -556,6 +562,11 @@ Linear::bert_cross_packing_single_matrix_2(
                         if (temp2.size() == data.slot_count) {
                             Plaintext pt;
                             he->encoder->encode(temp2, pt);
+                            // HACK: verify sparsity
+                            // cout << "packing" << endl;
+                            // for (int temp2_ind = 0; temp2_ind < data.slot_count / data.image_size; temp2_ind++) {
+                            //     cout << temp2[temp2_ind * data.image_size] << " ";
+                            // }
                             temp_matrix_diag[matrix_diag_index] = pt;
                             matrix_diag_index++;
                             temp2.clear();
@@ -598,8 +609,8 @@ Linear::bert_cross_packing_single_matrix_2(
         }
     }
     return std::make_pair(weightMatrix1, weightMatrix2);
-
 }
+
 
 vector<vector<Plaintext>> Linear::bert_cross_packing_bias(
     HE* he,
@@ -1003,7 +1014,7 @@ void Linear::bert_cipher_cipher_cross_packing(
 
         #pragma omp parallel for
         for (int i = 0; i < num_cts_per_res; i++) {
-            results[packing_index * num_cts_per_res + i] = rotation_results[num_col_per_ct * i];
+            he->evaluator->add(rotation_results[num_col_per_ct * i], rotation_results[num_col_per_ct * i + data.image_size], results[packing_index * num_cts_per_res + i]);
             for (int j = 1; j < num_col_per_ct; j++) {
                 he->evaluator->add_inplace(results[packing_index * num_cts_per_res + i], rotation_results[num_col_per_ct * i + j]);
                 he->evaluator->add_inplace(results[packing_index * num_cts_per_res + i], rotation_results[num_col_per_ct * i + j + data.image_size]);
@@ -1210,30 +1221,22 @@ void Linear::plain_col_packing_postprocess(
     bool col_packing,
     const FCMetadata &data){
     for (int i = 0; i < data.image_size * data.filter_w / data.slot_count; i++) {
-        int offset = i*data.slot_count;
+        vector<uint64_t> plain(&input[i* data.slot_count], &input[(i+1)* data.slot_count]);
         if (col_packing) {
             #pragma omp parallel for
             for (int row = 0; row < data.slot_count; row++) {
-                // int j = row / data.image_size + i * data.slot_count / data.image_size;
-                // int k = row % data.image_size;
-                // output[k + j * data.image_size] = input[row + offset];
                 int j = row / data.image_size;
                 int k = row % data.image_size;
                 if (row >= data.slot_count / 2) {
                     j -= data.slot_count / data.image_size / 2;
                     j += data.filter_w / 2;
                 }
-                output[k + j * data.image_size + i * data.slot_count / 2] = input[row+ offset];
+                output[k + j * data.image_size + i * data.slot_count / 2] = plain[row];
             }
         }
         else {
             #pragma omp parallel for
             for (int row = 0; row < data.slot_count; row++) {
-                // int j = row / data.image_size + i * data.slot_count / data.image_size;
-                // int k = row % data.image_size;
-                // k = k + j / data.filter_w * data.image_size;
-                // j = j % data.filter_w;
-                // output[k * data.filter_w + j] = input[row + offset];
                 int j = row / data.image_size;
                 int k = row % data.image_size;
                 if (row >= data.slot_count / 2) {
@@ -1241,7 +1244,7 @@ void Linear::plain_col_packing_postprocess(
                     j += data.filter_w / 2;
                 }
                 j += i * data.slot_count / data.image_size / 2;
-                output[k * data.filter_w + j] = input[row+ offset];
+                output[k * data.filter_w + j] = plain[row];
             }
         }
     }
@@ -1416,6 +1419,7 @@ void Linear::bert_postprocess_V_enc(HE* he, vector<Ciphertext> cts, uint64_t* re
 
 vector<vector<vector<uint64_t>>> softmax_mask(const FCMetadata &data) {
     vector<vector<vector<uint64_t>>> mask(2, vector<vector<uint64_t>>(data.image_size, vector<uint64_t>(data.image_size)));
+    #pragma omp parallel for
     for (int i = 0; i < data.image_size; i++) {
         vector<uint64_t> mask1(data.image_size, 0ULL);
         vector<uint64_t> mask2(data.image_size, 0ULL);
@@ -1617,7 +1621,7 @@ void Linear::bert_softmax_V(HE* he, vector<Ciphertext> &softmax_s1, vector<vecto
                     if (ct_i == 0)
                         temp_results[l][j] = temp_results1[l][j * num_matrix_per_row + ct_i];
                     else
-                       he->evaluator->add_inplace(temp_results[l][j], temp_results1[l][j * num_matrix_per_row + ct_i]);
+                        he->evaluator->add_inplace(temp_results[l][j], temp_results1[l][j * num_matrix_per_row + ct_i]);
                 }
             }
         }

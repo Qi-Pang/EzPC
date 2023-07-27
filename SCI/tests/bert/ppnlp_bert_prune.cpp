@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
 
     
 
-    Bert bt(party, port, address, "/home/ubuntu/quantize/mrpc/weights_txt/", false);
+    Bert bt(party, port, address, "/home/ubuntu/prune/mrpc/weights_txt/", true);
 
     auto start = high_resolution_clock::now();
     // if(party == ALICE){
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
             vector<double> result = bt.run("", "");
         }
     } else{
-        ofstream file("/home/ubuntu/clive/EzPC/ppnlp_testing.txt");
+        ofstream file("/home/ubuntu/clive/EzPC/ppnlp_testing_prune.txt");
         if (!file) {
             std::cerr << "Could not open the file!" << std::endl;
             return {};
@@ -56,8 +56,8 @@ int main(int argc, char **argv) {
         for(int i = 0; i < 1; i++ ){
             cout << "==>> Inference sample #" << i << endl;
             vector<double> result = bt.run(
-                "/home/ubuntu/quantize/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
-                "/home/ubuntu/quantize/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
+                "/home/ubuntu/prune/mrpc/weights_txt/inputs_" + to_string(i) + "_data.txt",
+                "/home/ubuntu/prune/mrpc/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
                 );
             if(result.size() == 1){
                 file << result[0]<< endl;

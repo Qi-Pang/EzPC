@@ -659,7 +659,7 @@ std::tuple<FixArray, FixArray> FPMath::exp4(const FixArray &x){
 
   // x / -math.log(2)
   // Truncate to original scale and bitlength
-  FixArray x_inl = fix->mul(x, inl, ell + scale, all_1.data, all_1.data);
+  FixArray x_inl = fix->mul(x, inl, ell + scale);
   // Optimization: local truncation
   x_inl =  fix->truncate_reduce(x_inl, scale);
   // x_inl =  fix->reduce(x_inl, ell);
@@ -1240,7 +1240,7 @@ std::tuple<vector<FixArray>, FixArray> FPMath::softmax_fix(const vector<FixArray
     assert(x[i].size == n);
   }
   FixArray x_max = fix->max(x);
-  x_max = fix->add(x_max, 1);
+  // x_max = fix->add(x_max, 1);
   FixArray x_max_flat(party, N*n, signed_, ell, s);
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < n; j++) {

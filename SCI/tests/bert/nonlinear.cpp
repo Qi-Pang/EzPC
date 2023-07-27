@@ -701,7 +701,7 @@ void NonLinear::reduce(int nthreads, uint64_t* input, uint64_t* output, int size
 }
 
 void NonLinear::print_ss(uint64_t* input, int length, int ell, int s){
-  FixArray tmp = fpmath[0]->fix->input(party, length, input, true, ell, s);
+  FixArray tmp = fpmath[0]->fix->input(party, length, input, false, ell, s);
   fpmath[0]->print(tmp);
 }
 
@@ -796,6 +796,7 @@ void NonLinear::pruning(
     sum_l = fpmath_->fix->add(sum_l, fpmath_->fix->tree_sum(l_fix));
   }
 
+  // print_ss(sum_l.data, 128, 25, 0);
 
   FixArray sorted_sum_l;
 
@@ -871,9 +872,6 @@ void NonLinear::pruning(
 
   tie(std::ignore, res_softmax_v, res_h1) = 
     fpmath_->bitonic_sort_and_swap(indice_plus_scores, softmax_v_fix, h1_fix, true);
-
-  // print_ss(res_softmax_v.data, 16, 37, 6);
-  // return;
 
   memcpy(softmax_v_pruned, res_softmax_v.data, res_softmax_v.size*sizeof(uint64_t) / 2);
   memcpy(h1_pruned, res_h1.data, res_h1.size*sizeof(uint64_t) / 2);

@@ -6,6 +6,8 @@ double t_total_linear2 = 0;
 double t_total_linear3 = 0;
 double t_total_linear4 = 0;
 
+double t_total_pruning = 0;
+
 double t_total_softmax = 0;
 double t_total_mul_v = 0;
 double t_total_gelu = 0;
@@ -25,6 +27,7 @@ uint64_t c_linear_2 = 0;
 uint64_t c_linear_3 = 0;
 uint64_t c_linear_4 = 0;
 uint64_t c_softmax = 0;
+uint64_t c_pruning = 0;
 uint64_t c_gelu = 0;
 uint64_t c_ln1 = 0;
 uint64_t c_ln2 = 0;
@@ -38,6 +41,7 @@ uint64_t r_linear_2 = 0;
 uint64_t r_linear_3 = 0;
 uint64_t r_linear_4 = 0;
 uint64_t r_softmax = 0;
+uint64_t r_pruning = 0;
 uint64_t r_gelu = 0;
 uint64_t r_ln1 = 0;
 uint64_t r_ln2 = 0;
@@ -48,13 +52,6 @@ uint64_t r_pc = 0;
 
 double n_rounds = 0;
 double n_comm = 0;
-#endif 
-
-inline double interval(chrono::_V2::system_clock::time_point start){
-    auto end = high_resolution_clock::now();
-    auto interval = (end - start)/1e+9;
-    return interval.count();
-}
 
 inline uint64_t Bert::get_comm(){
     uint64_t total_comm = io->counter;
@@ -74,6 +71,13 @@ inline uint64_t Bert::get_round(){
     uint64_t ret_round = total_round - n_rounds;
     n_rounds = total_round;
     return ret_round;
+}
+#endif 
+
+inline double interval(chrono::_V2::system_clock::time_point start){
+    auto end = high_resolution_clock::now();
+    auto interval = (end - start)/1e+9;
+    return interval.count();
 }
 
 string replace_2(string str, string substr1, string substr2) {
@@ -471,7 +475,7 @@ void Bert::softmax_v(
 
         he_to_ss_server(he, softmax_V_result, softmax_v_server, true);
 
-        lin.bert_postprocess_V(he, softmax_v_server, s_softmax_v, data, true);
+        lin.plain_cross_packing_postprocess_v(softmax_v_server, s_softmax_v, true, data);
 
         // for (int i = 0; i < data.image_size * data.filter_w * 12; i++) {
         //     s_softmax_v[i] = 0;
@@ -499,7 +503,7 @@ void Bert::softmax_v(
         int cts_len = 12 * data.image_size * data.filter_w / data.slot_count;
         he_to_ss_client(he, softmax_v_server, cts_len, data);
 
-        lin.bert_postprocess_V(he, softmax_v_server, s_softmax_v, data, true);
+        lin.plain_cross_packing_postprocess_v(softmax_v_server, s_softmax_v, true, data);
 
         // vector<Ciphertext> enc_y_r(12 * data.image_size * data.filter_w / data.slot_count);
         // recv_encrypted_vector(he->context, io, enc_y_r);
@@ -633,7 +637,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     }
 
     cout << "> --- Entering Attention Layers ---" << endl;
-    for(int layer_id; layer_id < ATTENTION_LAYERS; ++layer_id){
+    for(int layer_id = 0; layer_id < ATTENTION_LAYERS; ++layer_id){
         {
             // -------------------- Linear #1 -------------------- //
             // w/ input pruning
@@ -669,9 +673,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             int qk_size = PACKING_NUM*softmax_dim*softmax_dim;
             int v_size = PACKING_NUM*softmax_dim*OUTPUT_DIM;
-
             int softmax_output_size = PACKING_NUM*softmax_dim*softmax_dim;
-            int softmax_v_size = PACKING_NUM*softmax_dim*OUTPUT_DIM;  
+            int softmax_v_size = PACKING_NUM*softmax_dim*OUTPUT_DIM; 
+            int h2_col_size = PACKING_NUM*lin.data_lin1_1.image_size*OUTPUT_DIM; 
 
             int qk_v_size = qk_size + v_size;
             uint64_t* qk_v_cross = new uint64_t[qk_v_size];
@@ -682,6 +686,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             uint64_t* softmax_l_col = new uint64_t[softmax_output_size];
             uint64_t* softmax_v_row = new uint64_t[softmax_v_size];
             uint64_t* softmax_v_col = new uint64_t[softmax_v_size];
+            uint64_t* h2_col = new uint64_t[h2_col_size];
             vector<Ciphertext> enc_v;
                     
             if(party == ALICE){
@@ -724,11 +729,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_PERF
             c_linear_1 += get_comm();
             r_linear_1 += get_round();
-            auto t_gt_sub = high_resolution_clock::now();
-            #endif 
-
-            #ifdef BERT_PERF
-            t_total_gt_sub += interval(t_gt_sub);
             auto t_repacking = high_resolution_clock::now();
             #endif 
 
@@ -745,6 +745,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 true,
                 data);
 
+            #ifdef BERT_PERF
+            t_total_repacking += interval(t_repacking);
+            auto t_gt_sub = high_resolution_clock::now();
+            #endif 
+
             // Scale: Q*V 22 
             nl.gt_p_sub(
                 NL_NTHREADS,
@@ -758,7 +763,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             );
 
             #ifdef BERT_PERF
-            t_total_repacking += interval(t_repacking);
+            t_total_gt_sub += interval(t_gt_sub);
+            c_gt_sub += get_comm();
+            r_gt_sub += get_round();
             auto t_shift = high_resolution_clock::now();
             #endif 
 
@@ -797,8 +804,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_shift += interval(t_shift);
-            c_gt_sub += get_comm();
-            r_gt_sub += get_round();
+            c_shift += get_comm();
+            r_shift += get_round();
             auto t_softmax = high_resolution_clock::now();
             #endif 
 
@@ -827,6 +834,17 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_ELL,
                 NL_SCALE);
 
+            #ifdef BERT_SAVE_RESULTS
+            FixArray softmax_l_pub = nl.to_public(softmax_l_row, softmax_output_size, 25, 0);
+            if(party == ALICE){
+                save_to_file(softmax_l_pub.data, 1536, 128, replace_2("./ppnlp/softmax_l_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            FixArray softmax_pub = nl.to_public(softmax_output_row, softmax_output_size, NL_ELL, NL_SCALE);
+            if(party == ALICE){
+                save_to_file(softmax_pub.data, 1536, 128, replace_2("./ppnlp/softmax_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
+
             #ifdef BERT_PERF
             t_total_softmax += interval(t_softmax);
             c_softmax += get_comm();
@@ -848,6 +866,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 data
             );
 
+            #ifdef BERT_PERF
+            t_total_mul_v += interval(t_mul_v);
+            c_softmax_v += get_comm();
+            r_softmax_v += get_round();
+            auto t_gt_sub_2 = high_resolution_clock::now();
+            #endif 
+
 
             nl.gt_p_sub(
                 NL_NTHREADS,
@@ -859,37 +884,42 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 23,
                 6
             );
-        
-            int h2_col_size = PACKING_NUM*lin.data_lin1_1.image_size*OUTPUT_DIM;
-            uint64_t* h2_col = new uint64_t[h2_col_size];
+
+            #ifdef BERT_PERF
+            t_total_gt_sub += interval(t_gt_sub_2);
+            c_gt_sub += get_comm();
+            r_gt_sub += get_round();
+            auto t_pruning = high_resolution_clock::now();
+            #endif 
+
+
+            #ifdef BERT_SAVE_RESULTS
+            FixArray softmax_v_row_pub = nl.to_public(softmax_v_col, softmax_v_size, NL_ELL, 6);
+            if(party == ALICE){
+                save_to_file(softmax_v_row_pub.data, 768, 128, replace_2("./ppnlp/softmax_v_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
 
             if(prune && layer_id == 0){
 
+                for(int i = 0; i < INPUT_DIM; i ++){
+                    for(int j = 0; j < OUTPUT_DIM*PACKING_NUM; j++){
+                        int row_offset = i*OUTPUT_DIM*PACKING_NUM + j;
+                        int col_offset = j*INPUT_DIM + i;
+                        softmax_v_row[row_offset] = softmax_v_col[col_offset];
+                    }
+                }
+                
                 for(int pack_id = 0; pack_id < PACKING_NUM; pack_id++){
-                    // Why not working ?????????
-                    // for(int i = 0; i < INPUT_DIM; i++){
-                    for(int i = 0; i < data.image_size; i++){
-                        for(int j = 0; j < OUTPUT_DIM; j++){
-                            // int row_offset = pack_id*INPUT_DIM*OUTPUT_DIM + i*OUTPUT_DIM + j;
-                            // int col_offset = pack_id*INPUT_DIM*OUTPUT_DIM + j*INPUT_DIM + i;
-                            cout << "Why " << INPUT_DIM << " " << i << " " << j << endl;
-                            // softmax_v_row[row_offset] = softmax_v_col[col_offset];
+                    for(int i = 0; i < INPUT_DIM; i ++){
+                        for(int j = 0; j < INPUT_DIM; j++){
+                            int row_offset = pack_id*INPUT_DIM*INPUT_DIM + i*INPUT_DIM + j;
+                            int col_offset = pack_id*INPUT_DIM*INPUT_DIM + j*INPUT_DIM + i;
+                            softmax_l_col[row_offset] = softmax_l_row[col_offset];
                         }
                     }
                 }
 
-                for(int pack_id = 0; pack_id < PACKING_NUM; pack_id++){
-                    for(int i = 0; i < data.image_size; i++){
-                        cout << i << " " ;
-                        for(int j = 0; j < data.image_size; j++){
-                            // int row_offset = pack_id*INPUT_DIM*INPUT_DIM + i*INPUT_DIM + j;
-                            // int col_offset = pack_id*INPUT_DIM*INPUT_DIM + j*INPUT_DIM + i;
-                            // softmax_l_col[row_offset] = softmax_l_row[col_offset];
-                        }
-                    }
-                }
-
-                return {};
 
                 uint64_t* h2_row = new uint64_t[h2_col_size];
 
@@ -923,27 +953,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 memcpy(h2_col, softmax_v_col, h2_col_size*sizeof(uint64_t));
             }
 
-            nl.print_ss(h1_cache_12, 16, NL_ELL, 12);
-            nl.print_ss(h2_col, 16, NL_ELL, 6);
-            return {};
-
-            #ifdef BERT_SAVE_RESULTS
-            FixArray softmax_v_row_pub = nl.to_public(softmax_v_row, att_size, NL_ELL, NL_SCALE);
-            if(party == ALICE){
-                save_to_file(softmax_v_row_pub.data, att_size, 1, replace_2("./ppnlp/softmax_v_X.txt", "X", to_string(layer_id)).c_str());
-            }
-            #endif
-
             #ifdef BERT_PERF
-            t_total_mul_v += interval(t_mul_v);
-            c_softmax_v += get_comm();
-            r_softmax_v += get_round();
-            auto t_repacking_2 = high_resolution_clock::now();
-            #endif 
-
-
-            #ifdef BERT_PERF
-            t_total_repacking += interval(t_repacking_2);
+            t_total_pruning += interval(t_pruning);
+            c_pruning += get_comm();
+            r_pruning += get_round();
             #endif 
 
 
@@ -965,6 +978,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             delete [] softmax_input_row;
             delete [] softmax_output_row;
             delete [] softmax_v_row;
+            delete [] softmax_v_col;
+            delete [] softmax_l_row;
+            delete [] softmax_l_col;
+            delete [] h2_col;
         }
 
         // -------------------- Linear #2 -------------------- //
@@ -980,7 +997,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             uint64_t* ln_weight = new uint64_t[ln_size];
             uint64_t* ln_bias = new uint64_t[ln_size];
 
-            
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE" << endl;
                 #ifdef BERT_PERF
@@ -1016,6 +1032,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            c_linear_2 += get_comm();
+            r_linear_2 += get_round();
             auto t_repacking = high_resolution_clock::now();
             #endif 
 
@@ -1028,8 +1046,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_repacking += interval(t_repacking);
-            c_linear_2 += get_comm();
-            r_linear_2 += get_round();
             auto t_gt_sub = high_resolution_clock::now();
             #endif 
 
@@ -1057,6 +1073,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             r_gt_sub += get_round();
             auto t_ln_1 = high_resolution_clock::now();
             #endif 
+
+            // nl.print_ss(ln_input_row, 16, NL_ELL, NL_SCALE);
+            // return {};
 
             for(int i = 0; i < ln_size; i++){
                 ln_input_row[i] += h1_cache_12[i];
@@ -1272,15 +1291,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
             #endif
 
-            nl.cancel_wrap(
-                NL_NTHREADS,
-                gelu_output_col,
-                gelu_output_col,
-                gelu_input_size,
-                GELU_ELL,
-                NL_SCALE
-            );
-
             #ifdef BERT_SAVE_RESULTS
             FixArray gelu_cancel_col_pub = nl.to_public(gelu_output_col, gelu_input_size, GELU_ELL, NL_SCALE);
             if(party == ALICE){
@@ -1304,35 +1314,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     lin.he_8192_tiny, 
                     gelu_output_col,
                     gelu_input_size, 
-                    27);
-                
-                send_encrypted_vector(io, h6);
+                    GELU_ELL);
             } else{
                 ss_to_he_client(
                     lin.he_8192_tiny, 
                     gelu_output_col, 
                     gelu_input_size, 
-                    27);
-
-                uint64_t* tmp = new uint64_t[gelu_input_size];
-                int cts_size = gelu_input_size / lin.he_8192_tiny->poly_modulus_degree;
-                vector<Ciphertext> cts(cts_size);
-                recv_encrypted_vector(lin.he_8192_tiny->context, io, cts);
-                for(int i = 0; i < cts_size; i++){
-                    Plaintext pt;
-                    lin.he_8192_tiny->decryptor->decrypt(cts[i], pt);
-                    vector<uint64_t> dest(lin.he_8192_tiny->poly_modulus_degree, 0ULL);
-                    lin.he_8192_tiny->encoder->decode(pt, dest);
-                    for(int j = 0; j < dest.size(); j++){
-                        int offset = i*lin.he_8192_tiny->poly_modulus_degree;
-                        if(dest[j] > lin.he_8192_tiny->plain_mod_2){
-                            tmp[offset + j] = dest[j] - lin.he_8192_tiny->plain_mod;
-                        } else{
-                            tmp[offset + j] = dest[j];
-                        }
-                    }
-                }
-                save_to_file(tmp, gelu_input_size, 1, replace_2("./ppnlp/h6_X.txt", "X", to_string(layer_id)).c_str());
+                    GELU_ELL);
             }
 
             delete[] gelu_input_cross;

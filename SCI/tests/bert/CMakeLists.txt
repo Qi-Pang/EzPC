@@ -14,3 +14,7 @@ target_link_libraries(LIB_BERT SCI-HE)
 
 add_executable(PPNLP_BERT "ppnlp_bert.cpp")
 target_link_libraries(PPNLP_BERT LIB_BERT)
+
+
+add_executable(PPNLP_PRUNE_BERT "ppnlp_bert_prune.cpp")
+target_link_libraries(PPNLP_PRUNE_BERT LIB_BERT)
