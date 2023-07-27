@@ -468,7 +468,7 @@ void PruneLin1Field::bert_cipher_cipher_cross_packing(const FCMetadata &data, co
 
         #pragma omp parallel for
         for (int i = 0; i < num_cts_per_res; i++) {
-            results[packing_index * num_cts_per_res + i] = rotation_results[num_col_per_ct * i];
+            evaluator->add(rotation_results[num_col_per_ct * i], rotation_results[num_col_per_ct * i + data.image_size], results[packing_index * num_cts_per_res + i]);
             for (int j = 1; j < num_col_per_ct; j++) {
                 evaluator->add_inplace(results[packing_index * num_cts_per_res + i], rotation_results[num_col_per_ct * i + j]);
                 evaluator->add_inplace(results[packing_index * num_cts_per_res + i], rotation_results[num_col_per_ct * i + j + data.image_size]);
@@ -908,12 +908,12 @@ void PruneLin1Field::matrix_multiplication(int32_t input_dim,
         //     cout << endl;
         // }
 
-        // cout << "row packing" << endl;
-        // for (int i = 63; i < 64; i++) {
-        //     for (int j = 0; j < data.image_size; j++)
-        //         cout << ((int64_t) HE_result[i * data.image_size + j + data.image_size * data.image_size * 3] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-        //     cout << endl;
-        // }
+        cout << "row packing" << endl;
+        for (int i = 32; i < 33; i++) {
+            for (int j = 0; j < data.image_size; j++)
+                cout << ((int64_t) HE_result[i * data.image_size + j + data.image_size * data.image_size * 3] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+            cout << endl;
+        }
 
         // HACK:
         // Below is computing softmax * V
