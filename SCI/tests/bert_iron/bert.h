@@ -8,7 +8,7 @@
 #include "linear.h"
 #include "nonlinear.h"
 
-#define NL_NTHREADS 12
+#define NL_NTHREADS 32
 #define NL_ELL 37
 #define NL_SCALE 12
 
@@ -17,7 +17,7 @@
 
 // #define BERT_DEBUG
 #define BERT_PERF
-#define BERT_SAVE_RESULTS
+// #define BERT_SAVE_RESULTS
 
 using namespace std;
 

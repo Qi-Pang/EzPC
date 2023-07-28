@@ -238,7 +238,7 @@ const FCMetadata &data
         vector<vector<Plaintext>> enc_mat2 = pp.encoded_mats2[packing_index];
         vector<vector<Plaintext>> enc_mat3 = pp.encoded_mats3[packing_index];
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(32)
         for (int j = 0; j < data.filter_w / data.kw; j++) {
             for (int i = 0; i < data.filter_h / data.nw; i++) {
                 Ciphertext temp_ct1;
@@ -297,7 +297,7 @@ const FCMetadata &data
 
     vector<Ciphertext> result(data.filter_w / data.kw);
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(32)
     for (int j = 0; j < data.filter_w / data.kw; j++) {
         for (int i = 0; i < data.filter_h / data.nw; i++) {
             Ciphertext temp_ct1;

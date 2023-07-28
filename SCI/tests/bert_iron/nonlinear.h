@@ -7,7 +7,7 @@
 using namespace sci;
 using namespace std;
 
-#define MAX_THREADS 12
+#define MAX_THREADS 32
 
 // extern IOPack *iopackArr[MAX_THREADS];
 // extern OTPack *otpackArr[MAX_THREADS];
