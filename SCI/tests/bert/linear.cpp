@@ -924,6 +924,7 @@ void Linear::bert_cipher_plain_bsgs_2(
         }
     }
 
+    // FIXME: optimize this
     #pragma omp parallel for
     for (int j = 0; j < n2; j++) {
         for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
@@ -974,7 +975,7 @@ void Linear::bert_cipher_cipher_cross_packing(
         for (int l = 0; l < temp_result_size; l++) {
             Ciphertext Qi = Cipher_plain_result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count];
             Ciphertext Ki = Cipher_plain_result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count + data.image_size * data.filter_w * 12 / data.slot_count];
-            #pragma omp parallel for
+            #pragma omp parallel for num_threads(16)
             for (int i = 0; i < data.image_size; i++) {
                 vector<Ciphertext> temp_mult = rotation_by_one_depth3(he, data, Ki, i);
                 if (l == 0) {
@@ -990,13 +991,13 @@ void Linear::bert_cipher_cipher_cross_packing(
                 }
             }
         }
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(16)
         for (int i = 0; i < data.image_size * 2; i++) {
             he->evaluator->relinearize_inplace(rotation_results[i], *(he->relin_keys));
         }
         int local_rotation = std::ceil(std::log2(data.slot_count / data.image_size / 2));
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(16)
         for (int i = 0; i < data.image_size * 2; i++) {
             for (int k = 0; k < local_rotation; k++) {
                 Ciphertext temp2;
@@ -1008,7 +1009,7 @@ void Linear::bert_cipher_cipher_cross_packing(
         int num_cts_per_res = data.image_size * data.image_size * 2 / data.slot_count; // 1 or 4
         int num_col_per_ct = data.slot_count / 2 / data.image_size; // 64 or 32
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(num_cts_per_res)
         for (int i = 0; i < num_cts_per_res; i++) {
             he->evaluator->add(rotation_results[num_col_per_ct * i], rotation_results[num_col_per_ct * i + data.image_size], results[packing_index * num_cts_per_res + i]);
             for (int j = 1; j < num_col_per_ct; j++) {
