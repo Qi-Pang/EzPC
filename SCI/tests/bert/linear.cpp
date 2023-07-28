@@ -781,7 +781,7 @@ void Linear::bert_cipher_plain_bsgs(
             }
         }
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(n2)
         // #pragma omp taskloop
         for (int j = 0; j < n2; j++) {
             for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
