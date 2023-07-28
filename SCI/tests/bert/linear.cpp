@@ -843,7 +843,6 @@ void Linear::bert_cipher_plain_bsgs_2(
     const vector<Plaintext> &enc_bias, 
     const FCMetadata &data, 
     vector<Ciphertext> &result){
-    vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1;
     int n2;
     if (data.filter_h == 3072 && data.filter_w == 768) {
@@ -874,27 +873,22 @@ void Linear::bert_cipher_plain_bsgs_2(
         assert (0);
     }
     int num_diag = data.slot_count / data.image_size / 2;
+
+    vector<vector<Ciphertext>> rotatedIR(cts.size(), vector<Ciphertext>(n1 * 2));
     
-    #pragma omp parallel for
-    for (int i = 0; i < cts.size(); i++)
-    {   
-        vector<Ciphertext> tmp;
-        tmp.push_back(cts[i]);
-
-        for (int j = 1; j < n1; j++) {
-            Ciphertext temp_rot;
+    #pragma omp parallel for num_threads(32)
+    for (int k = 0; k < cts.size() * n1; k++) {
+        int i = k % cts.size();
+        int j = k / cts.size();
+        Ciphertext temp_rot;
+        if (j == 0)
+            rotatedIR[i][j] = cts[i];
+        else {
             he->evaluator->rotate_rows(cts[i], (num_diag - j) * data.image_size, *(he->gal_keys), temp_rot);
-            tmp.push_back(temp_rot);
+            rotatedIR[i][j] = temp_rot;
         }
-
-        for (int j = 0; j < n1; j++) {
-            Ciphertext temp_rot;
-            he->evaluator->rotate_columns(tmp[j], *(he->gal_keys), temp_rot);
-            tmp.push_back(temp_rot);
-        }
-
-        rotatedIR[i] = tmp;
-        tmp.clear();
+        he->evaluator->rotate_columns(rotatedIR[i][j], *(he->gal_keys), temp_rot);
+        rotatedIR[i][j + n1] = temp_rot;
     }
 
     //compute matrix multiplication
@@ -903,7 +897,7 @@ void Linear::bert_cipher_plain_bsgs_2(
 
     // rotatedIR 48 x 16, enc_mat 64 x 48
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(32)
     for (int k = 0; k < cts.size() * n2; k++) {
         int j = k / cts.size();
         int ct_i = k % cts.size();
@@ -925,7 +919,7 @@ void Linear::bert_cipher_plain_bsgs_2(
     }
 
     // FIXME: optimize this
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(n2)
     for (int j = 0; j < n2; j++) {
         for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
             for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
@@ -938,7 +932,7 @@ void Linear::bert_cipher_plain_bsgs_2(
         
     }
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(data.image_size * data.filter_w / data.slot_count)
     for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
         Ciphertext ct;
         for (int k = 0; k < n2; k++) {
