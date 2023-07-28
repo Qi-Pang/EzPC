@@ -617,6 +617,118 @@ void  NonLinear::n_matrix_mul_iron(
   }
 }
 
+void p_matmul_thread(
+  int tid, 
+  int party, 
+  uint64_t *a, 
+  uint64_t *b, 
+  uint64_t *c, 
+  int shard, 
+  int dim1, 
+  int dim2, 
+  int dim3, 
+  int ell_in_1, 
+  int ell_in_2, 
+  int ell_out, 
+  int s_in_1,
+  int s_in_2,
+  int s_out, 
+  FPMath *fpmath) {
+  
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  int extra_scale = s_in_1 + s_in_2 - s_out;
+  int dim3_shard = dim3 / shard;
+  uint64_t* b_shard = new uint64_t[dim2*dim3_shard];
+  uint64_t* c_shard = new uint64_t[dim1*dim3_shard];
+
+  for(int i = 0; i < dim2; i++){
+    int offset = i*dim3 + tid*dim3_shard;
+    memcpy(&b_shard[i*dim3_shard], &b[offset], dim3_shard*sizeof(uint64_t));
+  }
+
+  BoolArray all_0 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(0));
+  BoolArray all_1 = fpmath->bool_op->input(ALICE, dim1*dim3, uint8_t(1));
+  fpmath->fix->mult->matrix_multiplication(
+      dim1,
+      dim2,
+      dim3_shard,
+      a,
+      b_shard,
+      c_shard,
+      ell_in_1,
+      ell_in_2,
+      ell_out + extra_scale,
+      true,
+      true,
+      true,
+      MultMode::None
+    );
+    
+    FixArray ret = fpmath->fix->input(this_party, dim1*dim3_shard, c_shard, true, ell_out+extra_scale, s_in_1 + s_in_2);
+    if(extra_scale > 0){
+      ret = fpmath->fix->truncate_reduce(ret, extra_scale);
+    }
+
+    for(int i = 0; i < dim1; i++){
+      int offset = i*dim3 + tid*dim3_shard;
+      memcpy(&c[offset], &c_shard[i*dim3_shard], dim3_shard*sizeof(uint64_t));
+    }
+
+    delete[] b_shard;
+    delete[] c_shard;
+}
+
+
+void  NonLinear::p_matrix_mul_iron(
+  int nthreads, 
+  uint64_t* input_1,
+  uint64_t* input_2, 
+  uint64_t* output, 
+  int dim1, 
+  int dim2, 
+  int dim3, 
+  int ell_in_1, 
+  int ell_in_2, 
+  int ell_out, 
+  int s_in_1,
+  int s_in_2,
+  int s_out){
+
+  assert(dim3 / nthreads != 0);
+
+  std::thread threads[nthreads];
+
+  for (int i = 0; i < nthreads; ++i) {
+      threads[i] =
+          std::thread(
+              p_matmul_thread, 
+              i, 
+              party, 
+              input_1,
+              input_2,
+              output,
+              nthreads,
+              dim1,
+              dim2,
+              dim3,
+              ell_in_1,
+              ell_in_2,
+              ell_out,
+              s_in_1,
+              s_in_2,
+              s_out,
+              this->fpmath[i]);
+  }
+  for (int i = 0; i < nthreads; ++i) {
+      threads[i].join();
+  }
+}
+
 void right_shift_thread(int tid, int party, uint64_t *x, int a, uint64_t *y, int num_ops, int ell, int s, FPMath *fpmath) {
   int this_party;
   if (tid & 1) {

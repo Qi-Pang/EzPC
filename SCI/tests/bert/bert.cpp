@@ -1564,12 +1564,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
     // -------------------- POOL -------------------- //
     cout << "-> Layer - Pooling" << endl;
-    nl.n_matrix_mul_iron(
+    nl.p_matrix_mul_iron(
         NL_NTHREADS,
         h98,
         wp,
         h99,
-        1,
         1,
         COMMON_DIM,
         COMMON_DIM,

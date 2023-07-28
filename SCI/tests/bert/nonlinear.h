@@ -59,6 +59,21 @@ public:
         int s_in_2,
         int s_out);
 
+    void p_matrix_mul_iron(
+        int nthreads, 
+        uint64_t* input_1,
+        uint64_t* input_2, 
+        uint64_t* output, 
+        int dim1, 
+        int dim2, 
+        int dim3, 
+        int ell_in_1, 
+        int ell_in_2, 
+        int ell_out, 
+        int s_in_1,
+        int s_in_2,
+        int s_out);
+
     void print_ss(uint64_t* input, int length, int ell, int s);
 
     void right_shift(int nthreads, uint64_t* input, int a,uint64_t* output, int size, int ell, int s);
