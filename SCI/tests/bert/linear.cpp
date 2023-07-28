@@ -704,46 +704,37 @@ void Linear::bert_cipher_plain_bsgs(
     const FCMetadata &data, 
     vector<Ciphertext> &result) {
 
-    vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1 = 8;
     int n2 = 4;
     if (data.image_size == 64) {
         n1 = 16;
         n2 = 4;
     }
+    vector<vector<Ciphertext>> rotatedIR(cts.size(), vector<Ciphertext>(2 * n1));
 
     int num_diag = data.slot_count / data.image_size / 2;
     int num_matrix_per_col = data.filter_w / num_diag;
     
-    omp_set_nested(1);
-    #pragma omp parallel for num_threads(2)
-    for (int i = 0; i < cts.size(); i++)
-    {   
-        vector<Ciphertext> tmp(n1 * 2);
-        tmp[0] = cts[i];
-
-        #pragma omp parallel for
-        for (int j = 1; j < n1; j++) {
-            Ciphertext temp_rot;
+    #pragma omp parallel for num_threads(32)
+    for (int k = 0; k < cts.size() * n1; k++) {
+        int i = k % cts.size();
+        int j = k / cts.size();
+        Ciphertext temp_rot;
+        if (j == 0)
+            rotatedIR[i][j] = cts[i];
+        else {
             he->evaluator->rotate_rows(cts[i], (num_diag - j) * data.image_size, *(he->gal_keys), temp_rot);
-            tmp[j] = temp_rot;
+            rotatedIR[i][j] = temp_rot;
         }
-
-        #pragma omp parallel for
-        for (int j = 0; j < n1; j++) {
-            Ciphertext temp_rot;
-            he->evaluator->rotate_columns(tmp[j], *(he->gal_keys), temp_rot);
-            tmp[j + n1] = temp_rot;
-        }
-
-        rotatedIR[i] = tmp;
-        tmp.clear();
+        he->evaluator->rotate_columns(rotatedIR[i][j], *(he->gal_keys), temp_rot);
+        rotatedIR[i][j + n1] = temp_rot;
     }
 
     vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w * 3 * 12 / data.slot_count, vector<Ciphertext>(n2));
 
     int temp_result_size = data.image_size * data.filter_w * 2 / data.slot_count;
 
+    omp_set_nested(1);
     #pragma omp parallel for num_threads(2)
     for (int packing_index = 0; packing_index < 6; packing_index++) {
         //compute matrix multiplication
