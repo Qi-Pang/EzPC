@@ -8,7 +8,7 @@
 #include "linear.h"
 #include "nonlinear.h"
 
-#define NL_NTHREADS 64
+#define NL_NTHREADS 32
 #define NL_ELL 37
 
 #define GELU_ELL 20

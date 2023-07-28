@@ -1659,7 +1659,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [TIMING]: ln_share takes " << t_total_ln_share << " sec" << endl;
 
 
-    cout << "> [TIMING]: Pool/Class" << interval(t_pc) << " sec" << endl; 
+    cout << "> [TIMING]: Pool/Class takes " << interval(t_pc) << " sec" << endl; 
 
     cout << "> [NETWORK]: Linear 1 consumes: " << c_linear_1 << " bytes" << endl; 
     cout << "> [NETWORK]: Linear 2 consumes: " << c_linear_2 << " bytes" << endl; 
