@@ -733,9 +733,14 @@ void Linear::bert_cipher_plain_bsgs(
     vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w * 3 * 12 / data.slot_count, vector<Ciphertext>(n2));
 
     int temp_result_size = data.image_size * data.filter_w * 2 / data.slot_count;
+    int omp_thread1 = 2, omp_thread2 = 16;
+    if (data.image_size == 64) {
+        omp_thread1 = 3;
+        omp_thread2 = 8;
+    }
 
     omp_set_nested(1);
-    #pragma omp parallel for num_threads(2)
+    #pragma omp parallel for num_threads(omp_thread1)
     for (int packing_index = 0; packing_index < 6; packing_index++) {
         //compute matrix multiplication
         vector<vector<Ciphertext>> temp_results(temp_result_size * 3, vector<Ciphertext>(n2));
@@ -749,7 +754,7 @@ void Linear::bert_cipher_plain_bsgs(
         vector<vector<Plaintext>> enc_weights_v1 = wv_pack[packing_index].first;
         vector<vector<Plaintext>> enc_weights_v2 = wv_pack[packing_index].second;
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(omp_thread2)
         // #pragma omp taskloop
         for (int k = 0; k < cts.size() * n2; k++) {
             int j = k / cts.size();
