@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
     cout << "-> Port: " << port << endl;
     cout << "<<<" << endl << endl;
 
-    Bert bt(party, port, address, path + "/weights_txt/");
+    Bert bt(party, port, address, path + "/weights_txt_right/");
 
     auto start = high_resolution_clock::now();
     
@@ -62,8 +62,8 @@ int main(int argc, char **argv) {
         for(int i = sample_id; i < sample_id + num_sample; i++ ){
             cout << "==>> Inference sample #" << i << endl;
             vector<double> result = bt.run(
-                path + "/weights_txt/inputs_" + to_string(i) + "_data.txt",
-                path + "/weights_txt/inputs_" + to_string(i) +  "_mask.txt"
+                path + "/weights_txt_right/inputs_" + to_string(i) + "_data.txt",
+                path + "/weights_txt_right/inputs_" + to_string(i) +  "_mask.txt"
                 );
             if(result.size() == 1){
                 file << result[0]<< endl;
