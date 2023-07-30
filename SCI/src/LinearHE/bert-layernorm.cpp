@@ -8,6 +8,26 @@ using namespace seal;
 #define HE_TIMING
 // #define HE_DEBUG
 
+void LayerNormField::saveMatrix(const std::string& filename, uint64_t* matrix, size_t rows, size_t cols) {
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                // file << matrix[i * cols + j];
+                file << ((int64_t) matrix[i * cols + j] + (int64_t) prime_mod) % (int64_t) prime_mod;
+                if (j < cols - 1) {
+                    file << ",";
+                }
+            }
+            file << "\n";
+        }
+        file.close();
+    } 
+    else {
+        std::cout << "Unable to open file";
+    }
+}
+
 void LayerNormField::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << "Noise budget: ";
     for(int i = 0; i < v.size(); i++){
@@ -75,7 +95,7 @@ vector<Plaintext> LayerNormField::pack_gamma(vector<uint64_t> &gamma, const FCMe
         vector<uint64_t> temp_pack(data.slot_count, 0ULL);
         for (int k = 0; k < col_per_ct; k++) {
             for (int j = 0; j < data.image_size; j++) {
-                temp_pack[j + k * data.image_size] = gamma[i * k];
+                temp_pack[j + k * data.image_size] = gamma[i * col_per_ct + k];
             }
         }
         Plaintext pt1;
@@ -93,7 +113,7 @@ vector<Plaintext> LayerNormField::pack_x_plain(vector<vector<uint64_t>> &x, cons
         for (int ind = 0; ind < data.slot_count; ind++) {
             int row = ind % data.image_size;
             int col = ind / data.image_size + i * data.slot_count / data.image_size;
-            temp_pack[ind] = x[row][col];
+            temp_pack[ind] = neg_mod((int64_t)x[row][col], (int64_t)prime_mod);
         }
         Plaintext pt1;
         encoder->encode(temp_pack, pt1);
@@ -106,17 +126,15 @@ vector<Ciphertext> LayerNormField::pack_x_cipher(vector<vector<uint64_t>> &x, co
     int cts_size = data.image_size * data.filter_h / data.slot_count;
     vector<Ciphertext> result(cts_size);
     for (int i = 0; i < cts_size; i++) {
-        cout << "debug " << i << endl;
         vector<uint64_t> temp_pack(data.slot_count, 0ULL);
         for (int ind = 0; ind < data.slot_count; ind++) {
             int row = ind % data.image_size;
             int col = ind / data.image_size + i * data.slot_count / data.image_size;
+            temp_pack[ind] = neg_mod((int64_t)x[row][col], (int64_t)prime_mod);
         }
         Plaintext pt1;
         Ciphertext ct1;
         encoder->encode(temp_pack, pt1);
-        cout << "debug encode done " << endl;
-
         encryptor->encrypt(pt1, ct1);
         result[i] = ct1;
     }
@@ -124,21 +142,23 @@ vector<Ciphertext> LayerNormField::pack_x_cipher(vector<vector<uint64_t>> &x, co
 }
 
 vector<Plaintext> LayerNormField::gamma_x2_plain_server(vector<vector<uint64_t>> &x2_pt, vector<uint64_t> &gamma, vector<vector<uint64_t>> &sharing_r, const FCMetadata &data) {
+    vector<vector<uint64_t>> result(data.image_size, vector<uint64_t>(data.filter_h));
     for (int i = 0; i < data.image_size; i++) {
         for (int j = 0; j < data.filter_h; j++) {
-            x2_pt[i][j] = x2_pt[i][j] * gamma[j] - sharing_r[i][j];
+            result[i][j] = neg_mod((int64_t)(x2_pt[i][j] * gamma[j] - sharing_r[i][j]), (int64_t)prime_mod);
         }
     }
-    return pack_x_plain(x2_pt, data);
+    return pack_x_plain(result, data);
 }
 
 vector<Ciphertext> LayerNormField::gamma_x_server(vector<Ciphertext> &x1_ct, vector<Plaintext> &enc_gamma, vector<Plaintext> &gamma_x2_pt, const FCMetadata &data) {
     int cts_size = x1_ct.size();
+    vector<Ciphertext> result(cts_size);
     for (int i = 0; i < cts_size; i++) {
-        evaluator->multiply_plain_inplace(x1_ct[i], enc_gamma[i]);
-        evaluator->add_plain_inplace(x1_ct[i], gamma_x2_pt[i]);
+        evaluator->multiply_plain(x1_ct[i], enc_gamma[i], result[i]);
+        evaluator->add_plain_inplace(result[i], gamma_x2_pt[i]);
     }
-    return x1_ct;
+    return result;
 }
 
 // Below computes (128 x 768) y * var (768)
@@ -158,7 +178,7 @@ vector<Plaintext> LayerNormField::pack_var_plain(vector<uint64_t> &var, const FC
         vector<uint64_t> temp_pack(data.slot_count, 0ULL);
         for (int ind = 0; ind < data.slot_count; ind++) {
             int col = ind / data.image_size + i * data.slot_count / data.image_size;
-            temp_pack[ind] = var[col];
+            temp_pack[ind] = neg_mod((int64_t)var[col], (int64_t)prime_mod);
         }
         Plaintext pt1;
         encoder->encode(temp_pack, pt1);
@@ -220,6 +240,26 @@ vector<Ciphertext> LayerNormField::x1_x2_server(vector<Ciphertext> &x1, vector<P
     return x1;
 }
 
+vector<uint64_t> LayerNormField::postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing) {
+    vector<uint64_t> result(data.image_size * data.filter_h);
+    for (int ct_ind = 0; ct_ind < cts.size(); ct_ind++) {
+        vector<uint64_t> temp_plain(data.slot_count, 0ULL);
+        Plaintext pt;
+        decryptor->decrypt(cts[ct_ind], pt);
+        encoder->decode(pt, temp_plain);
+        for (int pt_ind = 0; pt_ind < data.slot_count; pt_ind++) {
+            int row = pt_ind % data.image_size;
+            int col = pt_ind / data.image_size + ct_ind * data.slot_count / data.image_size;
+            if (col_packing) {
+                result[row + col * data.image_size] = temp_plain[pt_ind];
+            }
+            else {
+                result[col + row * data.filter_h] = temp_plain[pt_ind];
+            }
+        }
+    }
+    return result;
+}
 
 void LayerNormField::layernorm_he(int32_t input_dim, 
                                     int32_t common_dim, 
@@ -236,16 +276,27 @@ void LayerNormField::layernorm_he(int32_t input_dim,
     this->slot_count = 8192;
     configure();
 
-    cout << "debug config done " << endl;
-
     if (party == BOB) {
         // Client
 
         vector<Ciphertext> x1_ct = pack_x_cipher(X1, data);
-        vector<Ciphertext> var1_ct = pack_var_cipher(Var1, data);
-        x1_ct.insert(x1_ct.end(), var1_ct.begin(), var1_ct.end());
-        cout << "debug client packing done " << endl;
+        // vector<Ciphertext> var1_ct = pack_var_cipher(Var1, data);
+        // x1_ct.insert(x1_ct.end(), var1_ct.begin(), var1_ct.end());
         send_encrypted_vector(io, x1_ct);
+        int cts_size = data.image_size * data.filter_h / data.slot_count;
+        vector<Ciphertext> gamma_x_ct(cts_size);
+        recv_encrypted_vector(this->context, io, gamma_x_ct);
+        auto gamma_x_result = postprocess(gamma_x_ct, data, false);
+
+        saveMatrix("/home/qipang/mnt/d1/linear/EzPC/SCI/build/bin/txt/layernorm_result.txt", gamma_x_result.data(), data.image_size, data.filter_h);
+        
+        // HACK: verify
+        // for (int i = 0; i < 1; i++) {
+        //     for (int j = 0; j < data.filter_h; j++) {
+        //         cout << gamma_x_result[i * data.filter_h + j] << " ";
+        //     }
+        //     cout << endl;
+        // }
 
     } else {
         // Server
@@ -257,13 +308,18 @@ void LayerNormField::layernorm_he(int32_t input_dim,
         // for (int i = 0; i < common_dim; i++) {
         //     vec[i] = B[i][0];
         // }
+        vector<vector<uint64_t>> server_sharing(data.image_size, vector<uint64_t>(data.filter_h, 0ULL));
 
         int cts_size = data.image_size * data.filter_h / data.slot_count;
 
         auto io_start = io->counter;
-        vector<Ciphertext> cts(cts_size * 2);
-        recv_encrypted_vector(this->context, io, cts);
-        vector<Ciphertext> x1_ct = {cts.begin(), cts.begin() + cts_size};
-        vector<Ciphertext> var1_ct = {cts.begin() + cts_size, cts.end()};
+        vector<Ciphertext> x1_ct(cts_size);
+        recv_encrypted_vector(this->context, io, x1_ct);
+        // vector<Ciphertext> x1_ct = {cts.begin(), cts.begin() + cts_size};
+        // vector<Ciphertext> var1_ct = {cts.begin() + cts_size, cts.end()};
+        vector<Plaintext> gamma_pt = pack_gamma(Gamma, data);
+        vector<Plaintext> gamma_x2_pt = gamma_x2_plain_server(X2, Gamma, server_sharing, data);
+        vector<Ciphertext> gamma_x_ct = gamma_x_server(x1_ct, gamma_pt, gamma_x2_pt, data);
+        send_encrypted_vector(io, gamma_x_ct);
     }
 }

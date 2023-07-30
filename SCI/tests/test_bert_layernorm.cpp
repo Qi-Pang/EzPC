@@ -119,6 +119,16 @@ void LayerNorm(LayerNormField &beln, int32_t input_dim, int32_t common_dim, int3
     vector<uint64_t> Var1(input_dim, 4);
     vector<uint64_t> Var2(input_dim, 5);
 
+    for (int i = 0; i < input_dim; i++) {
+        for (int j = 0; j < common_dim; j++) {
+            X1[i][j] = i * 1000 + j;
+            X2[i][j] = j * 10 + i;
+        }
+    }
+    for (int i = 0; i < common_dim; i++) {
+        Gamma[i] = i % 27;
+    }
+
     beln.layernorm_he(input_dim, common_dim, output_dim, X1, X2, Gamma, Var1, Var2);
     STOP_TIMER("Total Time for LN");
 }
@@ -136,7 +146,9 @@ int main(int argc, char **argv) {
     amap.parse(argc, argv);
 
     // prime_mod = std::pow(2, 37);
-    prime_mod = 65537;
+    
+    // 32-bit
+    prime_mod = 4295049217;
 
     cout << "===================================================================="
         << endl;

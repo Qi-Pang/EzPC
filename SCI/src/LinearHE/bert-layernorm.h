@@ -2,6 +2,7 @@
 #define BERTFC_FIELD_H__
 
 #include "utils-HE.h"
+#include <fstream>
 
 using namespace std;
 using namespace sci;
@@ -44,6 +45,7 @@ public:
 
   void print_ct(Ciphertext &ct, int len);
   void print_pt(Plaintext &pt, int len);
+  void saveMatrix(const std::string& filename, uint64_t* matrix, size_t rows, size_t cols);
 
   vector<Plaintext> pack_gamma(vector<uint64_t> &gamma, const FCMetadata &data);
   vector<Plaintext> pack_x_plain(vector<vector<uint64_t>> &x, const FCMetadata &data);
@@ -57,6 +59,7 @@ public:
   vector<Ciphertext> var1_y2_server(vector<Ciphertext> &var1_ct, vector<Plaintext> &y2_pt, const FCMetadata &data);
   vector<vector<uint64_t>> x_square_plain(vector<vector<uint64_t>> &x, const FCMetadata &data);
   vector<Ciphertext> x1_x2_server(vector<Ciphertext> &x1, vector<Plaintext> &x2, const FCMetadata &data);
+  vector<uint64_t> postprocess(vector<Ciphertext> &cts, const FCMetadata &data, const bool &col_packing = true);
 
   void layernorm_he(int32_t input_dim, int32_t common_dim,
                             int32_t output_dim,
