@@ -131,15 +131,14 @@ void generate_new_keys_layernorm(int party, NetIO *io, int slot_count,
   EncryptionParameters parms(scheme_type::bfv);
   parms.set_poly_modulus_degree(slot_count);
   // parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {36, 36, 36, 36, 37, 37}));
-//   parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {54, 54, 55, 55}));
+  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {54, 54, 55, 55}));
   // parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {60, 49}));
-  parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {40, 39, 30}));
+  // parms.set_coeff_modulus(CoeffModulus::Create(slot_count, {40, 39, 30}));
 //   parms.set_coeff_modulus(CoeffModulus::BFVDefault(slot_count));
   parms.set_plain_modulus(prime_mod);
   // auto context = SEALContext::Create(parms, true, sec_level_type::none);
   context_ = new SEALContext(parms, true, seal::sec_level_type::tc128);
-  // encoder_ = new BatchEncoder(*context_);
-  encoder_ = nullptr;
+  encoder_ = new BatchEncoder(*context_);
   evaluator_ = new Evaluator(*context_);
   if (party == BOB) {
     KeyGenerator keygen(*context_);
@@ -177,7 +176,6 @@ void generate_new_keys_layernorm(int party, NetIO *io, int slot_count,
 #endif
     encryptor_ = new Encryptor(*context_, pub_key);
     decryptor_ = new Decryptor(*context_, sec_key);
-    encryptor_->set_secret_key(sec_key);
   } else // party == ALICE
   {
     uint64_t pk_size;
@@ -339,6 +337,22 @@ void free_keys(int party, Encryptor *&encryptor_, Decryptor *&decryptor_,
 }
 
 void free_keys_iron(int party, Encryptor *&encryptor_, Decryptor *&decryptor_,
+               Evaluator *&evaluator_, BatchEncoder *&encoder_, Ciphertext *&zero_) {
+  delete encoder_;
+  delete evaluator_;
+  delete encryptor_;
+  if (party == BOB) {
+    delete decryptor_;
+  } else // party ==ALICE
+  {
+#ifdef HE_DEBUG
+    delete decryptor_;
+#endif
+    delete zero_;
+  }
+}
+
+void free_keys_layernorm(int party, Encryptor *&encryptor_, Decryptor *&decryptor_,
                Evaluator *&evaluator_, BatchEncoder *&encoder_, Ciphertext *&zero_) {
   delete encoder_;
   delete evaluator_;

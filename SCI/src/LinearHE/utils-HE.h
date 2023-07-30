@@ -73,12 +73,25 @@ void generate_new_keys_ctpt(int party, sci::NetIO *io, int slot_count,
                        seal::Ciphertext *&zero_,
                        bool verbose = false);
 
+void generate_new_keys_layernorm(int party, sci::NetIO *io, int slot_count,
+                       seal::SEALContext *&context_,
+                       seal::Encryptor *&encryptor_, 
+                       seal::Decryptor *&decryptor_,
+                       seal::Evaluator *&evaluator_, 
+                       seal::BatchEncoder *&encoder_, 
+                       seal::Ciphertext *&zero_, 
+                       bool verbose = false);
+
 void free_keys(int party, seal::Encryptor *&encryptor_,
                seal::Decryptor *&decryptor_, seal::Evaluator *&evaluator_,
                seal::BatchEncoder *&encoder_, seal::GaloisKeys *&gal_keys_,
                seal::Ciphertext *&zero_);
 
 void free_keys_iron(int party, seal::Encryptor *&encryptor_,
+               seal::Decryptor *&decryptor_, seal::Evaluator *&evaluator_,
+               seal::BatchEncoder *&encoder_, seal::Ciphertext *&zero_);
+
+void free_keys_layernorm(int party, seal::Encryptor *&encryptor_,
                seal::Decryptor *&decryptor_, seal::Evaluator *&evaluator_,
                seal::BatchEncoder *&encoder_, seal::Ciphertext *&zero_);
 

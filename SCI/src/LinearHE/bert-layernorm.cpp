@@ -1,4 +1,4 @@
-#include "LinearHE/bert-linear1-inputprune.h"
+#include "LinearHE/bert-layernorm.h"
 #include <omp.h>
 
 using namespace std;
@@ -50,7 +50,7 @@ LayerNormField::LayerNormField(int party, NetIO *io) {
 }
 
 LayerNormField::~LayerNormField() {
-    free_keys(party, encryptor, decryptor, evaluator, encoder, gal_keys, zero);
+    free_keys_layernorm(party, encryptor, decryptor, evaluator, encoder, zero);
 }
 
 void LayerNormField::configure() {
@@ -106,15 +106,17 @@ vector<Ciphertext> LayerNormField::pack_x_cipher(vector<vector<uint64_t>> &x, co
     int cts_size = data.image_size * data.filter_h / data.slot_count;
     vector<Ciphertext> result(cts_size);
     for (int i = 0; i < cts_size; i++) {
+        cout << "debug " << i << endl;
         vector<uint64_t> temp_pack(data.slot_count, 0ULL);
         for (int ind = 0; ind < data.slot_count; ind++) {
             int row = ind % data.image_size;
             int col = ind / data.image_size + i * data.slot_count / data.image_size;
-            temp_pack[ind] = x[row][col];
         }
         Plaintext pt1;
         Ciphertext ct1;
         encoder->encode(temp_pack, pt1);
+        cout << "debug encode done " << endl;
+
         encryptor->encrypt(pt1, ct1);
         result[i] = ct1;
     }
@@ -134,7 +136,7 @@ vector<Ciphertext> LayerNormField::gamma_x_server(vector<Ciphertext> &x1_ct, vec
     int cts_size = x1_ct.size();
     for (int i = 0; i < cts_size; i++) {
         evaluator->multiply_plain_inplace(x1_ct[i], enc_gamma[i]);
-        evaluator->add_inplace(x1_ct[i], gamma_x2_pt[i]);
+        evaluator->add_plain_inplace(x1_ct[i], gamma_x2_pt[i]);
     }
     return x1_ct;
 }
@@ -165,7 +167,7 @@ vector<Plaintext> LayerNormField::pack_var_plain(vector<uint64_t> &var, const FC
     return result;
 }
 
-vector<Plaintext> LayerNormField::pack_var_cipher(vector<uint64_t> &var, const FCMetadata &data) {
+vector<Ciphertext> LayerNormField::pack_var_cipher(vector<uint64_t> &var, const FCMetadata &data) {
     int cts_size = data.image_size * data.filter_h / data.slot_count;
     vector<Ciphertext> result(cts_size);
     for (int i = 0; i < cts_size; i++) {
@@ -213,7 +215,7 @@ vector<vector<uint64_t>> LayerNormField::x_square_plain(vector<vector<uint64_t>>
 vector<Ciphertext> LayerNormField::x1_x2_server(vector<Ciphertext> &x1, vector<Plaintext> &x2, const FCMetadata &data) {
     int cts_size = data.image_size * data.filter_h / data.slot_count;
     for (int i = 0; i < cts_size; i++) {
-        evaluator->multiply_plain_inplace(x1[i], 2 * x2[i]);
+        evaluator->multiply_plain_inplace(x1[i], x2[i]);
     }
     return x1;
 }
@@ -234,12 +236,15 @@ void LayerNormField::layernorm_he(int32_t input_dim,
     this->slot_count = 8192;
     configure();
 
+    cout << "debug config done " << endl;
+
     if (party == BOB) {
         // Client
 
         vector<Ciphertext> x1_ct = pack_x_cipher(X1, data);
         vector<Ciphertext> var1_ct = pack_var_cipher(Var1, data);
         x1_ct.insert(x1_ct.end(), var1_ct.begin(), var1_ct.end());
+        cout << "debug client packing done " << endl;
         send_encrypted_vector(io, x1_ct);
 
     } else {

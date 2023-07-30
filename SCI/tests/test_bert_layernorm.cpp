@@ -109,17 +109,15 @@ vector<vector<uint64_t>> read_qkv_bias(const string& filename) {
 }
 
 void LayerNorm(LayerNormField &beln, int32_t input_dim, int32_t common_dim, int32_t output_dim) {
-    vector<vector<uint64_t>> 
-
     cout << "prime: " << prime_mod << endl;
     INIT_TIMER;
     START_TIMER;
 
-    vector<vector<uint64_t>> X1(input_dim, vector<unint64_t>(common_dim, 0ULL));
-    vector<vector<uint64_t>> X2(input_dim, vector<unint64_t>(common_dim, 0ULL));
-    vector<uint64_t> Gamma(common_dim, 0ULL);
-    vector<uint64_t> Var1(input_dim, 0ULL);
-    vector<uint64_t> Var2(input_dim, 0ULL);
+    vector<vector<uint64_t>> X1(input_dim, vector<uint64_t>(common_dim, 1));
+    vector<vector<uint64_t>> X2(input_dim, vector<uint64_t>(common_dim, 2));
+    vector<uint64_t> Gamma(common_dim, 3);
+    vector<uint64_t> Var1(input_dim, 4);
+    vector<uint64_t> Var2(input_dim, 5);
 
     beln.layernorm_he(input_dim, common_dim, output_dim, X1, X2, Gamma, Var1, Var2);
     STOP_TIMER("Total Time for LN");
@@ -137,7 +135,8 @@ int main(int argc, char **argv) {
     amap.arg("l", bitlength, "Bitlength of inputs");
     amap.parse(argc, argv);
 
-    prime_mod = std::pow(2, 37);
+    // prime_mod = std::pow(2, 37);
+    prime_mod = 65537;
 
     cout << "===================================================================="
         << endl;

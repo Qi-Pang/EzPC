@@ -52,11 +52,11 @@ public:
   vector<Ciphertext> gamma_x_server(vector<Ciphertext> &x1_ct, vector<Plaintext> &enc_gamma, vector<Plaintext> &gamma_x2_pt, const FCMetadata &data);
   vector<vector<uint64_t>> y_var_plain(vector<vector<uint64_t>> &y1, vector<uint64_t> &var1, const FCMetadata &data);
   vector<Plaintext> pack_var_plain(vector<uint64_t> &var, const FCMetadata &data);
-  vector<Plaintext> pack_var_cipher(vector<uint64_t> &var, const FCMetadata &data);
+  vector<Ciphertext> pack_var_cipher(vector<uint64_t> &var, const FCMetadata &data);
   vector<Ciphertext> y1_var2_server(vector<Ciphertext> &y1_ct, vector<Plaintext> &var2_pt, const FCMetadata &data);
   vector<Ciphertext> var1_y2_server(vector<Ciphertext> &var1_ct, vector<Plaintext> &y2_pt, const FCMetadata &data);
   vector<vector<uint64_t>> x_square_plain(vector<vector<uint64_t>> &x, const FCMetadata &data);
-  vector<Ciphertext> LayerNormField::x1_x2_server(vector<Ciphertext> &x1, vector<Plaintext> &x2, const FCMetadata &data);
+  vector<Ciphertext> x1_x2_server(vector<Ciphertext> &x1, vector<Plaintext> &x2, const FCMetadata &data);
 
   void layernorm_he(int32_t input_dim, int32_t common_dim,
                             int32_t output_dim,
