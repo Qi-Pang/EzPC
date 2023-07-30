@@ -82,6 +82,8 @@ public:
 
     void cancel_wrap(int nthreads, uint64_t* input, uint64_t* output, int size, int ell, int s);
 
+    void convert_l_to_p(int nthreads, uint64_t* input, uint64_t* output, int l, uint64_t p, int size, int ell, int s);
+
     FixArray to_public(uint64_t* input, int length, int ell, int s);
 
     void pruning(

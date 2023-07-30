@@ -343,6 +343,8 @@ public:
   // x must be secret-shared
   std::tuple<BoolArray,BoolArray> MSB_and_zero_test(const FixArray &x);
 
+  BoolArray wrap(const FixArray &x);
+
   // Equality and Comparison Operations: return (x[i]-y[i] mod 2^{x.ell}) OP 0 (OP = {=, <, >, <=, >=}) in the form of a BoolArray, where the comparison is over signed integers
   // The comparison operations have correctness for signed inputs if | x[i] | + | y[i] | < 2^{x.ell-1}, and for unsigned inputs if | x[i]-y[i] | < 2^{x.ell-1}
   //// At least one of x and y must be a secret-shared FixArray

@@ -831,6 +831,7 @@ void cancel_wrap_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_op
   } else {
     this_party = party;
   }
+  BoolArray all_0 = fpmath->bool_op->input(ALICE, num_ops, uint8_t(0));
   FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   // FixArray input_2 = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
   // for(int i =0; i < num_ops; i++){
@@ -839,7 +840,7 @@ void cancel_wrap_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_op
   // }
   // BoolArray wrap, zero_test;
   // tie(wrap, zero_test) = fpmath->fix->wrap_and_zero_test(input);
-  FixArray output = fpmath->fix->extend(input, 27);
+  FixArray output = fpmath->fix->extend(input, 37);
   memcpy(y, output.data, num_ops*sizeof(uint64_t));
 }
 
@@ -971,8 +972,10 @@ void NonLinear::pruning(
     sorted_sum_l.s
   );
 
-  for(int i = 0; i < sorted_sum_l.size; i++){
-    indices.data[i] = i;
+  if (party == ALICE){
+    for(int i = 0; i < sorted_sum_l.size; i++){
+      indices.data[i] = i;
+    }
   }
 
   BoolArray cmp = fpmath_->fix->GT(sum_l, median);
@@ -987,4 +990,47 @@ void NonLinear::pruning(
 
   memcpy(softmax_v_pruned, res_softmax_v.data, res_softmax_v.size*sizeof(uint64_t) / 2);
   memcpy(h1_pruned, res_h1.data, res_h1.size*sizeof(uint64_t) / 2);
+}
+
+void convert_l_to_p_thread(int tid, int party, uint64_t *x, uint64_t *y, int num_ops, int ell, int s, int l, uint64_t p, FPMath *fpmath) {
+  int this_party;
+  if (tid & 1) {
+    this_party = 3 - party;
+  } else {
+    this_party = party;
+  }
+  FixArray input = fpmath->fix->input(this_party, num_ops, x, true, ell, s);
+  BoolArray wrap = fpmath->fix->wrap(input);
+  FixArray output = fpmath->fix->if_else(wrap, input, input);
+  memcpy(y, output.data, num_ops*sizeof(uint64_t));
+}
+
+void NonLinear::convert_l_to_p(int nthreads, uint64_t* input, uint64_t* output, int l, uint64_t p, int size, int ell, int s){
+  std::thread threads[nthreads];
+    int chunk_size = size / nthreads;
+    for (int i = 0; i < nthreads; ++i) {
+        int offset = i * chunk_size;
+        int lnum_ops;
+        if (i == (nthreads - 1)) {
+        lnum_ops = size - offset;
+        } else {
+        lnum_ops = chunk_size;
+        }
+        threads[i] =
+            std::thread(
+                convert_l_to_p_thread, 
+                i, 
+                party, 
+                &input[offset], 
+                &output[offset], 
+                lnum_ops,
+                ell,
+                s,
+                l,
+                p,
+                this->fpmath[i]);
+    }
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i].join();
+    }
 }

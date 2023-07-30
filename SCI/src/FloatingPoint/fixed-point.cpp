@@ -513,6 +513,21 @@ BoolArray FixOp::LSB(const FixArray &x) {
   return ret;
 }
 
+BoolArray FixOp::wrap(const FixArray &x) {
+  assert(x.party != PUBLIC);
+  BoolArray wrap(x.party, x.size);
+  BoolArray zero_test(x.party, x.size);
+  uint64_t *mill_inp = new uint64_t[x.size];
+  for (int i = 0; i < x.size; i++) {
+    mill_inp[i] = (party == ALICE ? x.data[i] : (1ULL << x.ell) - x.data[i]);
+  }
+  mill_eq->compare_with_eq(wrap.data, zero_test.data, mill_inp, x.size, x.ell + 1, true);
+  wrap = bool_op->XOR(wrap, zero_test);
+
+  delete[] mill_inp;
+  return wrap;
+}
+
 tuple<BoolArray,BoolArray> FixOp::wrap_and_zero_test(const FixArray &x) {
   assert(x.party != PUBLIC);
   BoolArray wrap(x.party, x.size);

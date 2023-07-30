@@ -258,6 +258,14 @@ vector<Ciphertext> Bert::ss_to_he_server(HE* he, uint64_t* input, int length, in
     t_total_conversion += interval(t_conversion);
     #endif 
     return share_client;
+
+    // io->send_data(input, length*sizeof(uint64_t));
+    // int slot_count = he->poly_modulus_degree;
+    // uint64_t plain_mod = he->plain_mod;
+    // int dim = length / slot_count;
+    // vector<Ciphertext> share_client(dim);
+    // recv_encrypted_vector(he->context, io, share_client);
+    // return share_client;
 }
 
 void Bert::he_to_ss_client(HE* he, uint64_t* output, int length, const FCMetadata &data){
@@ -301,6 +309,25 @@ void Bert::ss_to_he_client(HE* he, uint64_t* input, int length, int bw){
     #ifdef BERT_PERF
     t_total_conversion += interval(t_conversion);
     #endif 
+
+    // uint64_t* input_server = new uint64_t[length];
+    // io->recv_data(input_server, length*sizeof(uint64_t));
+    // int slot_count = he->poly_modulus_degree;
+    // uint64_t plain_mod = he->plain_mod;
+    // vector<Ciphertext> cts;
+    // int dim = length / slot_count;
+    // for(int i = 0; i < dim; i++){
+    //     vector<uint64_t> tmp(slot_count);
+    //     for(int j = 0; j < slot_count; ++j){
+    //          tmp[j] = neg_mod(signed_val(input[i*slot_count + j] + input_server[i*slot_count + j], bw), (int64_t)plain_mod);
+    //     }
+    //     Plaintext pt;
+    //     he->encoder->encode(tmp, pt);
+    //     Ciphertext ct; 
+    //     he->encryptor->encrypt(pt, ct);
+    //     cts.push_back(ct);
+    // }
+    // send_encrypted_vector(io, cts);
 }
 
 void Bert::ln_share_server(
@@ -837,11 +864,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_SAVE_RESULTS
             FixArray softmax_l_pub = nl.to_public(softmax_l_row, softmax_output_size, 25, 0);
             if(party == ALICE){
-                save_to_file(softmax_l_pub.data, 1536, 128, replace_2("./ppnlp/softmax_l_X.txt", "X", to_string(layer_id)).c_str());
+                save_to_file(softmax_l_pub.data, 1536*softmax_dim, 1, replace_2("./ppnlp/softmax_l_X.txt", "X", to_string(layer_id)).c_str());
             }
             FixArray softmax_pub = nl.to_public(softmax_output_row, softmax_output_size, NL_ELL, NL_SCALE);
             if(party == ALICE){
-                save_to_file(softmax_pub.data, 1536, 128, replace_2("./ppnlp/softmax_X.txt", "X", to_string(layer_id)).c_str());
+                save_to_file(softmax_pub.data, 1536*softmax_dim, 1, replace_2("./ppnlp/softmax_X.txt", "X", to_string(layer_id)).c_str());
             }
             #endif
 
@@ -896,7 +923,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #ifdef BERT_SAVE_RESULTS
             FixArray softmax_v_row_pub = nl.to_public(softmax_v_col, softmax_v_size, NL_ELL, 6);
             if(party == ALICE){
-                save_to_file(softmax_v_row_pub.data, 768, 128, replace_2("./ppnlp/softmax_v_X.txt", "X", to_string(layer_id)).c_str());
+                save_to_file(softmax_v_row_pub.data, 768*softmax_dim, 1, replace_2("./ppnlp/softmax_v_X.txt", "X", to_string(layer_id)).c_str());
             }
             #endif
 
@@ -952,6 +979,18 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             } else{
                 memcpy(h2_col, softmax_v_col, h2_col_size*sizeof(uint64_t));
             }
+
+            #ifdef BERT_SAVE_RESULTS
+            FixArray h2_col_pub = nl.to_public(h2_col, h2_col_size, NL_ELL, 6);
+            if(party == ALICE){
+                save_to_file(h2_col_pub.data, h2_col_size, 1, replace_2("./ppnlp/h2_col_X.txt", "X", to_string(layer_id)).c_str());
+            }
+
+            FixArray h1_cache_12_pub = nl.to_public(h1_cache_12, h2_col_size, NL_ELL, 12);
+            if(party == ALICE){
+                save_to_file(h1_cache_12_pub.data, h2_col_size, 1, replace_2("./ppnlp/h1_cache_X.txt", "X", to_string(layer_id)).c_str());
+            }
+            #endif
 
             #ifdef BERT_PERF
             t_total_pruning += interval(t_pruning);
@@ -1274,16 +1313,46 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             auto t_shift = high_resolution_clock::now();
             #endif 
 
-            nl.right_shift(
-                NL_NTHREADS,
-                gelu_output_col,
-                NL_SCALE - 4,
-                gelu_output_col,
-                gelu_input_size,
-                GELU_ELL,
-                NL_SCALE
-            );
+            // nl.right_shift(
+            //     NL_NTHREADS,
+            //     gelu_output_col,
+            //     NL_SCALE - 4,
+            //     gelu_output_col,
+            //     gelu_input_size,
+            //     GELU_ELL,
+            //     NL_SCALE
+            // );
 
+            // // int tmp = get_comm();
+            // // int tmp_round = get_round();
+
+            // nl.cancel_wrap(
+            //     NL_NTHREADS,
+            //     gelu_output_col,
+            //     gelu_output_col,
+            //     gelu_input_size,
+            //     GELU_ELL,
+            //     NL_SCALE
+            // );
+
+            // cout << "Extension cost: " << get_comm() << " Bytes, " << get_round() << " rounds." << endl;
+
+            // nl.convert_l_to_p(
+            //     NL_NTHREADS,
+            //     gelu_output_col,
+            //     gelu_output_col,
+            //     1,
+            //     2,
+            //     gelu_input_size,
+            //     GELU_ELL,
+            //     NL_SCALE
+            // );
+
+            // cout << "Extension cost: " << get_comm() << " Bytes, " << get_round() << " rounds." << endl;
+
+            // return {};
+
+            
             #ifdef BERT_SAVE_RESULTS
             FixArray gelu_output_col_pub = nl.to_public(gelu_output_col, gelu_input_size, GELU_ELL, NL_SCALE);
             if(party == ALICE){
@@ -1314,13 +1383,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     lin.he_8192_tiny, 
                     gelu_output_col,
                     gelu_input_size, 
-                    GELU_ELL);
+                    NL_ELL);
             } else{
                 ss_to_he_client(
                     lin.he_8192_tiny, 
                     gelu_output_col, 
                     gelu_input_size, 
-                    GELU_ELL);
+                    NL_ELL);
             }
 
             delete[] gelu_input_cross;

@@ -675,7 +675,7 @@ std::tuple<FixArray, FixArray> FPMath::exp4(const FixArray &x){
   l_ln2 =  fix->truncate_reduce(l_ln2, scale);
   // l_ln2 =  fix->reduce(l_ln2, ell);
 
-  // Get the decimal part
+  // Get the decimal part  
   FixArray p = fix->add(x, l_ln2);
   // Optimization: We don't need that much bit as p \in (-ln2, 0])
   p = fix->reduce(p, scale + 2);
@@ -1449,12 +1449,9 @@ FixArray FPMath::gelu_approx(const FixArray& x){
   BoolArray all_1 = bool_op->input(ALICE, N, 1);
 
   // Get y = abs(x)
-  // BoolArray msb_x = fix->MSB(x);
-  // FixArray msb_fix_x = fix->B2A(msb_x, false, x.ell);
-  // FixArray double_x = fix->mul(x, 2);
-  // FixArray double_x_or_not = fix->mul(double_x, msb_fix_x, x.ell);
-  // FixArray y = fix->sub(x, double_x_or_not);
-  FixArray y = fix->abs(x);
+  BoolArray msb_x = fix->MSB(x);
+  FixArray neg_x = fix->mul(x, -1);
+  FixArray y = fix->if_else(msb_x, neg_x, x);
 
   // z(y):= y * (y + (-4.901373660634577)) \in [-6.006, 0]
   FixArray cons_1 = fix->input(PUBLIC, N, uint64_t((-4.901373660634577) * (1 << s)), true, ell, s);
@@ -1513,7 +1510,6 @@ FixArray FPMath::gelu_approx(const FixArray& x){
   half_x_plus_y.s = s;
 
   FixArray ret = fix->if_else(gt27, half_x_plus_y, gelu_y);
-
   return ret;
 }
 
@@ -1525,7 +1521,10 @@ FixArray FPMath::gelu_approx_2(const FixArray& x){
   BoolArray all_0 = bool_op->input(ALICE, N, uint8_t(0));
   BoolArray all_1 = bool_op->input(ALICE, N, 1);
 
-  FixArray y = fix->abs(x);
+  // Get y = abs(x)
+  BoolArray msb_x = fix->MSB(x);
+  FixArray neg_x = fix->mul(x, -1);
+  FixArray y = fix->if_else(msb_x, neg_x, x);
 
   // z(y) = (0.14439048359960427*y - 0.7077117131613893) * y + 4.5702822654246535
 
@@ -1571,6 +1570,11 @@ FixArray FPMath::gelu_approx_2(const FixArray& x){
 
   FixArray ret = fix->if_else(gt27, half_x_plus_y, gelu_y);
 
+  BoolArray msb_ret = bool_op->OR(msb_x, gt27);
+
+  ret = fix->extend(ret, 37);
+  ret =fix->right_shift(ret, 8);
+  
   return ret;
 }
 
@@ -1732,7 +1736,8 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
 
   FixArray x_flat = concat(x);
   FixArray x_flat_avg = fix->sub(x_flat, avg_flat);
-  FixArray x_flat_avg_square = fix->mul(x_flat_avg, x_flat_avg, ell + s);
+  BoolArray msb_x_avg = fix->MSB(x_flat_avg);
+  FixArray x_flat_avg_square = fix->mul(x_flat_avg, x_flat_avg, ell + s, msb_x_avg.data, msb_x_avg.data);
   x_flat_avg_square = fix->truncate_reduce(x_flat_avg_square, s);
 
   vector<FixArray> square_group(N);
@@ -1753,7 +1758,7 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
     }
   }
 
-  FixArray x_avg_sigma = fix->mul(x_flat_avg, sigma_flat, ell+s, nullptr, all_0.data);
+  FixArray x_avg_sigma = fix->mul(x_flat_avg, sigma_flat, ell+s, msb_x_avg.data, all_0.data);
   x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s);
 
   // Weight and Bias
@@ -1842,7 +1847,7 @@ tuple<FixArray, FixArray, FixArray> FPMath::bitonic_sort_and_swap(
 
         if(swap){
           common_dim = softmax_v.size / x.size;
-          assert(common_dim = 768);
+          assert(common_dim == 768);
 
           softmax_v_reverse = fix->input(party, softmax_v.size, (uint64_t)0 ,softmax_v.signed_, softmax_v.ell, softmax_v.s);
           h1_reverse = fix->input(party, h1.size, (uint64_t)0, h1.signed_, h1.ell, h1.s);
