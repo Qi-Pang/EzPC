@@ -54,6 +54,14 @@ Linear::Linear(int party, NetIO *io, bool prune) {
 		557057
     );
 
+    this->he_8192_ln = new HE(
+        party,
+        io,
+        8192,
+        {54, 54, 55, 55},
+		4295049217
+    );
+
     this->p_mod = prime_mod;
 
 	// this->he_4096 = new HE(
@@ -1660,4 +1668,16 @@ void Linear::bert_softmax_V(HE* he, vector<Ciphertext> &softmax_s1, vector<vecto
     for (int i = 0; i < result.size(); i++) {
         he->evaluator->mod_switch_to_next_inplace(result[i]);
     }
+}
+
+vector<Ciphertext> Linear::w_ln(HE* he, vector<Ciphertext> ln, vector<Plaintext> w){
+    int cts_size = ln.size();
+    vector<Ciphertext> result(cts_size);
+    #pragma omp parallel for
+    for (int i = 0; i < cts_size; i++) {
+        he->evaluator->multiply_plain(ln[i], w[i], result[i]);
+        he->evaluator->mod_switch_to_next_inplace(result[i]);
+        he->evaluator->mod_switch_to_next_inplace(result[i]);
+    }
+    return result;
 }

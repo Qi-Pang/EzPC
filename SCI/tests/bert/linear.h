@@ -65,6 +65,7 @@ public:
 
 	HE *he_8192;
 	HE *he_8192_tiny;
+	HE *he_8192_ln;
 	// HE *he_4096;
 
 	// Fix linking error
@@ -323,6 +324,8 @@ public:
 		vector<vector<vector<Plaintext>>> &R, 
 		const FCMetadata &data, 
 		vector<Ciphertext> &result);
+
+	vector<Ciphertext> w_ln(HE* he, vector<Ciphertext> ln, vector<Plaintext> w);
 
 };
 

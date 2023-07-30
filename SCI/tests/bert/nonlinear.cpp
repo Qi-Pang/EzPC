@@ -813,7 +813,7 @@ void NonLinear::reduce(int nthreads, uint64_t* input, uint64_t* output, int size
 }
 
 void NonLinear::print_ss(uint64_t* input, int length, int ell, int s){
-  FixArray tmp = fpmath[0]->fix->input(party, length, input, false, ell, s);
+  FixArray tmp = fpmath[0]->fix->input(party, length, input, true, ell, s);
   fpmath[0]->print(tmp);
 }
 

@@ -1762,9 +1762,9 @@ vector<FixArray> FPMath::layer_norm_iron(const vector<FixArray>& x, FixArray& w,
   x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s);
 
   // Weight and Bias
-  x_avg_sigma = fix->mul(x_avg_sigma, w, ell+s);
-  x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s);
-  x_avg_sigma = fix->add(x_avg_sigma, b);
+  // x_avg_sigma = fix->mul(x_avg_sigma, w, ell+s);
+  // x_avg_sigma = fix->truncate_reduce(x_avg_sigma, s);
+  // x_avg_sigma = fix->add(x_avg_sigma, b);
 
   // Hack!
   // x_avg_sigma = fix->extend(x_avg_sigma, 64);

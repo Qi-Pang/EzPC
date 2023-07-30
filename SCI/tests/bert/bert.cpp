@@ -1033,6 +1033,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             uint64_t* ln_input_row = new uint64_t[ln_size];
             uint64_t* ln_output_row = new uint64_t[ln_size];
             uint64_t* ln_output_col = new uint64_t[ln_size];
+            uint64_t* ln_wx = new uint64_t[ln_size];
+
             uint64_t* ln_weight = new uint64_t[ln_size];
             uint64_t* ln_bias = new uint64_t[ln_size];
 
@@ -1133,6 +1135,56 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
+            // wx
+            if(party == ALICE){
+                vector<Ciphertext> ln = ss_to_he_server(
+                    lin.he_8192_ln, 
+                    ln_output_row,
+                    ln_size, 
+                    NL_ELL);
+                
+                uint64_t* w = new uint64_t[ln_size];
+                vector<Plaintext> pt_w(ln.size());
+                for(int i = 0; i < data.image_size; i++){
+                    memcpy(&w[i*COMMON_DIM], lin.w_ln_1[layer_id].data(), COMMON_DIM*sizeof(uint64_t));
+                }
+                int slot_count = lin.he_8192_ln->poly_modulus_degree;
+                for(int i = 0; i < ln.size(); i++){
+                    vector<uint64_t> tmp(&w[i*slot_count], &w[(i+1)*slot_count]);
+                    Plaintext pt;
+                    lin.he_8192_ln->encoder->encode(tmp, pt);
+                    pt_w[i] = pt;
+                }
+                vector<Ciphertext> ln_w = lin.w_ln(lin.he_8192_ln, ln, pt_w);
+                he_to_ss_server(lin.he_8192_ln, ln_w, ln_wx, true);
+            } else{
+                ss_to_he_client(
+                    lin.he_8192_ln, 
+                    ln_output_row, 
+                    ln_size, 
+                    NL_ELL);
+                int cts_size = ln_size / lin.he_8192_ln->poly_modulus_degree;
+                he_to_ss_client(lin.he_8192_ln, ln_wx, cts_size ,data);
+            }
+
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                ln_wx,
+                lin.he_8192_ln->plain_mod,
+                ln_wx,
+                ln_size,
+                NL_ELL,
+                2*NL_SCALE,
+                NL_SCALE
+            );
+
+            uint64_t ell_mask = (1ULL << (NL_ELL)) - 1;
+
+            for(int i = 0; i < ln_size; i++){
+                ln_wx[i] += ln_bias[i] & ell_mask;
+            }
+
+
             #ifdef BERT_PERF
             t_total_ln_1 += interval(t_ln_1);
             c_ln1 += get_comm();
@@ -1147,11 +1199,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
             #endif
 
-            memcpy(h4_cache_12, ln_output_row, ln_size*sizeof(uint64_t));
+            memcpy(h4_cache_12, ln_wx, ln_size*sizeof(uint64_t));
 
             nl.right_shift(
                 NL_NTHREADS,
-                ln_output_row,
+                ln_wx,
                 NL_SCALE - 5,
                 ln_output_row,
                 ln_size,
@@ -1411,6 +1463,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 new uint64_t[ln_2_input_size];
             uint64_t* ln_2_output_col =
                 new uint64_t[ln_2_input_size];
+
+            uint64_t* ln_2_wx = 
+                new uint64_t[ln_2_input_size];
+
             uint64_t* ln_weight_2 = new uint64_t[ln_2_input_size];
             uint64_t* ln_bias_2 = new uint64_t[ln_2_input_size];
 
@@ -1524,6 +1580,55 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 NL_SCALE
             );
 
+            // wx
+            if(party == ALICE){
+                vector<Ciphertext> ln = ss_to_he_server(
+                    lin.he_8192_ln, 
+                    ln_2_output_row,
+                    ln_2_input_size, 
+                    NL_ELL);
+                
+                uint64_t* w = new uint64_t[ln_2_input_size];
+                vector<Plaintext> pt_w(ln.size());
+                for(int i = 0; i < data.image_size; i++){
+                    memcpy(&w[i*COMMON_DIM], lin.w_ln_2[layer_id].data(), COMMON_DIM*sizeof(uint64_t));
+                }
+                int slot_count = lin.he_8192_ln->poly_modulus_degree;
+                for(int i = 0; i < ln.size(); i++){
+                    vector<uint64_t> tmp(&w[i*slot_count], &w[(i+1)*slot_count]);
+                    Plaintext pt;
+                    lin.he_8192_ln->encoder->encode(tmp, pt);
+                    pt_w[i] = pt;
+                }
+                vector<Ciphertext> ln_w = lin.w_ln(lin.he_8192_ln, ln, pt_w);
+                he_to_ss_server(lin.he_8192_ln, ln_w, ln_2_wx, true);
+            } else{
+                ss_to_he_client(
+                    lin.he_8192_ln, 
+                    ln_2_output_row,
+                    ln_2_input_size, 
+                    NL_ELL);
+                int cts_size = ln_2_input_size / lin.he_8192_ln->poly_modulus_degree;
+                he_to_ss_client(lin.he_8192_ln, ln_2_wx, cts_size ,data);
+            }
+
+            nl.gt_p_sub(
+                NL_NTHREADS,
+                ln_2_wx,
+                lin.he_8192_ln->plain_mod,
+                ln_2_wx,
+                ln_2_input_size,
+                NL_ELL,
+                2*NL_SCALE,
+                NL_SCALE
+            );
+
+            uint64_t ell_mask = (1ULL << (NL_ELL)) - 1;
+
+            for(int i = 0; i < ln_2_input_size; i++){
+                ln_2_wx[i] += ln_bias_2[i] & ell_mask;
+            }
+
             #ifdef BERT_SAVE_RESULTS
             FixArray ln_2_output_row_pub = nl.to_public(ln_2_output_row, ln_2_input_size, NL_ELL, NL_SCALE);
             if(party == ALICE){
@@ -1539,12 +1644,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #endif 
 
             // update H1
-            memcpy(h1_cache_12, ln_2_output_row, ln_2_input_size*sizeof(uint64_t));
+            memcpy(h1_cache_12, ln_2_wx, ln_2_input_size*sizeof(uint64_t));
 
             // Rescale
             nl.right_shift(
                 NL_NTHREADS,
-                ln_2_output_row,
+                ln_2_wx,
                 12 - 5,
                 ln_2_output_row,
                 ln_2_input_size,
