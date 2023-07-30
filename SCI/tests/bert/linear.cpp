@@ -704,47 +704,43 @@ void Linear::bert_cipher_plain_bsgs(
     const FCMetadata &data, 
     vector<Ciphertext> &result) {
 
-    vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1 = 8;
     int n2 = 4;
     if (data.image_size == 64) {
         n1 = 16;
         n2 = 4;
     }
+    vector<vector<Ciphertext>> rotatedIR(cts.size(), vector<Ciphertext>(2 * n1));
 
     int num_diag = data.slot_count / data.image_size / 2;
     int num_matrix_per_col = data.filter_w / num_diag;
     
-    omp_set_nested(1);
-    #pragma omp parallel for num_threads(2)
-    for (int i = 0; i < cts.size(); i++)
-    {   
-        vector<Ciphertext> tmp(n1 * 2);
-        tmp[0] = cts[i];
-
-        #pragma omp parallel for
-        for (int j = 1; j < n1; j++) {
-            Ciphertext temp_rot;
+    #pragma omp parallel for num_threads(32)
+    for (int k = 0; k < cts.size() * n1; k++) {
+        int i = k % cts.size();
+        int j = k / cts.size();
+        Ciphertext temp_rot;
+        if (j == 0)
+            rotatedIR[i][j] = cts[i];
+        else {
             he->evaluator->rotate_rows(cts[i], (num_diag - j) * data.image_size, *(he->gal_keys), temp_rot);
-            tmp[j] = temp_rot;
+            rotatedIR[i][j] = temp_rot;
         }
-
-        #pragma omp parallel for
-        for (int j = 0; j < n1; j++) {
-            Ciphertext temp_rot;
-            he->evaluator->rotate_columns(tmp[j], *(he->gal_keys), temp_rot);
-            tmp[j + n1] = temp_rot;
-        }
-
-        rotatedIR[i] = tmp;
-        tmp.clear();
+        he->evaluator->rotate_columns(rotatedIR[i][j], *(he->gal_keys), temp_rot);
+        rotatedIR[i][j + n1] = temp_rot;
     }
 
     vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w * 3 * 12 / data.slot_count, vector<Ciphertext>(n2));
 
     int temp_result_size = data.image_size * data.filter_w * 2 / data.slot_count;
+    int omp_thread1 = 2, omp_thread2 = 16;
+    if (data.image_size == 64) {
+        omp_thread1 = 3;
+        omp_thread2 = 8;
+    }
 
-    #pragma omp parallel for num_threads(2)
+    omp_set_nested(1);
+    #pragma omp parallel for num_threads(omp_thread1)
     for (int packing_index = 0; packing_index < 6; packing_index++) {
         //compute matrix multiplication
         vector<vector<Ciphertext>> temp_results(temp_result_size * 3, vector<Ciphertext>(n2));
@@ -758,7 +754,7 @@ void Linear::bert_cipher_plain_bsgs(
         vector<vector<Plaintext>> enc_weights_v1 = wv_pack[packing_index].first;
         vector<vector<Plaintext>> enc_weights_v2 = wv_pack[packing_index].second;
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(omp_thread2)
         // #pragma omp taskloop
         for (int k = 0; k < cts.size() * n2; k++) {
             int j = k / cts.size();
@@ -790,7 +786,7 @@ void Linear::bert_cipher_plain_bsgs(
             }
         }
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(n2)
         // #pragma omp taskloop
         for (int j = 0; j < n2; j++) {
             for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
@@ -847,7 +843,6 @@ void Linear::bert_cipher_plain_bsgs_2(
     const vector<Plaintext> &enc_bias, 
     const FCMetadata &data, 
     vector<Ciphertext> &result){
-    vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1;
     int n2;
     if (data.filter_h == 3072 && data.filter_w == 768) {
@@ -878,27 +873,22 @@ void Linear::bert_cipher_plain_bsgs_2(
         assert (0);
     }
     int num_diag = data.slot_count / data.image_size / 2;
+
+    vector<vector<Ciphertext>> rotatedIR(cts.size(), vector<Ciphertext>(n1 * 2));
     
-    #pragma omp parallel for
-    for (int i = 0; i < cts.size(); i++)
-    {   
-        vector<Ciphertext> tmp;
-        tmp.push_back(cts[i]);
-
-        for (int j = 1; j < n1; j++) {
-            Ciphertext temp_rot;
+    #pragma omp parallel for num_threads(32)
+    for (int k = 0; k < cts.size() * n1; k++) {
+        int i = k % cts.size();
+        int j = k / cts.size();
+        Ciphertext temp_rot;
+        if (j == 0)
+            rotatedIR[i][j] = cts[i];
+        else {
             he->evaluator->rotate_rows(cts[i], (num_diag - j) * data.image_size, *(he->gal_keys), temp_rot);
-            tmp.push_back(temp_rot);
+            rotatedIR[i][j] = temp_rot;
         }
-
-        for (int j = 0; j < n1; j++) {
-            Ciphertext temp_rot;
-            he->evaluator->rotate_columns(tmp[j], *(he->gal_keys), temp_rot);
-            tmp.push_back(temp_rot);
-        }
-
-        rotatedIR[i] = tmp;
-        tmp.clear();
+        he->evaluator->rotate_columns(rotatedIR[i][j], *(he->gal_keys), temp_rot);
+        rotatedIR[i][j + n1] = temp_rot;
     }
 
     //compute matrix multiplication
@@ -907,7 +897,7 @@ void Linear::bert_cipher_plain_bsgs_2(
 
     // rotatedIR 48 x 16, enc_mat 64 x 48
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(32)
     for (int k = 0; k < cts.size() * n2; k++) {
         int j = k / cts.size();
         int ct_i = k % cts.size();
@@ -928,7 +918,8 @@ void Linear::bert_cipher_plain_bsgs_2(
         }
     }
 
-    #pragma omp parallel for
+    // FIXME: optimize this
+    #pragma omp parallel for num_threads(n2)
     for (int j = 0; j < n2; j++) {
         for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
             for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
@@ -941,7 +932,7 @@ void Linear::bert_cipher_plain_bsgs_2(
         
     }
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(data.image_size * data.filter_w / data.slot_count)
     for (int l = 0; l < data.image_size * data.filter_w / data.slot_count; l++) {
         Ciphertext ct;
         for (int k = 0; k < n2; k++) {
@@ -978,7 +969,7 @@ void Linear::bert_cipher_cipher_cross_packing(
         for (int l = 0; l < temp_result_size; l++) {
             Ciphertext Qi = Cipher_plain_result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count];
             Ciphertext Ki = Cipher_plain_result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count + data.image_size * data.filter_w * 12 / data.slot_count];
-            #pragma omp parallel for
+            #pragma omp parallel for num_threads(16)
             for (int i = 0; i < data.image_size; i++) {
                 vector<Ciphertext> temp_mult = rotation_by_one_depth3(he, data, Ki, i);
                 if (l == 0) {
@@ -994,13 +985,13 @@ void Linear::bert_cipher_cipher_cross_packing(
                 }
             }
         }
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(16)
         for (int i = 0; i < data.image_size * 2; i++) {
             he->evaluator->relinearize_inplace(rotation_results[i], *(he->relin_keys));
         }
         int local_rotation = std::ceil(std::log2(data.slot_count / data.image_size / 2));
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(16)
         for (int i = 0; i < data.image_size * 2; i++) {
             for (int k = 0; k < local_rotation; k++) {
                 Ciphertext temp2;
@@ -1012,7 +1003,7 @@ void Linear::bert_cipher_cipher_cross_packing(
         int num_cts_per_res = data.image_size * data.image_size * 2 / data.slot_count; // 1 or 4
         int num_col_per_ct = data.slot_count / 2 / data.image_size; // 64 or 32
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(num_cts_per_res)
         for (int i = 0; i < num_cts_per_res; i++) {
             he->evaluator->add(rotation_results[num_col_per_ct * i], rotation_results[num_col_per_ct * i + data.image_size], results[packing_index * num_cts_per_res + i]);
             for (int j = 1; j < num_col_per_ct; j++) {
