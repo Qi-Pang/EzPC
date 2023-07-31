@@ -11,7 +11,8 @@
 #define NL_NTHREADS 32
 #define NL_ELL 37
 
-#define GELU_ELL 21
+#define GELU_ELL 20
+#define GELU_SCALE 11
 #define NL_SCALE 12
 #define NUM_CLASS 2
 

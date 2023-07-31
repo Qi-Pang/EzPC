@@ -1313,9 +1313,9 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 lin.he_8192_tiny->plain_mod,
                 gelu_input_col,
                 gelu_input_size,
-                NL_ELL,
+                GELU_ELL,
                 11,
-                NL_SCALE
+                GELU_SCALE
             );
 
             #ifdef BERT_SAVE_RESULTS
@@ -1325,15 +1325,15 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
             #endif
 
-            nl.reduce(
-                NL_NTHREADS,
-                gelu_input_col,
-                gelu_input_col,
-                gelu_input_size,
-                NL_ELL,
-                GELU_ELL,
-                NL_SCALE
-            );
+            // nl.reduce(
+            //     NL_NTHREADS,
+            //     gelu_input_col,
+            //     gelu_input_col,
+            //     gelu_input_size,
+            //     NL_ELL,
+            //     GELU_ELL,
+            //     GELU_SCALE
+            // );
 
             #ifdef BERT_SAVE_RESULTS
             FixArray gelu_reduce_col_pub = nl.to_public(gelu_input_col, gelu_input_size, GELU_ELL, NL_SCALE);
@@ -1355,7 +1355,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 gelu_output_col,
                 gelu_input_size,
                 GELU_ELL,
-                NL_SCALE
+                GELU_SCALE
             );
 
             #ifdef BERT_PERF

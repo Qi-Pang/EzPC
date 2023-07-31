@@ -1261,9 +1261,12 @@ std::tuple<vector<FixArray>, FixArray> FPMath::softmax_fix(const vector<FixArray
   tie(e_x_flat, l_short) = exp4(shifted_x_flat);
   // FixArray e_x_flat = shifted_x_flat;
 
+  int exp_ell = 19;
+  e_x_flat = fix->reduce(e_x_flat, exp_ell);
+
   vector<FixArray> e_x_tr(n);
   for (int i = 0; i < n; i++) {
-    e_x_tr[i] = FixArray(party, N, signed_, ell, s);
+    e_x_tr[i] = FixArray(party, N, signed_, exp_ell, s);
     for (int j = 0; j < N; j++) {
       e_x_tr[i].data[j] = e_x_flat.data[j*n + i];
     }
@@ -1289,27 +1292,18 @@ std::tuple<vector<FixArray>, FixArray> FPMath::softmax_fix(const vector<FixArray
     }
     sum_e_x = tmp[0];
   }
-  // FixArray sum_e_x_replicated(party, N*n, signed_, ell, s);
-  // for(int i = 0; i < N; i++) {
-  //   for (int j = 0; j < n; j++) {
-  //     sum_e_x_replicated.data[i*n + j] = sum_e_x.data[i];
-  //   }
-  // }
-  // sum_e_x_replicated.signed_ = false;
-  // FixArray ret_flat = fix->div(e_x_flat, sum_e_x_replicated, ell, s);
   
   sum_e_x.signed_ = false;
-  FixArray ret_flat = fix->div_batch(e_x_flat, sum_e_x, n ,ell, s);
+  FixArray ret_flat = fix->div_batch(e_x_flat, sum_e_x, n ,exp_ell, s);
+
+  BoolArray all_0 = bool_op->input(ALICE, N, uint8_t(0));
+  ret_flat = fix->extend(ret_flat, ell);
 
   vector<FixArray> ret(N);
   for (int i = 0; i < N; i++) {
     ret[i] = FixArray(party, n, signed_, ell, s);
     memcpy(ret[i].data, ret_flat.data + i*n, n*sizeof(uint64_t));
   }
-
-  // for (int i = 0; i < N; i++){
-  //   print_fix(ret[i]);
-  // }
   return make_tuple(ret, l_short);
 }
 
@@ -1561,19 +1555,19 @@ FixArray FPMath::gelu_approx_2(const FixArray& x){
   // 0.5x + p(y)
   FixArray gelu_y = fix->add(half_x, p_y);
 
-  BoolArray gt27 = fix->GT(y, 2.7*(1 << s));
+  BoolArray lt27 = fix->LT(y, 2.7*(1 << s));
 
 
   FixArray x_plus_y = fix->add(x, y);
   FixArray half_x_plus_y = fix->right_shift(x_plus_y, 1, all_0.data);
   half_x_plus_y.s = s;
 
-  FixArray ret = fix->if_else(gt27, half_x_plus_y, gelu_y);
+  FixArray ret = fix->if_else(lt27, gelu_y, half_x_plus_y);
 
-  BoolArray msb_ret = bool_op->OR(msb_x, gt27);
+  BoolArray msb_ret = bool_op->AND(msb_x, lt27);
 
-  ret = fix->extend(ret, 37);
-  ret =fix->right_shift(ret, 8);
+  ret = fix->extend(ret, 37, msb_ret.data);
+  ret =fix->right_shift(ret, 7, msb_ret.data);
   
   return ret;
 }
