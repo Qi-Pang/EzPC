@@ -929,6 +929,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(prune && layer_id == 0){
 
+                #pragma omp parallel for
                 for(int i = 0; i < INPUT_DIM; i ++){
                     for(int j = 0; j < OUTPUT_DIM*PACKING_NUM; j++){
                         int row_offset = i*OUTPUT_DIM*PACKING_NUM + j;
@@ -937,6 +938,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     }
                 }
                 
+                #pragma omp parallel for
                 for(int pack_id = 0; pack_id < PACKING_NUM; pack_id++){
                     for(int i = 0; i < INPUT_DIM; i ++){
                         for(int j = 0; j < INPUT_DIM; j++){
@@ -1143,19 +1145,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     ln_size, 
                     NL_ELL);
                 
-                uint64_t* w = new uint64_t[ln_size];
-                vector<Plaintext> pt_w(ln.size());
-                for(int i = 0; i < data.image_size; i++){
-                    memcpy(&w[i*COMMON_DIM], lin.w_ln_1[layer_id].data(), COMMON_DIM*sizeof(uint64_t));
-                }
-                int slot_count = lin.he_8192_ln->poly_modulus_degree;
-                for(int i = 0; i < ln.size(); i++){
-                    vector<uint64_t> tmp(&w[i*slot_count], &w[(i+1)*slot_count]);
-                    Plaintext pt;
-                    lin.he_8192_ln->encoder->encode(tmp, pt);
-                    pt_w[i] = pt;
-                }
-                vector<Ciphertext> ln_w = lin.w_ln(lin.he_8192_ln, ln, pt_w);
+                vector<Ciphertext> ln_w = lin.w_ln(lin.he_8192_ln, ln, lin.w_ln_1_pt[layer_id]);
                 he_to_ss_server(lin.he_8192_ln, ln_w, ln_wx, true);
             } else{
                 ss_to_he_client(
@@ -1587,20 +1577,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     ln_2_output_row,
                     ln_2_input_size, 
                     NL_ELL);
-                
-                uint64_t* w = new uint64_t[ln_2_input_size];
-                vector<Plaintext> pt_w(ln.size());
-                for(int i = 0; i < data.image_size; i++){
-                    memcpy(&w[i*COMMON_DIM], lin.w_ln_2[layer_id].data(), COMMON_DIM*sizeof(uint64_t));
-                }
-                int slot_count = lin.he_8192_ln->poly_modulus_degree;
-                for(int i = 0; i < ln.size(); i++){
-                    vector<uint64_t> tmp(&w[i*slot_count], &w[(i+1)*slot_count]);
-                    Plaintext pt;
-                    lin.he_8192_ln->encoder->encode(tmp, pt);
-                    pt_w[i] = pt;
-                }
-                vector<Ciphertext> ln_w = lin.w_ln(lin.he_8192_ln, ln, pt_w);
+                vector<Ciphertext> ln_w = lin.w_ln(lin.he_8192_ln, ln, lin.w_ln_2_pt[layer_id]);
                 he_to_ss_server(lin.he_8192_ln, ln_w, ln_2_wx, true);
             } else{
                 ss_to_he_client(

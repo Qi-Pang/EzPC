@@ -91,6 +91,9 @@ public:
     vector<vector<uint64_t>> w_ln_2;
     vector<vector<uint64_t>> b_ln_2;
 
+	vector<vector<Plaintext>> w_ln_1_pt;
+	vector<vector<Plaintext>> w_ln_2_pt;
+
 	// Pooling
     vector<vector<uint64_t>> w_p;
     vector<uint64_t> b_p;
@@ -146,22 +149,6 @@ public:
 		PreprocessParams_2 &pp,
 		const FCMetadata &data
 		);
-	
-	// vector<Ciphertext> linear_2(
-	// 	HE* he,
-	// 	vector<Ciphertext> input_cts, 
-	// 	vector<vector<uint64_t>> w_o,
-	// 	vector<vector<uint64_t>> b_o,
-	// 	const FCMetadata &data
-	// 	);
-
-	// vector<Ciphertext> linear_inter(
-	// 	HE* he,
-	// 	vector<Ciphertext> input_cts, 
-	// 	vector<vector<uint64_t>> w_i,
-	// 	vector<vector<uint64_t>> b_i,
-	// 	const FCMetadata &data
-	// 	);
 
 	// concat on dim1
 	// output: dim2 x (dim1xdim3)

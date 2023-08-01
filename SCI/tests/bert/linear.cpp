@@ -77,6 +77,9 @@ Linear::Linear(int party, NetIO *io, bool prune) {
     pp_3.resize(ATTENTION_LAYERS);
     pp_4.resize(ATTENTION_LAYERS);
 
+    w_ln_1_pt.resize(ATTENTION_LAYERS);
+    w_ln_2_pt.resize(ATTENTION_LAYERS);
+
     data_lin1_0.filter_h = COMMON_DIM;
     data_lin1_0.filter_w = OUTPUT_DIM;
     data_lin1_0.image_size = INPUT_DIM;
@@ -269,6 +272,33 @@ void Linear::weights_preprocess(BertModel &bm){
             bm.b_i_2[i],
             data_lin4
         );
+
+        int slot_count = he_8192_ln->poly_modulus_degree;
+        int w_length = data_lin2.image_size*COMMON_DIM;
+        uint64_t* w_1 = new uint64_t[w_length];
+        uint64_t* w_2 = new uint64_t[w_length];
+
+        vector<Plaintext> pt_w_1(w_length / slot_count);
+        vector<Plaintext> pt_w_2(w_length / slot_count);
+        for(int j = 0; j < data_lin2.image_size; j++){
+            memcpy(&w_1[j*COMMON_DIM], bm.w_ln_1[i].data(), COMMON_DIM*sizeof(uint64_t));
+            memcpy(&w_2[j*COMMON_DIM], bm.w_ln_2[i].data(), COMMON_DIM*sizeof(uint64_t));
+        }
+        
+        for(int i = 0; i < pt_w_1.size(); i++){
+            vector<uint64_t> tmp_1(&w_1[i*slot_count], &w_1[(i+1)*slot_count]);
+            Plaintext pt_1;
+            he_8192_ln->encoder->encode(tmp_1, pt_1);
+            pt_w_1[i] = pt_1;
+
+            vector<uint64_t> tmp_2(&w_2[i*slot_count], &w_2[(i+1)*slot_count]);
+            Plaintext pt_2;
+            he_8192_ln->encoder->encode(tmp_2, pt_2);
+            pt_w_2[i] = pt_2;
+        }
+
+        w_ln_1_pt[i] = pt_w_1;
+        w_ln_2_pt[i] = pt_w_2;
     }
 
     w_ln_1 = bm.w_ln_1;
