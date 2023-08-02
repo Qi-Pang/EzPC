@@ -59,8 +59,8 @@ Linear::Linear(int party, NetIO *io) {
     data_lin1.filter_w = OUTPUT_DIM;
     data_lin1.image_size = INPUT_DIM;
     data_lin1.slot_count = 4096;
-    data_lin1.nw = 16;
-    data_lin1.kw = 2;
+    data_lin1.nw = 4;
+    data_lin1.kw = 8;
 
     data_lin2.filter_h = COMMON_DIM;
     data_lin2.filter_w = COMMON_DIM;

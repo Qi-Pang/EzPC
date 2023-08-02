@@ -94,6 +94,7 @@ public:
 
   FixArray gt_p_sub(const FixArray& x, const FixArray& p);
 
+  vector<FixArray> layer_norm_fix(const vector<FixArray>& x, FixArray& w, FixArray&b);
   vector<FixArray> layer_norm_iron(const vector<FixArray>& x, FixArray& w, FixArray&b);
 
   FixArray sqrt(const FixArray& x, bool recp_sqrt);

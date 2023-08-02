@@ -141,7 +141,7 @@ void layer_norm_thread(int tid, int party, uint64_t *x, uint64_t *y, uint64_t *w
   }
   FixArray w_array = fpmath->fix->input(this_party, num_ops*array_size, w, true, ell, s);
   FixArray b_array = fpmath->fix->input(this_party, num_ops*array_size, b, true, ell, s);
-  vector<FixArray> output_array = fpmath->layer_norm_iron(input_array, w_array, b_array);
+  vector<FixArray> output_array = fpmath->layer_norm_fix(input_array, w_array, b_array);
   for(int i = 0; i < num_ops; i++){
     memcpy(&y[i*array_size], output_array[i].data, array_size * sizeof(uint64_t));
   }
