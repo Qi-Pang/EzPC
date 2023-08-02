@@ -16,6 +16,26 @@ void PruneLin1Field::print_noise_budget_vec(vector<Ciphertext> v) {
     cout << RESET << endl;
 }
 
+void PruneLin1Field::saveMatrix(const std::string& filename, uint64_t* matrix, size_t rows, size_t cols) {
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                // file << matrix[i * cols + j];
+                file << ((int64_t) matrix[i * cols + j] + (int64_t) prime_mod) % (int64_t) prime_mod;
+                if (j < cols - 1) {
+                    file << ",";
+                }
+            }
+            file << "\n";
+        }
+        file.close();
+    } 
+    else {
+        std::cout << "Unable to open file";
+    }
+}
+
 void PruneLin1Field::print_ct(Ciphertext &ct, int len){
     Plaintext pt;
     decryptor->decrypt(ct, pt);
@@ -273,41 +293,31 @@ void PruneLin1Field::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts,
                     vector<Ciphertext> &result) {
 
     auto t1 = high_resolution_clock::now();
-    vector<vector<Ciphertext>> rotatedIR(cts.size()); // cts.size() = 48
     int n1 = 8;
     int n2 = 4;
     if (data.image_size == 64) {
         n1 = 16;
         n2 = 4;
     }
+    vector<vector<Ciphertext>> rotatedIR(cts.size(), vector<Ciphertext>(2 * n1));
 
     int num_diag = data.slot_count / data.image_size / 2;
     int num_matrix_per_col = data.filter_w / num_diag;
     cout << "[Server] Online Start" << endl;
     
-    omp_set_nested(1);
-    #pragma omp parallel for num_threads(2)
-    for (int i = 0; i < cts.size(); i++)
-    {   
-        vector<Ciphertext> tmp(n1 * 2);
-        tmp[0] = cts[i];
-
-        #pragma omp parallel for
-        for (int j = 1; j < n1; j++) {
-            Ciphertext temp_rot;
+    #pragma omp parallel for
+    for (int k = 0; k < cts.size() * n1; k++) {
+        int i = k % cts.size();
+        int j = k / cts.size();
+        Ciphertext temp_rot;
+        if (j == 0)
+            rotatedIR[i][j] = cts[i];
+        else {
             evaluator->rotate_rows(cts[i], (num_diag - j) * data.image_size, *gal_keys, temp_rot);
-            tmp[j] = temp_rot;
+            rotatedIR[i][j] = temp_rot;
         }
-
-        #pragma omp parallel for
-        for (int j = 0; j < n1; j++) {
-            Ciphertext temp_rot;
-            evaluator->rotate_columns(tmp[j], *gal_keys, temp_rot);
-            tmp[j + n1] = temp_rot;
-        }
-
-        rotatedIR[i] = tmp;
-        tmp.clear();
+        evaluator->rotate_columns(rotatedIR[i][j], *gal_keys, temp_rot);
+        rotatedIR[i][j + n1] = temp_rot;
     }
 
     auto t2 = high_resolution_clock::now();
@@ -318,8 +328,14 @@ void PruneLin1Field::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts,
     vector<vector<Ciphertext>> temp_results(data.image_size * data.filter_w * 3 * 12 / data.slot_count, vector<Ciphertext>(n2));
 
     int temp_result_size = data.image_size * data.filter_w * 2 / data.slot_count;
+    int omp_thread1 = 2, omp_thread2 = 16;
+    if (data.image_size == 64) {
+        omp_thread1 = 3;
+        omp_thread2 = 8;
+    }
 
-    #pragma omp parallel for num_threads(2)
+    omp_set_nested(1);
+    #pragma omp parallel for num_threads(omp_thread1)
     for (int packing_index = 0; packing_index < 6; packing_index++) {
         //compute matrix multiplication
         vector<vector<Ciphertext>> temp_results(temp_result_size * 3, vector<Ciphertext>(n2));
@@ -333,7 +349,7 @@ void PruneLin1Field::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts,
         vector<vector<Plaintext>> enc_weights_v1 = wv_pack[packing_index].first;
         vector<vector<Plaintext>> enc_weights_v2 = wv_pack[packing_index].second;
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(omp_thread2)
         // #pragma omp taskloop
         for (int k = 0; k < cts.size() * n2; k++) {
             int j = k / cts.size();
@@ -365,7 +381,7 @@ void PruneLin1Field::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts,
             }
         }
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(n2)
         // #pragma omp taskloop
         for (int j = 0; j < n2; j++) {
             for (int ct_i = 0; ct_i < cts.size(); ct_i++) {
@@ -384,6 +400,7 @@ void PruneLin1Field::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts,
             }
         }
 
+        // FIXME: optimize here parallel rotations
         #pragma omp parallel for
         for (int l = 0; l < temp_result_size; l++) {
             Ciphertext ct_q, ct_k, ct_v;
@@ -432,7 +449,7 @@ void PruneLin1Field::bert_cipher_cipher_cross_packing(const FCMetadata &data, co
         for (int l = 0; l < temp_result_size; l++) {
             Ciphertext Qi = Cipher_plain_result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count];
             Ciphertext Ki = Cipher_plain_result[l + packing_index * data.image_size * data.filter_w * 2 / data.slot_count + data.image_size * data.filter_w * 12 / data.slot_count];
-            #pragma omp parallel for
+            #pragma omp parallel for num_threads(16)
             for (int i = 0; i < data.image_size; i++) {
                 vector<Ciphertext> temp_mult = rotation_by_one_depth3(data, Ki, i);
                 if (l == 0) {
@@ -448,13 +465,13 @@ void PruneLin1Field::bert_cipher_cipher_cross_packing(const FCMetadata &data, co
                 }
             }
         }
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(16)
         for (int i = 0; i < data.image_size * 2; i++) {
             evaluator->relinearize_inplace(rotation_results[i], *relin_keys);
         }
         int local_rotation = std::ceil(std::log2(data.slot_count / data.image_size / 2));
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(16)
         for (int i = 0; i < data.image_size * 2; i++) {
             for (int k = 0; k < local_rotation; k++) {
                 Ciphertext temp2;
@@ -466,7 +483,7 @@ void PruneLin1Field::bert_cipher_cipher_cross_packing(const FCMetadata &data, co
         int num_cts_per_res = data.image_size * data.image_size * 2 / data.slot_count; // 1 or 4
         int num_col_per_ct = data.slot_count / 2 / data.image_size; // 64 or 32
 
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(num_cts_per_res)
         for (int i = 0; i < num_cts_per_res; i++) {
             evaluator->add(rotation_results[num_col_per_ct * i], rotation_results[num_col_per_ct * i + data.image_size], results[packing_index * num_cts_per_res + i]);
             for (int j = 1; j < num_col_per_ct; j++) {
@@ -479,7 +496,7 @@ void PruneLin1Field::bert_cipher_cipher_cross_packing(const FCMetadata &data, co
 
 vector<vector<vector<uint64_t>>> PruneLin1Field::softmax_mask(const FCMetadata &data) {
     vector<vector<vector<uint64_t>>> mask(2, vector<vector<uint64_t>>(data.image_size, vector<uint64_t>(data.image_size)));
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(64)
     for (int i = 0; i < data.image_size; i++) {
         vector<uint64_t> mask1(data.image_size, 0ULL);
         vector<uint64_t> mask2(data.image_size, 0ULL);
@@ -495,6 +512,38 @@ vector<vector<vector<uint64_t>>> PruneLin1Field::softmax_mask(const FCMetadata &
     return mask;
 }
 
+vector<vector<Plaintext>> PruneLin1Field::softmax_mask_ct_ct(const FCMetadata &data) {
+    vector<vector<Plaintext>> mask(2, vector<Plaintext>(data.image_size));
+    int num_diag = data.image_size;
+    int num_diag_per_ct = data.slot_count / data.image_size / 2;
+
+    #pragma omp parallel for num_threads(64)
+    for (int i = 0; i < data.image_size; i++) {
+        vector<uint64_t> mask1(data.image_size, 0ULL);
+        vector<uint64_t> mask2(data.image_size, 0ULL);
+        for (int j = 0; j < data.image_size - i; j++) {
+            mask1[j] = 1;
+        }
+        for (int j = data.image_size - i; j < data.image_size; j++) {
+            mask2[j] = 1;
+        }
+        vector<uint64_t> m1(data.slot_count, 0ULL), m2(data.slot_count, 0ULL);
+        int start_ind = (i % num_diag_per_ct) * num_diag;
+        for (int j = start_ind; j < num_diag + start_ind; j++) {
+            m1[j] = mask1[j - start_ind];
+            m1[j + data.slot_count / 2] = mask1[j - start_ind];
+            m2[j] = mask2[j - start_ind];
+            m2[j + data.slot_count / 2] = mask2[j - start_ind];
+        }
+        Plaintext pt;
+        encoder->encode(m1, pt);
+        mask[0][i] = pt;
+        encoder->encode(m2, pt);
+        mask[1][i] = pt;
+    }
+    return mask;
+}
+
 // matrix is row-packed with 12 * 128 rows and 128 cols
 vector<vector<vector<Plaintext>>> PruneLin1Field::preprocess_softmax_s2(const uint64_t *matrix, const FCMetadata &data, vector<vector<vector<uint64_t>>> &mask) {
 
@@ -505,7 +554,7 @@ vector<vector<vector<Plaintext>>> PruneLin1Field::preprocess_softmax_s2(const ui
     #pragma omp parallel for num_threads(2)
     for (int packing_ind = 0; packing_ind < 6; packing_ind++) {
         vector<vector<Plaintext>> weightMatrix1(2, vector<Plaintext>(num_diag));
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(32)
         for (int diag_ind = 0; diag_ind < num_diag; diag_ind++) {
             vector<uint64_t> temp2, temp3;
             vector<uint64_t> r1(data.image_size), r2(data.image_size), r3(data.image_size), r4(data.image_size);
@@ -542,6 +591,66 @@ vector<vector<vector<Plaintext>>> PruneLin1Field::preprocess_softmax_s2(const ui
     return s2_pack;
 }
 
+vector<Plaintext> PruneLin1Field::preprocess_softmax_s2_ct_ct(const uint64_t *matrix, const FCMetadata &data) {
+    int num_diag = data.image_size;
+    vector<Plaintext> result;
+    vector<uint64_t> temp2, temp3;
+    // #pragma omp parallel for num_threads(2)
+    for (int packing_ind = 0; packing_ind < 6; packing_ind++) {
+        // #pragma omp parallel for num_threads(32)
+        for (int diag_ind = 0; diag_ind < num_diag; diag_ind++) {
+            for (int j = 0; j < num_diag; j++) {
+                temp2.push_back(neg_mod((int64_t)matrix[((j + diag_ind) % num_diag) + j * data.image_size + packing_ind * 2 * data.image_size * data.image_size], (int64_t)prime_mod));
+                temp3.push_back(neg_mod((int64_t)matrix[((j + diag_ind) % num_diag) + j * data.image_size + (packing_ind * 2 + 1) * data.image_size * data.image_size], (int64_t)prime_mod));
+            }
+            if (temp2.size() == data.slot_count / 2) {
+                temp2.insert(temp2.end(), temp3.begin(), temp3.end());
+                Plaintext pt;
+                encoder->encode(temp2, pt);
+                result.push_back(pt);
+                temp2.clear();
+                temp3.clear();
+            }
+        }
+    }
+    return result;
+}
+
+vector<vector<vector<Ciphertext>>> PruneLin1Field::preprocess_softmax_s1_ct_ct(const vector<Ciphertext> &matrix, const FCMetadata &data, vector<vector<Plaintext>> &mask) {
+
+    int num_diag = data.image_size;
+    int num_diag_per_ct = data.slot_count / data.image_size / 2;
+    vector<vector<vector<Ciphertext>>> s2_pack(6);
+
+    #pragma omp parallel for num_threads(2)
+    for (int packing_ind = 0; packing_ind < 6; packing_ind++) {
+        vector<vector<Ciphertext>> weightMatrix1(2, vector<Ciphertext>(num_diag));
+        #pragma omp parallel for num_threads(32)
+        for (int diag_ind = 0; diag_ind < num_diag; diag_ind++) {
+
+            // int cur_diag = (packing_ind * num_diag_per_ct + diag_ind) % num_diag;
+            int cts_ind = packing_ind * data.image_size * data.image_size * 2 / data.slot_count + diag_ind / num_diag_per_ct;
+            Ciphertext cur_ct = matrix[cts_ind];
+            Plaintext mask1 = mask[0][diag_ind];
+            Plaintext mask2 = mask[1][diag_ind];
+            Ciphertext cur_ct_l, cur_ct_r;
+            evaluator->multiply_plain(cur_ct, mask1, cur_ct_l);
+            evaluator->multiply_plain(cur_ct, mask2, cur_ct_r);
+            for (int j = 0; j < std::log2(num_diag_per_ct); j++) {
+                Ciphertext temp_ct;
+                evaluator->rotate_rows(cur_ct_l, (int64_t)num_diag * std::pow(2, j), *gal_keys, temp_ct);
+                evaluator->add_inplace(cur_ct_l, temp_ct);
+                evaluator->rotate_rows(cur_ct_r, (int64_t)num_diag * std::pow(2, j), *gal_keys, temp_ct);
+                evaluator->add_inplace(cur_ct_r, temp_ct);
+            }
+            weightMatrix1[0][diag_ind] = cur_ct_l;
+            weightMatrix1[1][diag_ind] = cur_ct_r;
+        }
+        s2_pack[packing_ind] = weightMatrix1;
+    }
+    return s2_pack;
+}
+
 // matrix is row-packed with 12 * image_size rows and image_size cols
 vector<Ciphertext> PruneLin1Field::preprocess_softmax_s1(const uint64_t *matrix, const FCMetadata &data) {
     int num_cts_per_res = data.image_size * data.image_size * 2 / data.slot_count; // 1 or 4
@@ -550,12 +659,12 @@ vector<Ciphertext> PruneLin1Field::preprocess_softmax_s1(const uint64_t *matrix,
     int total_cts = 12 * data.image_size * data.image_size / data.slot_count;
     vector<Ciphertext> enc_softmax(total_cts);
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(6)
     for (int ct_ind = 0; ct_ind < total_cts; ct_ind++) {
         int current_col = ct_ind % num_cts_per_res;
         int current_packing = ct_ind / num_cts_per_res;
         vector<uint64_t> pod_matrix(data.slot_count);
-
+        #pragma omp parallel for num_threads(10)
         for (int row = 0; row < data.slot_count; row++) {
             int j = row / data.image_size + current_col * num_col_per_ct;
             int k = row % data.image_size;
@@ -573,7 +682,7 @@ vector<Ciphertext> PruneLin1Field::preprocess_softmax_s1(const uint64_t *matrix,
         enc_softmax[ct_ind] = ct;
     }
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(64)
     for (int i = 0; i < enc_softmax.size(); i++) {
         evaluator->mod_switch_to_next_inplace(enc_softmax[i]);
     }
@@ -586,7 +695,7 @@ vector<vector<vector<Plaintext>>> PruneLin1Field::preprocess_softmax_v_r(const u
     vector<vector<vector<uint64_t>>> weights_r(12, vector<vector<uint64_t>>(data.image_size, vector<uint64_t>(data.filter_w)));
 
     for (int packing_ind = 0; packing_ind < 12; packing_ind++) {
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(64)
         for (int i = 0; i < data.image_size; i++) {
             for (int j = 0; j < data.filter_w; j++) {
                 weights_r[packing_ind][i][j] = matrix[i + j * data.image_size + packing_ind * data.image_size * data.filter_w];
@@ -602,7 +711,7 @@ uint64_t* PruneLin1Field::client_S1_V_R(const uint64_t *softmax_s1, vector<Ciphe
     // vector<vector<vector<uint64_t>>> result(12, vector<vector<uint64_t>> (data.image_size, vector<uint64_t> (data.filter_w)));
     auto V_R = bert_postprocess_V(V, data, true);
     for (int packing_num = 0; packing_num < 12; packing_num++) {
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(64)
         for(int i = 0; i < data.image_size; i++) {
             for(int j = 0; j < data.filter_w; j++) {
                 result[packing_num * data.image_size * data.filter_w + i + j * data.image_size] = 0;
@@ -640,6 +749,7 @@ void PruneLin1Field::bert_softmax_V(vector<Ciphertext> &softmax_s1, vector<vecto
         vector<vector<Plaintext>> R1 = R[packing_ind];
         vector<vector<Ciphertext>> rotatedIR(num_matrix_per_row);
 
+        // FIXME: parallel this
         #pragma omp parallel for
         for (int i = 0; i < num_matrix_per_row; i++) {
             vector<Ciphertext> tmp;
@@ -728,6 +838,44 @@ void PruneLin1Field::bert_softmax_V(vector<Ciphertext> &softmax_s1, vector<vecto
 
     #pragma omp parallel for
     for (int i = 0; i < result.size(); i++) {
+        evaluator->mod_switch_to_next_inplace(result[i]);
+    }
+}
+
+void PruneLin1Field::bert_softmax_V_ct_ct(vector<vector<vector<Ciphertext>>> &softmax_s2, vector<Ciphertext> &V, const FCMetadata &data, vector<Ciphertext> &result) {
+    #pragma omp parallel for num_threads(2)
+    for (int packing_ind = 0; packing_ind < 6; packing_ind++) {
+        int num_diag = data.slot_count / data.image_size / 2;
+        int num_matrix_per_col = data.filter_w / num_diag; // 1 or 2
+
+        // FIXME: pack softmax_s2 according to gazelle
+        // FIXME: compute softmax_s2 x V
+
+        num_diag = data.image_size;
+        for (int ct_ind = 0; ct_ind < num_matrix_per_col; ct_ind++) {
+            vector<Ciphertext> rotation_results(num_diag);
+
+            #pragma omp parallel for
+            for (int i = 0; i < num_diag; i++) {
+                Ciphertext temp1;
+                Ciphertext temp2;
+                vector<Ciphertext> temp_mult = rotation_by_one_depth3(data, V[packing_ind * num_matrix_per_col + ct_ind], i);
+                evaluator->multiply(temp_mult[0], softmax_s2[packing_ind][0][i], temp1);
+                evaluator->multiply(temp_mult[1], softmax_s2[packing_ind][1][i], temp2);
+                evaluator->add(temp1, temp2, rotation_results[i]);
+            }
+            result[packing_ind * data.image_size * data.filter_w * 2 / data.slot_count + ct_ind] = rotation_results[0];
+            for (int i = 1; i < num_diag; i++) {
+                evaluator->add_inplace(result[packing_ind * data.image_size * data.filter_w * 2 / data.slot_count + ct_ind], rotation_results[i]);
+            }
+            rotation_results.clear();
+        }
+    }
+
+    #pragma omp parallel for
+    for (int i = 0; i < result.size(); i++) {
+        evaluator->relinearize_inplace(result[i], *relin_keys);
+        evaluator->mod_switch_to_next_inplace(result[i]);
         evaluator->mod_switch_to_next_inplace(result[i]);
     }
 }
@@ -908,12 +1056,12 @@ void PruneLin1Field::matrix_multiplication(int32_t input_dim,
         //     cout << endl;
         // }
 
-        cout << "row packing" << endl;
-        for (int i = 32; i < 33; i++) {
-            for (int j = 0; j < data.image_size; j++)
-                cout << ((int64_t) HE_result[i * data.image_size + j + data.image_size * data.image_size * 3] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-            cout << endl;
-        }
+        // cout << "row packing" << endl;
+        // for (int i = 33; i < 34; i++) {
+        //     for (int j = 0; j < data.image_size; j++)
+        //         cout << ((int64_t) HE_result[i * data.image_size + j + data.image_size * data.image_size * 0] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        //     cout << endl;
+        // }
 
         // HACK:
         // Below is computing softmax * V
@@ -932,24 +1080,39 @@ void PruneLin1Field::matrix_multiplication(int32_t input_dim,
 
         send_encrypted_vector(io, S1_pack);
 
+        
+        
+        auto softmax_s1_pt = preprocess_softmax_s2_ct_ct(softmax_s1, data);
+        vector<Ciphertext> softmax_s1_ct(softmax_s1_pt.size());
+        for (int i = 0; i < softmax_s1_pt.size(); i++) {
+            encryptor->encrypt(softmax_s1_pt[i], softmax_s1_ct[i]);
+        }
+        send_encrypted_vector(io, softmax_s1_ct);
+
+
+
+
         vector<Ciphertext> enc_softmax_V(12 * data.image_size * data.filter_w / data.slot_count);
         recv_encrypted_vector(context, io, enc_softmax_V);
 
-        auto softmax_V = bert_postprocess_V(enc_softmax_V, data, true);
+        auto softmax_V = bert_postprocess_V(enc_softmax_V, data, false);
 
-        for (int i = 0; i < data.image_size * data.filter_w * 12; i++) {
-            softmax_V[i] += S1_V_R[i];
-            softmax_V[i] = softmax_V[i] % prime_mod;
-        }
+        // for (int i = 0; i < data.image_size * data.filter_w * 12; i++) {
+        //     softmax_V[i] += S1_V_R[i];
+        //     softmax_V[i] = softmax_V[i] % prime_mod;
+        // }
 
         // cout << "[Client] Result sent" << endl;
         // cout << "[Client] size of result (Bytes): " << io->counter - io_checkpoint << endl;
 
-        for (int i = 63; i < 64; i++) {
-            for (int j = 0; j < data.filter_w; j++)
-                cout << ((int64_t) softmax_V[i + j * data.image_size + data.image_size * data.filter_w * 3] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
-            cout << endl;
-        }
+        // for (int i = 63; i < 64; i++) {
+        //     for (int j = 0; j < data.filter_w; j++)
+        //         cout << ((int64_t) softmax_V[i + j * data.image_size + data.image_size * data.filter_w * 3] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        //     cout << endl;
+        // }
+
+        saveMatrix("/home/qipang/mnt/d1/linear/EzPC/SCI/build/bin/txt/softmax_v.txt", softmax_V, 12 * data.image_size, data.filter_w);
+
 
         delete[] HE_result;
     } else {
@@ -1092,13 +1255,27 @@ void PruneLin1Field::matrix_multiplication(int32_t input_dim,
         #ifdef HE_TIMING
         auto t1_softmax_v_computation = high_resolution_clock::now();
         #endif
-        bert_softmax_V(S1_pack, S2_pack, V, R_pack, data, softmax_V_result);
+        // bert_softmax_V(S1_pack, S2_pack, V, R_pack, data, softmax_V_result);
         #ifdef HE_TIMING
         auto t2_softmax_v_computation = high_resolution_clock::now();
         interval = (t2_softmax_v_computation - t1_softmax_v_computation)/1e+9;
         cout << "[Server] Softmax - V Computation Time " << interval.count() << "sec" << endl;
         #endif
         
+        // send_encrypted_vector(io, softmax_V_result);
+
+
+        auto softmax_s2_pt = preprocess_softmax_s2_ct_ct(softmax_S2, data);
+        vector<Ciphertext> softmax_s1_ct(softmax_s2_pt.size());
+        recv_encrypted_vector(context, io, softmax_s1_ct);
+        for (int i = 0; i < softmax_s2_pt.size(); i++)
+            evaluator->add_plain_inplace(softmax_s1_ct[i], softmax_s2_pt[i]);
+        // print_ct(softmax_s1_ct[0], 8192);
+        auto soft_mask_ct = softmax_mask_ct_ct(data);
+        auto pack_softmax_ct = preprocess_softmax_s1_ct_ct(softmax_s1_ct, data, soft_mask_ct);
+
+        bert_softmax_V_ct_ct(pack_softmax_ct, V, data, softmax_V_result);
+
         send_encrypted_vector(io, softmax_V_result);
     }
 }

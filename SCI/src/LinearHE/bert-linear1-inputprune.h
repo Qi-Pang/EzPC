@@ -27,6 +27,7 @@ Modified by Deevashwer Rathee
 #define BERTFC_FIELD_H__
 
 #include "utils-HE.h"
+#include <fstream>
 
 using namespace std;
 using namespace sci;
@@ -102,10 +103,17 @@ public:
 
   uint64_t* client_S1_V_R(const uint64_t *softmax_s1, vector<Ciphertext> &V, const FCMetadata &data);
 
+  vector<Plaintext> preprocess_softmax_s2_ct_ct(const uint64_t *matrix, const FCMetadata &data);
+
+  void bert_softmax_V_ct_ct(vector<vector<vector<Ciphertext>>> &softmax_s2, vector<Ciphertext> &V, const FCMetadata &data, vector<Ciphertext> &result);
+  vector<vector<vector<Ciphertext>>> preprocess_softmax_s1_ct_ct(const vector<Ciphertext> &matrix, const FCMetadata &data, vector<vector<Plaintext>> &mask);
+  vector<vector<Plaintext>> softmax_mask_ct_ct(const FCMetadata &data);
+
   void print_noise_budget_vec(vector<Ciphertext> v);
 
   void print_ct(Ciphertext &ct, int len);
   void print_pt(Plaintext &pt, int len);
+  void saveMatrix(const std::string& filename, uint64_t* matrix, size_t rows, size_t cols);
 
   void matrix_multiplication(int32_t input_dim, int32_t common_dim,
                             int32_t output_dim,
