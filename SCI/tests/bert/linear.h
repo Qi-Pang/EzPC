@@ -314,6 +314,19 @@ public:
 
 	vector<Ciphertext> w_ln(HE* he, vector<Ciphertext> ln, vector<Plaintext> w);
 
+	void preprocess_softmax(const uint64_t *input, uint64_t *output, const FCMetadata &data);
+
+	void softmax_v(
+		HE* he,
+		vector<vector<vector<Ciphertext>>> &softmax_s2, 
+		vector<Ciphertext> &V, 
+		const FCMetadata &data, 
+		vector<Ciphertext> &result);
+
+	vector<vector<Plaintext>> softmax_mask_ct_ct(HE* he, const FCMetadata &data);
+
+	vector<vector<vector<Ciphertext>>> preprocess_softmax_s1_ct_ct(HE* he, const vector<Ciphertext> &matrix, const FCMetadata &data, vector<vector<Plaintext>> &mask);
+
 };
 
 #endif

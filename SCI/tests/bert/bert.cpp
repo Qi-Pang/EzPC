@@ -709,8 +709,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             uint64_t* v_matrix_row = new uint64_t[v_size];
             uint64_t* softmax_input_row = new uint64_t[qk_size];
             uint64_t* softmax_output_row = new uint64_t[softmax_output_size];
+            uint64_t* softmax_output_pack = new uint64_t[softmax_output_size];
             uint64_t* softmax_l_row = new uint64_t[softmax_output_size];
             uint64_t* softmax_l_col = new uint64_t[softmax_output_size];
+            uint64_t* softmax_v_pack = new uint64_t[softmax_v_size];
             uint64_t* softmax_v_row = new uint64_t[softmax_v_size];
             uint64_t* softmax_v_col = new uint64_t[softmax_v_size];
             uint64_t* h2_col = new uint64_t[h2_col_size];
@@ -736,21 +738,21 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
                 enc_v = { q_k_v.begin() + qk_offset, q_k_v.end()};
 
-                for (int i = 0; i < q_k_v.size(); i++) {
+                for (int i = 0; i < qk_offset; i++) {
                     lin.he_8192->evaluator->mod_switch_to_next_inplace(q_k_v[i]);
                     lin.he_8192->evaluator->mod_switch_to_next_inplace(q_k_v[i]);
                 }
 
                 vector<Ciphertext> q_k = {q_k_v.begin(), q_k_v.begin() + qk_offset};
-                vector<Ciphertext> v = { q_k_v.begin() + qk_offset, q_k_v.end()};
+                // vector<Ciphertext> v = { q_k_v.begin() + qk_offset, q_k_v.end()};
 
                 he_to_ss_server(lin.he_8192, q_k, qk_v_cross, true);
-                he_to_ss_server(lin.he_8192, v, &qk_v_cross[qk_size], false);
+                // he_to_ss_server(lin.he_8192, v, &qk_v_cross[qk_size], false);
             } else{
                 int qk_cts_len = qk_size / lin.he_8192->poly_modulus_degree;
                 int v_cts_len = v_size / lin.he_8192->poly_modulus_degree;
                 he_to_ss_client(lin.he_8192, qk_v_cross, qk_cts_len, data);
-                he_to_ss_client(lin.he_8192, &qk_v_cross[qk_size], v_cts_len, data);
+                // he_to_ss_client(lin.he_8192, &qk_v_cross[qk_size], v_cts_len, data);
             }
 
             #ifdef BERT_PERF
@@ -766,11 +768,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 false,
                 data);
             
-            lin.plain_cross_packing_postprocess_v(
-                &qk_v_cross[qk_size], 
-                v_matrix_row,
-                true,
-                data);
+            // lin.plain_cross_packing_postprocess_v(
+            //     &qk_v_cross[qk_size], 
+            //     v_matrix_row,
+            //     true,
+            //     data);
 
             #ifdef BERT_PERF
             t_total_repacking += interval(t_repacking);
@@ -879,19 +881,51 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             auto t_mul_v = high_resolution_clock::now();
             #endif 
 
-            for(int i = 0; i < softmax_output_size; i++){
-                softmax_output_row[i] = 
-                    neg_mod(signed_val(softmax_output_row[i], NL_ELL), (int64_t)lin.he_8192->plain_mod);
-            }
-
-            softmax_v(
-                lin.he_8192,
-                enc_v,
+            lin.preprocess_softmax(
                 softmax_output_row,
-                v_matrix_row,
-                softmax_v_col,
+                softmax_output_pack,
                 data
             );
+
+            if(party == ALICE){
+                vector<Ciphertext> enc_softmax = ss_to_he_server(
+                    lin.he_8192, 
+                    softmax_output_pack,
+                    softmax_output_size, 
+                    NL_ELL);
+
+                auto soft_mask_ct = lin.softmax_mask_ct_ct(lin.he_8192, data);
+                auto pack_softmax_ct = lin.preprocess_softmax_s1_ct_ct(lin.he_8192, enc_softmax, data, soft_mask_ct);
+                vector<Ciphertext> softmax_V_result(12 * data.image_size * data.filter_w / data.slot_count);
+                lin.softmax_v(lin.he_8192, pack_softmax_ct, enc_v, data, softmax_V_result);
+                he_to_ss_server(lin.he_8192, softmax_V_result, softmax_v_pack, true);
+                
+            } else{
+                ss_to_he_client(
+                    lin.he_8192, 
+                    softmax_output_pack, 
+                    softmax_output_size, 
+                    NL_ELL);
+
+                int cts_len = 12 * data.image_size * data.filter_w / data.slot_count;
+                he_to_ss_client(lin.he_8192, softmax_v_pack, cts_len, data);
+            }
+
+            lin.plain_cross_packing_postprocess_v(softmax_v_pack, softmax_v_col, true, data);
+
+            // for(int i = 0; i < softmax_output_size; i++){
+            //     softmax_output_row[i] = 
+            //         neg_mod(signed_val(softmax_output_row[i], NL_ELL), (int64_t)lin.he_8192->plain_mod);
+            // }
+
+            // softmax_v(
+            //     lin.he_8192,
+            //     enc_v,
+            //     softmax_output_row,
+            //     v_matrix_row,
+            //     softmax_v_col,
+            //     data
+            // );
 
             #ifdef BERT_PERF
             t_total_mul_v += interval(t_mul_v);
