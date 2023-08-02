@@ -12,6 +12,7 @@ double t_total_mul_v = 0;
 double t_total_gelu = 0;
 double t_total_ln_1 = 0;
 double t_total_ln_2 = 0;
+double t_total_tanh = 0;
 
 double t_total_preproc = 0;
 double t_total_postproc = 0;
@@ -31,6 +32,7 @@ uint64_t c_ln2 = 0;
 uint64_t c_softmax_v = 0;
 uint64_t c_shift = 0;
 uint64_t c_qk = 0;
+uint64_t c_tanh = 0;
 uint64_t c_pc = 0;
 
 uint64_t r_linear_1 = 0;
@@ -44,6 +46,7 @@ uint64_t r_ln2 = 0;
 uint64_t r_softmax_v = 0;
 uint64_t r_shift = 0;
 uint64_t r_qk = 0;
+uint64_t r_tanh = 0;
 uint64_t r_pc = 0;
 
 uint64_t n_rounds = 0;
@@ -1158,6 +1161,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         2*NL_SCALE
     );
 
+    #ifdef BERT_PERF
+    c_pc += get_comm();
+    r_pc += get_round();
+    auto t_tanh = high_resolution_clock::now();
+    #endif 
+
     // -------------------- TANH -------------------- //
     nl.tanh_iron(
         NL_NTHREADS,
@@ -1167,6 +1176,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         NL_ELL,
         NL_SCALE
     );
+
+    #ifdef BERT_PERF
+    t_total_tanh += interval(t_tanh);
+    c_tanh += get_comm();
+    r_tanh += get_round();
+    #endif 
     
     cout << "-> Layer - Classification" << endl;
     nl.n_matrix_mul_iron(
@@ -1231,6 +1246,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: GELU consumes: " << r_gelu << " rounds" << endl; 
     cout << "> [NETWORK]: Layer Norm 1 consumes: " << r_ln1 << " rounds" << endl; 
     cout << "> [NETWORK]: Layer Norm 2 consumes: " << r_ln2 << " rounds" << endl;
+    cout << "> [TIMING]: tanh takes " << t_total_tanh << " sec" << endl;
 
     cout << "> [NETWORK]: Softmax * V: " << r_softmax_v << " rounds" << endl; 
     cout << "> [NETWORK]: Shift consumes: " << r_shift << " rounds" << endl;
@@ -1258,6 +1274,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: GELU consumes: " << c_gelu << " bytes" << endl; 
     cout << "> [NETWORK]: Layer Norm 1 consumes: " << c_ln1 << " bytes" << endl; 
     cout << "> [NETWORK]: Layer Norm 2 consumes: " << c_ln2 << " bytes" << endl;
+    cout << "> [NETWORK]: Tanh consumes: " << c_tanh << " bytes" << endl;
 
     cout << "> [NETWORK]: Q*K consumes: " << c_qk << " bytes" << endl; 
     cout << "> [NETWORK]: Softmax * V: " << c_softmax_v << " bytes" << endl; 
@@ -1274,6 +1291,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: GELU consumes: " << r_gelu << " rounds" << endl; 
     cout << "> [NETWORK]: Layer Norm 1 consumes: " << r_ln1 << " rounds" << endl; 
     cout << "> [NETWORK]: Layer Norm 2 consumes: " << r_ln2 << " rounds" << endl;
+    cout << "> [NETWORK]: Tanh consumes: " << r_tanh << " rounds" << endl;
 
     cout << "> [NETWORK]: Softmax * V: " << r_softmax_v << " rounds" << endl; 
     cout << "> [NETWORK]: Shift consumes: " << r_shift << " rounds" << endl;
