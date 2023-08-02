@@ -13,6 +13,7 @@ double t_total_mul_v = 0;
 double t_total_gelu = 0;
 double t_total_ln_1 = 0;
 double t_total_ln_2 = 0;
+double t_total_tanh = 0;
 
 double t_total_repacking = 0;
 double t_total_gt_sub = 0;
@@ -34,6 +35,7 @@ uint64_t c_ln2 = 0;
 uint64_t c_softmax_v = 0;
 uint64_t c_shift = 0;
 uint64_t c_gt_sub = 0;
+uint64_t c_tanh = 0;
 uint64_t c_pc = 0;
 
 uint64_t r_linear_1 = 0;
@@ -48,6 +50,7 @@ uint64_t r_ln2 = 0;
 uint64_t r_softmax_v = 0;
 uint64_t r_shift = 0;
 uint64_t r_gt_sub = 0;
+uint64_t r_tanh = 0;
 uint64_t r_pc = 0;
 
 double n_rounds = 0;
@@ -624,6 +627,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         n_rounds += nl.iopackArr[i]->get_rounds();
         n_comm += nl.iopackArr[i]->get_comm();
     }
+
+    auto t_linear1 = high_resolution_clock::now();
+    auto t_linear2 = high_resolution_clock::now();
+    auto t_linear3 = high_resolution_clock::now();
+    auto t_linear4 = high_resolution_clock::now();
     #endif
 
     if(party == ALICE){
@@ -631,6 +639,10 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         // Receive cipher text input
         int cts_size = INPUT_DIM*COMMON_DIM / lin.data_lin1_0.slot_count;
         h1.resize(cts_size);
+
+        #ifdef BERT_PERF
+        t_linear1 = high_resolution_clock::now();
+        #endif
         
         recv_encrypted_vector(lin.he_8192->context, io, h1);
         cout << "> Receive input cts from client " << endl;
@@ -660,6 +672,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         // Send cipher text input
         vector<Ciphertext> h1_cts = 
             lin.bert_efficient_preprocess_vec(lin.he_8192, input_col, lin.data_lin1_0);
+            
+        #ifdef BERT_PERF
+        t_linear1 = high_resolution_clock::now();
+        #endif
+
         send_encrypted_vector(io, h1_cts);
     }
 
@@ -720,18 +737,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #1 HE" << endl;
-                #ifdef BERT_PERF
-                auto t_linear1 = high_resolution_clock::now();
-                #endif 
                 vector<Ciphertext> q_k_v = lin.linear_1(
                     lin.he_8192,
                     h1,
                     lin.pp_1[layer_id],
                     data
                 );
-                #ifdef BERT_PERF
-                t_total_linear1 += interval(t_linear1);
-                #endif 
                 cout << "-> Layer - " << layer_id << ": Linear #1 done HE" << endl;
 
                 int qk_offset = qk_size / data.slot_count;
@@ -756,6 +767,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            t_total_linear1 += interval(t_linear1);
+
             c_linear_1 += get_comm();
             r_linear_1 += get_round();
             auto t_repacking = high_resolution_clock::now();
@@ -1032,6 +1045,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             t_total_pruning += interval(t_pruning);
             c_pruning += get_comm();
             r_pruning += get_round();
+            
+            t_linear2 = high_resolution_clock::now();
             #endif 
 
 
@@ -1076,18 +1091,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE" << endl;
-                #ifdef BERT_PERF
-                auto t_linear2 = high_resolution_clock::now();
-                #endif 
                 vector<Ciphertext> h3 = lin.linear_2(
                     lin.he_8192_tiny,
                     h2, 
                     lin.pp_2[layer_id],
                     data
                 );
-                #ifdef BERT_PERF
-                t_total_linear2 += interval(t_linear2);
-                #endif 
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h3, ln_input_cross, true);
                 ln_share_server(
@@ -1109,6 +1118,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            t_total_linear2 += interval(t_linear2);
+
             c_linear_2 += get_comm();
             r_linear_2 += get_round();
             auto t_repacking = high_resolution_clock::now();
@@ -1255,6 +1266,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_repacking += interval(t_repacking_2);
+
+            t_linear3 = high_resolution_clock::now();
             #endif 
 
             if(party == ALICE){
@@ -1293,18 +1306,13 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE" << endl;
-                #ifdef BERT_PERF
-                auto t_linear3 = high_resolution_clock::now();
-                #endif 
                 vector<Ciphertext> h5 = lin.linear_2(
                 lin.he_8192_tiny,
                 h4, 
                 lin.pp_3[layer_id],
                 data
                 );
-                #ifdef BERT_PERF
-                t_total_linear3 += interval(t_linear3);
-                #endif 
+
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE done " << endl;
                 he_to_ss_server(lin.he_8192_tiny, h5, gelu_input_cross, true);
             } else{
@@ -1312,6 +1320,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            t_total_linear3 += interval(t_linear3);
+
             c_linear_3 += get_comm();
             r_linear_3 += get_round();
             auto t_repacking = high_resolution_clock::now();
@@ -1447,6 +1457,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             t_total_shift += interval(t_shift);
             c_shift += get_comm();
             r_shift += get_round();
+
+            t_linear4 = high_resolution_clock::now();
             #endif 
 
             // FixArray tmp = nl.to_public(gelu_output_col, 128*3072, 64, 4);
@@ -1496,10 +1508,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE " << endl;
-                
-                #ifdef BERT_PERF
-                auto t_linear4 = high_resolution_clock::now();
-                #endif 
 
                 vector<Ciphertext> h7 = lin.linear_2(
                     lin.he_8192_tiny,
@@ -1507,10 +1515,6 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                     lin.pp_4[layer_id],
                     data
                 );
-                
-                #ifdef BERT_PERF
-                t_total_linear4 += interval(t_linear4);
-                #endif 
                 
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE done" << endl;
                 he_to_ss_server(lin.he_8192_tiny, h7, ln_2_input_cross, true);
@@ -1532,6 +1536,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             }
 
             #ifdef BERT_PERF
+            t_total_linear4 += interval(t_linear4);
+
             c_linear_4 += get_comm();
             r_linear_4 += get_round();
             auto t_repacking = high_resolution_clock::now();
@@ -1685,6 +1691,8 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             #ifdef BERT_PERF
             t_total_repacking += interval(t_repacking_2);
+
+            t_linear1 = high_resolution_clock::now();
             #endif 
 
             if(layer_id == 11){
@@ -1779,6 +1787,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         2*NL_SCALE
     );
 
+    #ifdef BERT_PERF
+    c_pc += get_comm();
+    r_pc += get_round();
+    auto t_tanh = high_resolution_clock::now();
+    #endif 
+
     // -------------------- TANH -------------------- //
     nl.tanh(
         NL_NTHREADS,
@@ -1788,6 +1802,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         NL_ELL,
         NL_SCALE
     );
+
+    #ifdef BERT_PERF
+    t_total_tanh += interval(t_tanh);
+    c_tanh += get_comm();
+    r_tanh += get_round();
+    #endif 
     
     cout << "-> Layer - Classification" << endl;
     nl.n_matrix_mul_iron(
@@ -1835,6 +1855,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [TIMING]: gelu takes " << t_total_gelu << " sec" << endl;
     cout << "> [TIMING]: ln_1 takes " << t_total_ln_1 << " sec" << endl;
     cout << "> [TIMING]: ln_2 takes " << t_total_ln_2 << " sec" << endl;
+    cout << "> [TIMING]: tanh takes " << t_total_tanh << " sec" << endl;
 
     cout << "> [TIMING]: repacking takes " << t_total_repacking << " sec" << endl;
     cout << "> [TIMING]: gt_sub takes " << t_total_gt_sub << " sec" << endl;
@@ -1855,6 +1876,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: GELU consumes: " << c_gelu << " bytes" << endl; 
     cout << "> [NETWORK]: Layer Norm 1 consumes: " << c_ln1 << " bytes" << endl; 
     cout << "> [NETWORK]: Layer Norm 2 consumes: " << c_ln2 << " bytes" << endl;
+    cout << "> [NETWORK]: Tanh consumes: " << c_tanh << " bytes" << endl;
 
     cout << "> [NETWORK]: Softmax * V: " << c_softmax_v << " bytes" << endl; 
     cout << "> [NETWORK]: Pruning: " << c_pruning << " bytes" << endl; 
@@ -1872,6 +1894,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
     cout << "> [NETWORK]: GELU consumes: " << r_gelu << " rounds" << endl; 
     cout << "> [NETWORK]: Layer Norm 1 consumes: " << r_ln1 << " rounds" << endl; 
     cout << "> [NETWORK]: Layer Norm 2 consumes: " << r_ln2 << " rounds" << endl;
+    cout << "> [NETWORK]: Tanh consumes: " << r_tanh << " rounds" << endl;
 
     cout << "> [NETWORK]: Softmax * V: " << r_softmax_v << " rounds" << endl; 
     cout << "> [NETWORK]: Pruning: " << r_pruning << " rounds" << endl; 
