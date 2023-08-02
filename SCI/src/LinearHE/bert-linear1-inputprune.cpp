@@ -593,10 +593,11 @@ vector<vector<vector<Plaintext>>> PruneLin1Field::preprocess_softmax_s2(const ui
 
 vector<Plaintext> PruneLin1Field::preprocess_softmax_s2_ct_ct(const uint64_t *matrix, const FCMetadata &data) {
     int num_diag = data.image_size;
-    vector<Plaintext> result;
-    vector<uint64_t> temp2, temp3;
-    // #pragma omp parallel for num_threads(2)
+    int num_diag_per_ct = data.slot_count / data.image_size / 2;
+    vector<Plaintext> result(data.image_size * data.image_size * 12 / data.slot_count);
+    #pragma omp parallel for
     for (int packing_ind = 0; packing_ind < 6; packing_ind++) {
+        vector<uint64_t> temp2, temp3;
         // #pragma omp parallel for num_threads(32)
         for (int diag_ind = 0; diag_ind < num_diag; diag_ind++) {
             for (int j = 0; j < num_diag; j++) {
@@ -607,7 +608,8 @@ vector<Plaintext> PruneLin1Field::preprocess_softmax_s2_ct_ct(const uint64_t *ma
                 temp2.insert(temp2.end(), temp3.begin(), temp3.end());
                 Plaintext pt;
                 encoder->encode(temp2, pt);
-                result.push_back(pt);
+                // result.push_back(pt);
+                result[packing_ind * data.image_size * data.image_size * 2 / data.slot_count + diag_ind / num_diag_per_ct] = pt;
                 temp2.clear();
                 temp3.clear();
             }
@@ -625,7 +627,7 @@ vector<vector<vector<Ciphertext>>> PruneLin1Field::preprocess_softmax_s1_ct_ct(c
     #pragma omp parallel for num_threads(2)
     for (int packing_ind = 0; packing_ind < 6; packing_ind++) {
         vector<vector<Ciphertext>> weightMatrix1(2, vector<Ciphertext>(num_diag));
-        #pragma omp parallel for num_threads(32)
+        #pragma omp parallel for
         for (int diag_ind = 0; diag_ind < num_diag; diag_ind++) {
 
             // int cur_diag = (packing_ind * num_diag_per_ct + diag_ind) % num_diag;
@@ -1081,14 +1083,17 @@ void PruneLin1Field::matrix_multiplication(int32_t input_dim,
         send_encrypted_vector(io, S1_pack);
 
         
-        
+
+
+        // =========================================================
+
+        // Don't need to send V
         auto softmax_s1_pt = preprocess_softmax_s2_ct_ct(softmax_s1, data);
         vector<Ciphertext> softmax_s1_ct(softmax_s1_pt.size());
         for (int i = 0; i < softmax_s1_pt.size(); i++) {
             encryptor->encrypt(softmax_s1_pt[i], softmax_s1_ct[i]);
         }
         send_encrypted_vector(io, softmax_s1_ct);
-
 
 
 
@@ -1264,6 +1269,10 @@ void PruneLin1Field::matrix_multiplication(int32_t input_dim,
         
         // send_encrypted_vector(io, softmax_V_result);
 
+
+
+        // =========================================================
+        // Don't send V
 
         auto softmax_s2_pt = preprocess_softmax_s2_ct_ct(softmax_S2, data);
         vector<Ciphertext> softmax_s1_ct(softmax_s2_pt.size());
