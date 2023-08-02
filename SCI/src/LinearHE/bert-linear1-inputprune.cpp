@@ -594,6 +594,7 @@ vector<vector<vector<Plaintext>>> PruneLin1Field::preprocess_softmax_s2(const ui
 vector<Plaintext> PruneLin1Field::preprocess_softmax_s2_ct_ct(const uint64_t *matrix, const FCMetadata &data) {
     int num_diag = data.image_size;
     int num_diag_per_ct = data.slot_count / data.image_size / 2;
+    vector<vector<uint64_t>> result_uint(data.image_size * data.image_size * 12 / data.slot_count, vector<uint64_t>(data.slot_count));
     vector<Plaintext> result(data.image_size * data.image_size * 12 / data.slot_count);
     #pragma omp parallel for
     for (int packing_ind = 0; packing_ind < 6; packing_ind++) {
@@ -606,14 +607,20 @@ vector<Plaintext> PruneLin1Field::preprocess_softmax_s2_ct_ct(const uint64_t *ma
             }
             if (temp2.size() == data.slot_count / 2) {
                 temp2.insert(temp2.end(), temp3.begin(), temp3.end());
-                Plaintext pt;
-                encoder->encode(temp2, pt);
+                // Plaintext pt;
+                // encoder->encode(temp2, pt);
                 // result.push_back(pt);
-                result[packing_ind * data.image_size * data.image_size * 2 / data.slot_count + diag_ind / num_diag_per_ct] = pt;
+                result_uint[packing_ind * data.image_size * data.image_size * 2 / data.slot_count + diag_ind / num_diag_per_ct] = temp2;
                 temp2.clear();
                 temp3.clear();
             }
         }
+    }
+    #pragma omp parallel for
+    for (int i = 0; i < data.image_size * data.image_size * 12 / data.slot_count; i++) {
+        Plaintext pt;
+        encoder->encode(result_uint[i], pt);
+        result[i] = pt;
     }
     return result;
 }
