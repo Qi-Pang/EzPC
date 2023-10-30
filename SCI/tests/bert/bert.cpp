@@ -749,7 +749,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
                 enc_v = { q_k_v.begin() + qk_offset, q_k_v.end()};
 
+                parms_id_type parms_id = q_k_v[0].parms_id();
+                shared_ptr<const SEALContext::ContextData> context_data = lin.he_8192->context->get_context_data(parms_id);
+                
+                #pragma omp parallel for
                 for (int i = 0; i < qk_offset; i++) {
+                    flood_ciphertext(q_k_v[i], context_data, SMUDGING_BITLEN_bert1);
                     lin.he_8192->evaluator->mod_switch_to_next_inplace(q_k_v[i]);
                     lin.he_8192->evaluator->mod_switch_to_next_inplace(q_k_v[i]);
                 }

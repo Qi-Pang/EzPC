@@ -92,9 +92,6 @@ add_subdirectory(bert_iron)
 # add_executable(BERT-HE-CIPHER-EFFICIENT-BFV "test_bert_efficient_seal.cpp")
 # target_link_libraries(BERT-HE-CIPHER-EFFICIENT-BFV SCI-HE)
 
-# add_executable(BERT-HE-CIPHER-EFFICIENT-CKKS "test_bert_efficient_seal_ckks.cpp")
-# target_link_libraries(BERT-HE-CIPHER-EFFICIENT-CKKS SCI-HE)
-
 # add_executable(BERT-HE-IRON "test_bert_iron.cpp")
 # target_link_libraries(BERT-HE-IRON SCI-HE SCI-OT)
 

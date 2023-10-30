@@ -50,7 +50,7 @@ Linear::Linear(int party, NetIO *io, bool prune) {
         party,
         io,
         8192,
-        {60, 60},
+        {60, 60, 60},
 		557057
     );
 
@@ -985,6 +985,15 @@ void Linear::bert_cipher_plain_bsgs_2(
         result[l] = ct;
         he->evaluator->add_plain_inplace(result[l], enc_bias[l]);
     }
+
+    parms_id_type parms_id = result[0].parms_id();
+    shared_ptr<const SEALContext::ContextData> context_data = he->context->get_context_data(parms_id);
+
+    #pragma omp parallel for
+    for (int i = 0; i < result.size(); i++) {
+        flood_ciphertext(result[i], context_data, SMUDGING_BITLEN_bert2);
+        he->evaluator->mod_switch_to_next_inplace(result[i]);
+    }
 }
 
 // 1. rotate rhs for 128 x 1-step rotations
@@ -1342,10 +1351,10 @@ vector<Ciphertext> Linear::preprocess_softmax_s1(HE* he, uint64_t* matrix, const
         enc_softmax[ct_ind] = ct;
     }
 
-    #pragma omp parallel for
-    for (int i = 0; i < enc_softmax.size(); i++) {
-        he->evaluator->mod_switch_to_next_inplace(enc_softmax[i]);
-    }
+    // #pragma omp parallel for
+    // for (int i = 0; i < enc_softmax.size(); i++) {
+    //     he->evaluator->mod_switch_to_next_inplace(enc_softmax[i]);
+    // }
     return enc_softmax;
 }
 
@@ -1588,10 +1597,10 @@ void Linear::bert_softmax_V(HE* he, vector<Ciphertext> &softmax_s1, vector<vecto
     // FIXME: pack R according to ours ctxpt
     // FIXME: compute softmax_s1 x R
 
-    #pragma omp parallel for
-    for (int i = 0; i < V.size(); i++) {
-        he->evaluator->mod_switch_to_next_inplace(V[i]);
-    }
+    // #pragma omp parallel for
+    // for (int i = 0; i < V.size(); i++) {
+    //     he->evaluator->mod_switch_to_next_inplace(V[i]);
+    // }
     int n1 = 4;
     int n2 = 8;
     if (data.image_size == 64) {
@@ -1694,8 +1703,13 @@ void Linear::bert_softmax_V(HE* he, vector<Ciphertext> &softmax_s1, vector<vecto
         }
     }
 
+    parms_id_type parms_id = result[0].parms_id();
+    shared_ptr<const SEALContext::ContextData> context_data = he->context->get_context_data(parms_id);
+
     #pragma omp parallel for
     for (int i = 0; i < result.size(); i++) {
+        flood_ciphertext(result[i], context_data, SMUDGING_BITLEN_bert1);
+        he->evaluator->mod_switch_to_next_inplace(result[i]);
         he->evaluator->mod_switch_to_next_inplace(result[i]);
     }
 }
@@ -1706,9 +1720,18 @@ vector<Ciphertext> Linear::w_ln(HE* he, vector<Ciphertext> ln, vector<Plaintext>
     #pragma omp parallel for
     for (int i = 0; i < cts_size; i++) {
         he->evaluator->multiply_plain(ln[i], w[i], result[i]);
+    }
+
+    parms_id_type parms_id = result[0].parms_id();
+    shared_ptr<const SEALContext::ContextData> context_data = he->context->get_context_data(parms_id);
+
+    #pragma omp parallel for
+    for (int i = 0; i < cts_size; i++) {
+        flood_ciphertext(result[i], context_data, SMUDGING_BITLEN_bert3);
         he->evaluator->mod_switch_to_next_inplace(result[i]);
         he->evaluator->mod_switch_to_next_inplace(result[i]);
     }
+
     return result;
 }
 
