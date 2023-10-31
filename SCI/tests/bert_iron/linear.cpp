@@ -30,11 +30,12 @@ Linear::Linear(){}
 Linear::Linear(int party, NetIO *io) {
 	this->party = party;
 	this->io = io;
-	this->he_4096 = new HE(
+	this->he_8192 = new HE(
 		party,
 		io,
-		4096,
-		{40, 39, 30},
+		8192,
+		// {40, 39, 30},
+		{60, 60, 60},
 		(uint64_t) pow(2, 37)
     );
 
@@ -42,10 +43,10 @@ Linear::Linear(int party, NetIO *io) {
 
     this->p_mod = prime_mod;
 
-	// this->he_4096 = new HE(
+	// this->he_8192 = new HE(
 	// 	party,
 	// 	io,
-	// 	4096,
+	// 	8192,
 	// 	{54, 55},
 	// 	65537
     // );
@@ -58,29 +59,37 @@ Linear::Linear(int party, NetIO *io) {
     data_lin1.filter_h = COMMON_DIM;
     data_lin1.filter_w = OUTPUT_DIM;
     data_lin1.image_size = INPUT_DIM;
-    data_lin1.slot_count = 4096;
-    data_lin1.nw = 4;
+    data_lin1.slot_count = 8192;
+    // data_lin1.nw = 4;
+    // data_lin1.kw = 8;
+    data_lin1.nw = 8;
     data_lin1.kw = 8;
 
     data_lin2.filter_h = COMMON_DIM;
     data_lin2.filter_w = COMMON_DIM;
     data_lin2.image_size = INPUT_DIM;
-    data_lin2.slot_count = 4096;
+    data_lin2.slot_count = 8192;
+    // data_lin2.nw = 8;
+    // data_lin2.kw = 4;
     data_lin2.nw = 8;
-    data_lin2.kw = 4;
+    data_lin2.kw = 8;
 
     data_lin3.filter_h = COMMON_DIM;
     data_lin3.filter_w = INTER_DIM;
     data_lin3.image_size = INPUT_DIM;
-    data_lin3.slot_count = 4096;
+    data_lin3.slot_count = 8192;
+    // data_lin3.nw = 4;
+    // data_lin3.kw = 8;
     data_lin3.nw = 4;
-    data_lin3.kw = 8;
+    data_lin3.kw = 16;
 
     data_lin4.filter_h = INTER_DIM;
     data_lin4.filter_w = COMMON_DIM;
     data_lin4.image_size = INPUT_DIM;
-    data_lin4.slot_count = 4096;
-    data_lin4.nw = 8;
+    data_lin4.slot_count = 8192;
+    // data_lin4.nw = 8;
+    // data_lin4.kw = 4;
+    data_lin4.nw = 16;
     data_lin4.kw = 4;
 }
 
@@ -265,6 +274,13 @@ const FCMetadata &data
         }
     }
 
+    parms_id_type parms_id = result[0].parms_id();
+    shared_ptr<const SEALContext::ContextData> context_data = he->context->get_context_data(parms_id);
+    #pragma omp parallel for
+    for (int i = 0; i < result.size(); i++) {
+        flood_ciphertext(result[i], context_data, 100-37);
+    }
+
     int L = result[0].coeff_modulus_size();
     vector<int> used_indices;
     for (int i = 0; i < data.image_size; i++) {
@@ -313,6 +329,13 @@ const FCMetadata &data
 
     for (int i = 0; i < result.size(); i++) {
         he->evaluator->add_plain_inplace(result[i], pp.encoded_bias[i]);
+    }
+
+    parms_id_type parms_id = result[0].parms_id();
+    shared_ptr<const SEALContext::ContextData> context_data = he->context->get_context_data(parms_id);
+    #pragma omp parallel for
+    for (int i = 0; i < result.size(); i++) {
+        flood_ciphertext(result[i], context_data, 100-37);
     }
 
     int L = result[0].coeff_modulus_size();
@@ -397,7 +420,7 @@ void Linear::weights_preprocess(BertModel &bm){
     #pragma omp parallel for
     for(int i = 0; i < ATTENTION_LAYERS; i++){
         pp_1[i] = params_preprocessing_ct_pt_1(
-            he_4096,
+            he_8192,
             bm.w_q[i],
             bm.w_k[i],
             bm.w_v[i],
@@ -408,7 +431,7 @@ void Linear::weights_preprocess(BertModel &bm){
         );
 
         pp_2[i] = params_preprocessing_ct_pt_2(
-            he_4096,
+            he_8192,
             INPUT_DIM,
             COMMON_DIM,
             COMMON_DIM,
@@ -418,7 +441,7 @@ void Linear::weights_preprocess(BertModel &bm){
         );
 
         pp_3[i] = params_preprocessing_ct_pt_2(
-            he_4096,
+            he_8192,
             INPUT_DIM,
             COMMON_DIM,
             INTER_DIM,
@@ -428,7 +451,7 @@ void Linear::weights_preprocess(BertModel &bm){
         );
 
         pp_4[i] = params_preprocessing_ct_pt_2(
-            he_4096,
+            he_8192,
             INPUT_DIM,
             INTER_DIM,
             COMMON_DIM,

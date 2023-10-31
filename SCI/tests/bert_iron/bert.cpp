@@ -419,7 +419,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         #ifdef BERT_PERF
         t_linear1 = high_resolution_clock::now();
         #endif
-        recv_encrypted_vector(lin.he_4096->context, io, h1);
+        recv_encrypted_vector(lin.he_8192->context, io, h1);
         cout << "> Receive input cts from client " << endl;
     } else{
         cout << "> Loading inputs" << endl;
@@ -430,14 +430,14 @@ vector<double> Bert::run(string input_fname, string mask_fname){
         vector<uint64_t> input_col(COMMON_DIM * INPUT_DIM);
         for (int j = 0; j < COMMON_DIM; j++){
             for (int i = 0; i < INPUT_DIM; i++){
-                input_col[j*INPUT_DIM + i] = neg_mod((int64_t)input_plain[i][j], (int64_t)lin.he_4096->plain_mod);
+                input_col[j*INPUT_DIM + i] = neg_mod((int64_t)input_plain[i][j], (int64_t)lin.he_8192->plain_mod);
                 h1_cache_12[i*COMMON_DIM + j] = input_plain[i][j];
             }
         }
 
         // Send cipher text input
         vector<Ciphertext> h1_cts = 
-            lin.preprocess_vec(lin.he_4096, input_col, lin.data_lin1);
+            lin.preprocess_vec(lin.he_8192, input_col, lin.data_lin1);
 
         #ifdef BERT_PERF
         t_linear1 = high_resolution_clock::now();
@@ -474,16 +474,16 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             if(party == ALICE){
                 cout << "-> Layer - " << layer_id << ": Linear #1 HE" << endl;
                 vector<Ciphertext> q_k_v = lin.linear_1(
-                    lin.he_4096,
+                    lin.he_8192,
                     h1,
                     lin.pp_1[layer_id],
                     lin.data_lin1
                 );
                 cout << "-> Layer - " << layer_id << ": Linear #1 done HE" << endl;
-                pts = he_to_ss_server(lin.he_4096, q_k_v, lin.data_lin1);
+                pts = he_to_ss_server(lin.he_8192, q_k_v, lin.data_lin1);
             } else{
                 int cts_len = lin.data_lin1.filter_w / lin.data_lin1.kw * 3 * 12;
-                pts = he_to_ss_client(lin.he_4096, cts_len);
+                pts = he_to_ss_client(lin.he_8192, cts_len);
             }
 
             #ifdef BERT_PERF
@@ -495,7 +495,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #endif 
 
             auto qkv = lin.pt_postprocess_1(
-                lin.he_4096,
+                lin.he_8192,
                 pts,
                 lin.data_lin1,
                 false
@@ -662,7 +662,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             lin.plain_col_packing_preprocess(
                 h2_concate,
                 h2_col,
-                lin.he_4096->plain_mod,
+                lin.he_8192->plain_mod,
                 INPUT_DIM,
                 COMMON_DIM
             );
@@ -675,11 +675,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 h2 = ss_to_he_server(
-                    lin.he_4096, 
+                    lin.he_8192, 
                     h2_col,
                     lin.data_lin2);
             } else{
-                ss_to_he_client(lin.he_4096, h2_col, lin.data_lin2);
+                ss_to_he_client(lin.he_8192, h2_col, lin.data_lin2);
             }
 
             delete [] q_matrix_row;
@@ -707,7 +707,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE" << endl;
                 
                 vector<Ciphertext> h3 = lin.linear_2(
-                    lin.he_4096,
+                    lin.he_8192,
                     h2, 
                     lin.pp_2[layer_id],
                     lin.data_lin2
@@ -715,7 +715,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             
                 
                 cout << "-> Layer - " << layer_id << ": Linear #2 HE done " << endl;
-                pts = he_to_ss_server(lin.he_4096, h3, lin.data_lin2);
+                pts = he_to_ss_server(lin.he_8192, h3, lin.data_lin2);
                 ln_share_server(
                     layer_id,
                     lin.w_ln_1[layer_id],
@@ -725,7 +725,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 );
             } else{
                 int cts_len = lin.data_lin2.filter_w / lin.data_lin2.kw;
-                pts = he_to_ss_client(lin.he_4096, cts_len);
+                pts = he_to_ss_client(lin.he_8192, cts_len);
                 ln_share_client(
                     ln_weight,
                     ln_bias
@@ -741,7 +741,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #endif 
 
             lin.pt_postprocess_2(
-                lin.he_4096,
+                lin.he_8192,
                 pts,
                 ln_input_row,
                 lin.data_lin2,
@@ -808,7 +808,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             lin.plain_col_packing_preprocess(
                 ln_output_row,
                 ln_output_col,
-                lin.he_4096->plain_mod,
+                lin.he_8192->plain_mod,
                 INPUT_DIM,
                 COMMON_DIM
             );
@@ -821,11 +821,11 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 h4 = ss_to_he_server(
-                    lin.he_4096, 
+                    lin.he_8192, 
                     ln_output_col,
                     lin.data_lin3);
             } else{
-                ss_to_he_client(lin.he_4096, ln_output_col, lin.data_lin3);
+                ss_to_he_client(lin.he_8192, ln_output_col, lin.data_lin3);
             }
 
             delete[] ln_input_row;
@@ -849,21 +849,21 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE" << endl;
 
                 vector<Ciphertext> h5 = lin.linear_2(
-                    lin.he_4096,
+                    lin.he_8192,
                     h4, 
                     lin.pp_3[layer_id],
                     lin.data_lin3
                 );
 
                 cout << "-> Layer - " << layer_id << ": Linear #3 HE done " << endl;
-                pts = he_to_ss_server(lin.he_4096, h5, lin.data_lin3);
+                pts = he_to_ss_server(lin.he_8192, h5, lin.data_lin3);
             } else{
                 int cts_len = lin.data_lin3.filter_w / lin.data_lin3.kw;
-                pts = he_to_ss_client(lin.he_4096, cts_len);
+                pts = he_to_ss_client(lin.he_8192, cts_len);
             }
 
             lin.pt_postprocess_2(
-                lin.he_4096,
+                lin.he_8192,
                 pts,
                 gelu_input_col,
                 lin.data_lin3,
@@ -929,12 +929,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
 
             if(party == ALICE){
                 h6 = ss_to_he_server(
-                    lin.he_4096, 
+                    lin.he_8192, 
                     gelu_output_col,
                     lin.data_lin4);
             } else{
                 ss_to_he_client(
-                    lin.he_4096, 
+                    lin.he_8192, 
                     gelu_output_col, 
                     lin.data_lin4);
             }
@@ -961,14 +961,14 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE " << endl;
                 
                 vector<Ciphertext> h7 = lin.linear_2(
-                    lin.he_4096,
+                    lin.he_8192,
                     h6, 
                     lin.pp_4[layer_id],
                     lin.data_lin4
                 );
 
                 cout << "-> Layer - " << layer_id << ": Linear #4 HE done" << endl;
-                pts = he_to_ss_server(lin.he_4096, h7, lin.data_lin4);
+                pts = he_to_ss_server(lin.he_8192, h7, lin.data_lin4);
                 ln_share_server(
                     layer_id,
                     lin.w_ln_2[layer_id],
@@ -978,7 +978,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
                 );
             } else{
                 int cts_len = lin.data_lin4.filter_w / lin.data_lin4.kw;
-                pts = he_to_ss_client(lin.he_4096, cts_len);
+                pts = he_to_ss_client(lin.he_8192, cts_len);
                 ln_share_client(
                     ln_weight_2,
                     ln_bias_2
@@ -994,7 +994,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             #endif 
 
             lin.pt_postprocess_2(
-                lin.he_4096,
+                lin.he_8192,
                 pts,
                 ln_2_input_row,
                 lin.data_lin4,
@@ -1062,7 +1062,7 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             lin.plain_col_packing_preprocess(
                 ln_2_output_row,
                 ln_2_output_col,
-                lin.he_4096->plain_mod,
+                lin.he_8192->plain_mod,
                 INPUT_DIM,
                 COMMON_DIM
             );
@@ -1079,12 +1079,12 @@ vector<double> Bert::run(string input_fname, string mask_fname){
             } else{
                 if(party == ALICE){
                     h1 = ss_to_he_server(
-                    lin.he_4096, 
+                    lin.he_8192, 
                     ln_2_output_col,
                     lin.data_lin1);
                 } else{
                     ss_to_he_client(
-                        lin.he_4096, 
+                        lin.he_8192, 
                         ln_2_output_col, 
                         lin.data_lin1);
                 }

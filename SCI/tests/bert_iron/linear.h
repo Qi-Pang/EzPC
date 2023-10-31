@@ -60,7 +60,7 @@ public:
 	NetIO *io;
 	FCMetadata data;
 
-	HE *he_4096;
+	HE *he_8192;
 
 	// Fix linking error
 	uint64_t p_mod;
