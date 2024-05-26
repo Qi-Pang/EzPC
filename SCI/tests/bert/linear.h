@@ -250,6 +250,7 @@ public:
 		const uint64_t *matrix, 
 		const FCMetadata &data);
 
+	// Cipher * Plain with BSGS for the first layer (Q,K,V)
 	void bert_cipher_plain_bsgs(
 		HE* he,
 		const vector<Ciphertext> &cts, 
@@ -265,6 +266,7 @@ public:
 		const FCMetadata &data, 
 		vector<Ciphertext> &result);
 
+	// Cipher * Plain with BSGS for other linear layers
 	void bert_cipher_plain_bsgs_2(
 		HE* he,
 		const vector<Ciphertext> &cts, 
@@ -274,6 +276,7 @@ public:
 		const FCMetadata &data, 
 		vector<Ciphertext> &result);
 
+	// Cipher * Cipher in the attention mechanism
 	void bert_cipher_cipher_cross_packing(
 		HE* he,
 		const FCMetadata &data,
@@ -283,11 +286,13 @@ public:
 
 	// Softmax * V
 
+	// Pack the sharing of softmax result on the client and encrypt
 	vector<Ciphertext> preprocess_softmax_s1(
 		HE* he,
 		uint64_t* matrix, 
 		const FCMetadata &data);
 	
+	// Pack the sharing of softmax result on the server and encode to plaintext polynomials
 	vector<vector<vector<Plaintext>>> 
 	preprocess_softmax_s2(HE* he, const uint64_t *matrix, const FCMetadata &data);
 

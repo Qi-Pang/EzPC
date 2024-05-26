@@ -33,14 +33,14 @@ add_library(SCI-LinearHE
     fc-field.cpp
     elemwise-prod-field.cpp
     utils-HE.cpp
-    bert-matmul.cpp
+    # bert-matmul.cpp
     # bert-matmul-cipher-efficient.cpp
-    bert-matmul-cipher-efficient-seal.cpp
-    bert-matmul-cipher-efficient-seal-ckks.cpp
-    iron-seal.cpp
-    iron-seal-inter1.cpp
-    bert-ct-pt.cpp
-    bert-ct-pt-inter1.cpp
+    # bert-matmul-cipher-efficient-seal.cpp
+    # bert-matmul-cipher-efficient-seal-ckks.cpp
+    # iron-seal.cpp
+    # iron-seal-inter1.cpp
+    # bert-ct-pt.cpp
+    # bert-ct-pt-inter1.cpp
     # utils-HE-openfhe.cpp
 )
 

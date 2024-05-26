@@ -1350,11 +1350,6 @@ vector<Ciphertext> Linear::preprocess_softmax_s1(HE* he, uint64_t* matrix, const
         he->encryptor->encrypt(pt, ct);
         enc_softmax[ct_ind] = ct;
     }
-
-    // #pragma omp parallel for
-    // for (int i = 0; i < enc_softmax.size(); i++) {
-    //     he->evaluator->mod_switch_to_next_inplace(enc_softmax[i]);
-    // }
     return enc_softmax;
 }
 

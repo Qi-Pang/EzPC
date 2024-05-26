@@ -7,7 +7,7 @@ set(NAME "SCI")
 option(NO_REVEAL_OUTPUT "Only output secret shares after 2PC" OFF)
 message(STATUS "Option: NO_REVEAL_OUTPUT = ${NO_REVEAL_OUTPUT}")
 
-option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_TESTS "Build tests" ON)
 message(STATUS "Option: BUILD_TESTS = ${BUILD_TESTS}")
 
 option(BUILD_NETWORKS "Build networks" OFF)
