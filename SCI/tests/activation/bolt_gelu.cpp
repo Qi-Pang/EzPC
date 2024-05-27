@@ -36,12 +36,12 @@ int num_threads = 12;
 string address = "127.0.0.1";
 
 int dim =  128*3072;
-int bw_x = 37;
+int bw_x = 20;
 int bw_y = 37;
-int s_x = 12;
-int s_y = 12;
+int s_x = 11;
+int s_y = 4;
 
-uint64_t mask_x = (bw_x == 64 ? -1 : ((1ULL << 13) - 1));
+uint64_t mask_x = (bw_x == 64 ? -1 : ((1ULL << 12) - 1));
 uint64_t mask_y = (bw_y == 64 ? -1 : ((1ULL << 13) - 1));
 
 IOPack *iopackArr[MAX_THREADS];
@@ -164,14 +164,11 @@ int main(int argc, char **argv) {
     for (int i = 0; i < dim; i++) {
       double dbl_x = (signed_val(x0[i] + x[i], bw_x)) / double(1LL << s_x);
       double dbl_y = (signed_val(y0[i] + y[i], bw_y)) / double(1LL << s_y);
-  
 
       // GELU function for verification
       double gelu_y = 0.5*dbl_x*(1+tanh(sqrt(2/M_PI)*(dbl_x+0.044715*dbl_x*dbl_x*dbl_x)));
 
       uint64_t err = computeULPErr(dbl_y, gelu_y, s_y);
-      // cout << "ULP Error: " << dbl_x << "," << dbl_y << "," << gelu_y << ","<< err << endl;
-      //cout << "ULP Error: " << dbl_y << "," << gelu_y << ","<< err << endl;
       total_err += err;
       max_ULP_err = std::max(max_ULP_err, err);
     }

@@ -16,5 +16,5 @@ add_executable(BOLT_BERT "bolt_bert.cpp")
 target_link_libraries(BOLT_BERT LIB_BERT)
 
 
-add_executable(BOLT_WE_BERT "bolt_bert_word_elimination.cpp")
-target_link_libraries(BOLT_WE_BERT LIB_BERT)
+# add_executable(BOLT_WE_BERT "bolt_bert_word_elimination.cpp")
+# target_link_libraries(BOLT_WE_BERT LIB_BERT)
