@@ -44,7 +44,7 @@ struct FCMetadata {
   int32_t image_size;
 };
 
-class BECTPT {
+class SearchCTPT {
 public:
   int party;
   NetIO *io;
@@ -59,47 +59,17 @@ public:
   Ciphertext *zero;
   size_t slot_count;
 
-  BECTPT(int party, NetIO *io);
+  SearchCTPT(int party, NetIO *io);
 
-  ~BECTPT();
+  ~SearchCTPT();
 
   void configure();
-
-  vector<Ciphertext> bert_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
-
-  vector<vector<Plaintext>> bert_efficient_preprocess_matrix(const uint64_t *const *matrix, const FCMetadata &data);
-
-  pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
-
-  pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data);
-
-  Ciphertext bert_efficient_preprocess_noise(const uint64_t *secret_share, const FCMetadata &data);
-
-  vector<Ciphertext> bert_cipher_plain(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, const FCMetadata &data);
-
-  // vector<Ciphertext> bert_cipher_plain_bsgs(vector<Ciphertext> &cts, vector<vector<Plaintext>> &enc_mat1, vector<vector<Plaintext>> &enc_mat2, vector<vector<Plaintext>> &enc_mat3, vector<vector<Plaintext>> &enc_mat4, const FCMetadata &data);
-  void bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats, const vector<pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>>> &cross_mats_single, const FCMetadata &data, vector<Ciphertext> &result);
-
-  uint64_t* bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
-
-  uint64_t* bert_cross_packing_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);
-
-  vector<uint64_t> ideal_functionality(uint64_t *vec, uint64_t **matrix);
 
   void print_noise_budget_vec(vector<Ciphertext> v);
 
   void print_ct(Ciphertext &ct, int len);
   void print_pt(Plaintext &pt, int len);
-
-  void matrix_multiplication(int32_t input_dim, int32_t common_dim,
-                             int32_t output_dim,
-                             vector<vector<uint64_t>> &A,
-                             vector<vector<uint64_t>> &B1,
-                             vector<vector<uint64_t>> &B2,
-                             vector<vector<uint64_t>> &C,
-                             bool verify_output = false);
   
-
   vector<Ciphertext> search_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data);
 
   uint64_t* search_postprocess(vector<Ciphertext> &cts, const FCMetadata &data);

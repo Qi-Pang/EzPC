@@ -25,6 +25,7 @@ Modified by Qi Pang
 
 #include "LinearHE/bert-ct-pt.h"
 #include <omp.h>
+#include <fstream>
 
 using namespace std;
 using namespace sci;
@@ -50,17 +51,9 @@ void BECTPT::print_ct(Ciphertext &ct, int len){
 void BECTPT::print_pt(Plaintext &pt, int len) {
     vector<int64_t> dest(len, 0ULL);
     encoder->decode(pt, dest);
-    cout << "Decode first 5 rows: ";
-    int non_zero_count;
-    for(int i = 0; i < 5; i++){
-        for (int j = 0; j < 64; j++)
-            cout << dest[i + j * 128] << " ";
-        cout << endl;
-        // if(dest[i] != 0){
-        //     non_zero_count += 1;
-        // }
+    for(int i = 0; i < len; i++){
+        cout << dest[i] << " ";
     }
-    // cout << "Non zero count: " << non_zero_count;
     cout << endl;
 }
 
@@ -77,6 +70,31 @@ vector<Ciphertext> BECTPT::bert_preprocess_vec(vector<uint64_t> &input, const FC
         encryptor->encrypt(pt, ct);
         cts.push_back(ct);
     }
+    return cts;
+}
+
+vector<Ciphertext> BECTPT::search_preprocess_vec(vector<uint64_t> &input, const FCMetadata &data) {
+    vector<uint64_t> pod_matrix(data.slot_count, 0ULL);
+    vector<Ciphertext> cts;
+    // int num_cts = (data.image_size * data.filter_h) / data.slot_count;
+    for (int i = 0; i < input.size(); i++)
+    {
+        pod_matrix[i] = input[i];
+    }
+    Ciphertext ct;
+    Plaintext pt;
+    encoder->encode(pod_matrix, pt);
+    encryptor->encrypt(pt, ct);
+    cts.push_back(ct);
+    // for (int i = 0; i < num_cts; i++)
+    // {
+    //     pod_matrix = vector<uint64_t>(input.begin() + i * data.slot_count, input.begin() + (i+1) * data.slot_count);
+    //     Ciphertext ct;
+    //     Plaintext pt;
+    //     encoder->encode(pod_matrix, pt);
+    //     encryptor->encrypt(pt, ct);
+    //     cts.push_back(ct);
+    // }
     return cts;
 }
 
@@ -160,6 +178,45 @@ pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPT::bert_cross_pa
         }
     }
     return std::make_pair(weightMatrix1, weightMatrix2);
+}
+
+vector<Plaintext> BECTPT::search_packing_db(const uint64_t *const *matrix1, const FCMetadata &data) {
+    vector<Plaintext> dbembedding; // output_dim / 2
+
+    vector<uint64_t> temp2;
+
+    for (int i = 0; i < data.filter_w; i++) { // 16 * 1024
+        for (int j = 0; j < data.filter_h; j++) { // 4096
+            temp2.push_back(matrix1[i][j]);
+            if (temp2.size() % data.slot_count == 0) {
+                Plaintext pt;
+                encoder->encode(temp2, pt);
+                dbembedding.push_back(pt);
+                temp2.clear();
+            }
+        }
+    }
+
+    return dbembedding;
+}
+
+vector<Plaintext> BECTPT::search_packing_mask(const FCMetadata &data) {
+    vector<Plaintext> mask_packing; // output_dim / 2
+
+    vector<uint64_t> temp2;
+
+    for (int j = 0; j < data.slot_count / 2; j++) { // 512
+        vector<uint64_t> temp2(data.slot_count, 0ULL);
+        for (int k = 0; k < data.slot_count / data.filter_h; k++) {
+            temp2[j + k * data.filter_h] = 1;
+        }
+        Plaintext pt;
+        encoder->encode(temp2, pt);
+        mask_packing.push_back(pt);
+        temp2.clear();
+    }
+
+    return mask_packing;
 }
 
 pair<vector<vector<Plaintext>>, vector<vector<Plaintext>>> BECTPT::bert_cross_packing_single_matrix(const uint64_t *const *matrix1, const uint64_t *const *matrix2, const FCMetadata &data) {
@@ -490,6 +547,64 @@ void BECTPT::bert_cipher_plain_bsgs(const vector<Ciphertext> &cts, const vector<
 }
 
 
+void BECTPT::search_inner_prod(const vector<Ciphertext> &cts, const vector<Plaintext> &dbembedding, const vector<Plaintext> &mask, const FCMetadata &data, vector<Ciphertext> &result) {
+
+    auto t1 = high_resolution_clock::now();
+
+    cout << "[Server] Online Start" << endl;
+
+    vector<Ciphertext> temp_result(data.filter_w * data.filter_h / data.slot_count);
+
+    for (int i = 0; i < result.size(); i++) {
+        result[i] = *zero;
+    }
+
+    for (int i = 0; i < temp_result.size(); i++) {
+        temp_result[i] = *zero;
+    }
+
+    Ciphertext temp_dup;
+    Ciphertext ct;
+    ct = cts[0];
+    evaluator->rotate_columns(ct, *gal_keys, temp_dup);
+    evaluator->add_inplace(ct, temp_dup);
+
+    #pragma omp parallel for
+    for (int i = 0; i < dbembedding.size(); i++) // 12 * 1024 / 2
+    {
+        Ciphertext temp_mul;
+        evaluator->multiply_plain(ct, dbembedding[i], temp_mul);
+
+        temp_result[i] = temp_mul;
+
+        // print_noise_budget_vec(temp_result);
+        for (int j = 0; j < 12; j++)
+        {
+            Ciphertext temp_rot;
+            evaluator->rotate_rows(temp_result[i], int(pow(2, j)), *gal_keys, temp_rot);
+            evaluator->add_inplace(temp_result[i], temp_rot);
+        }
+        // int res_cipher_ind = i / (data.slot_count / 2);
+        int mask_ind = i % (data.slot_count / 2);
+        if (mask_ind == 0) {
+            cout << "mask_ind: " << mask_ind << endl;
+            Plaintext pt = mask[mask_ind];
+            // print_pt(pt, data.slot_count);
+            // print_ct(temp_result[i], data.slot_count);
+        }
+        evaluator->multiply_plain(temp_result[i], mask[mask_ind], temp_mul);
+        temp_result[i] = temp_mul;
+        // evaluator->add_inplace(result[res_cipher_ind], temp_result[i]);
+        // if (i > dbembedding.size() - 500)
+        //     print_noise_budget_vec(result);
+    }
+
+    for (int i = 0; i < temp_result.size(); i++) {
+        int res_cipher_ind = i / (data.slot_count / 2);
+        evaluator->add_inplace(result[res_cipher_ind], temp_result[i]);
+    }
+}
+
 uint64_t* BECTPT::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
     uint64_t *result = new uint64_t[data.image_size * data.filter_w * 3];
     int num_cts_first_2 = data.image_size * data.filter_w * 2 / data.slot_count;
@@ -528,6 +643,24 @@ uint64_t* BECTPT::bert_efficient_postprocess(vector<Ciphertext> &cts, const FCMe
     return result;
 }
 
+uint64_t* BECTPT::search_postprocess(vector<Ciphertext> &cts, const FCMetadata &data) {
+    uint64_t *result = new uint64_t[data.filter_w];
+    int num_cts_first_2 = data.filter_w / data.slot_count;
+    for (int i = 0; i < num_cts_first_2; i++) {
+        vector<int64_t> plain(data.slot_count, 0ULL);
+        Plaintext pt;
+        decryptor->decrypt(cts[i], pt);
+        encoder->decode(pt, plain);
+
+        #pragma omp parallel for
+        for (int row = 0; row < data.slot_count / 2; row++) {
+            result[row * 2 + data.slot_count * i] = plain[row];
+            result[row * 2 + data.slot_count * i + 1] = plain[row + data.slot_count / 2];
+        }
+    }
+    return result;
+}
+
 BECTPT::BECTPT(int party, NetIO *io) {
     this->party = party;
     this->io = io;
@@ -544,7 +677,7 @@ BECTPT::~BECTPT() {
 void BECTPT::configure() {
   data.slot_count = 8192;
   // Only works with a ciphertext that fits in a single ciphertext
-  assert(data.slot_count >= data.image_size);
+//   assert(data.slot_count >= data.image_size);
 
   data.filter_size = data.filter_h * data.filter_w;
   // How many columns of matrix we can fit in a single ciphertext
@@ -735,6 +868,162 @@ void BECTPT::matrix_multiplication(int32_t input_dim,
             delete[] matrix2[i];
         }
         delete[] secret_share;
+
+        #ifdef HE_TIMING
+        auto t2_total = high_resolution_clock::now();
+        interval = (t2_total - t1_total)/1e+9;
+        cout << "[Server] Total Time " << interval.count() << "sec" << endl;
+        #endif 
+    }
+}
+
+void BECTPT::search(int32_t input_dim, 
+                    int32_t common_dim, 
+                    int32_t output_dim, 
+                    vector<vector<uint64_t>> &A, 
+                    vector<vector<uint64_t>> &B1, 
+                    bool verify_output) {
+
+    data.filter_h = common_dim; // 512
+    data.filter_w = output_dim; // 12 * 1024
+    data.image_size = input_dim; // 1
+    this->slot_count = 8192;
+    configure();
+
+    if (party == BOB) {  
+        // Client
+        vector<uint64_t> vec(common_dim * input_dim);
+        for (int j = 0; j < common_dim; j++)
+            for (int i = 0; i < input_dim; i++)
+                vec[j*input_dim + i] = neg_mod((int64_t)A[i][j], (int64_t)prime_mod);
+
+        auto cts = search_preprocess_vec(vec, data);
+
+        print_noise_budget_vec(cts);
+
+        auto io_start = io->counter;
+        send_encrypted_vector(io, cts);
+        cout << "[Client] Input cts sent" << endl;
+        cout << "[Client] Size of cts (Bytes): " << sizeof(Ciphertext) << " " << sizeof(Ciphertext) * cts.size() << endl;
+
+        vector<Ciphertext> enc_result(data.filter_w / data.slot_count);
+        recv_encrypted_vector(context, io, enc_result);
+        cout << "[Client] Output cts received" << endl;
+        cout << "[Client] size of cts (Bytes): " << io->counter - io_start << endl;
+
+        print_noise_budget_vec(enc_result);
+        // print_ct(enc_result[0], data.slot_count);
+
+        auto HE_result = search_postprocess(enc_result, data);
+
+        // HACK
+        for (int i = 0; i < 128; i++) {
+            cout << ((int64_t) HE_result[i] + (int64_t) prime_mod) % (int64_t) prime_mod << " ";
+        }
+
+        // save HE_result to file
+        std::string fileName = "scores.txt";
+
+        // Open the file in write mode
+        std::ofstream outFile(fileName);
+
+        // Check if the file is open
+        if (outFile.is_open()) {
+            for (size_t i = 0; i < output_dim; ++i) {
+                outFile << HE_result[i];
+                if (i < output_dim - 1) {
+                    outFile << ","; // Add a comma except after the last element
+                }
+            }
+            outFile.close();
+            std::cout << "[Client] Vector saved to " << fileName << std::endl;
+        } else {
+            std::cerr << "Error: Unable to open file " << fileName << std::endl;
+        }
+        
+        delete[] HE_result;
+    } else {
+        // Server
+        #ifdef HE_TIMING
+        auto t1_total = high_resolution_clock::now();
+        #endif
+
+        auto io_start = io->counter;
+        // vector<Ciphertext> cts(data.image_size * data.filter_h / data.slot_count);
+        vector<Ciphertext> cts(1);
+        recv_encrypted_vector(this->context, io, cts);
+
+        cout << "[Server] Input cts received" << endl;
+
+        // vector<uint64_t> vec(common_dim);
+        // for (int i = 0; i < common_dim; i++) {
+        //     vec[i] = B[i][0];
+        // }
+
+        #ifdef HE_TIMING
+        auto t1_preprocess = high_resolution_clock::now();
+        #endif
+
+        cout << "[Server] Preprocessing Start" << endl;
+
+        vector<uint64_t *> matrix_mod_p1(common_dim * output_dim);
+
+        for (int i = 0; i < output_dim; i++) {
+            matrix_mod_p1[i] = new uint64_t[common_dim];
+            for (int j = 0; j < common_dim; j++) {
+                matrix_mod_p1[i][j] = neg_mod((int64_t)B1[i][j], (int64_t)prime_mod);
+            }
+        }
+
+        cout << "[Server] Preprocessing Packing Start" << endl;
+
+        vector<Plaintext> dbembedding_packing = search_packing_db(matrix_mod_p1.data(), data);
+
+        // print_pt(dbembedding_packing[dbembedding_packing.size() - 1], data.slot_count);
+
+        vector<Plaintext> mask_packing = search_packing_mask(data);
+
+        // Ciphertext enc_noise = bert_efficient_preprocess_noise(secret_share, data, cryptoContext_, keyPair_);
+        // cout << "[Server] Noise processed" << endl;
+        #ifdef HE_TIMING
+        auto t2_preprocess = high_resolution_clock::now();
+        auto interval = (t2_preprocess - t1_preprocess)/1e+9;
+        cout << "[Server] Preprocessing takes " << interval.count() << "sec" << endl;
+        #endif
+
+        #ifdef HE_DEBUG
+            print_noise_budget_vec(cts);
+        #endif
+
+        // cout << "[Server] debugging " << dbembedding_packing.size() << " " << mask_packing.size() << endl;
+
+
+        vector<Ciphertext> Cipher_plain_results(data.filter_w / data.slot_count);
+        #ifdef HE_TIMING
+        auto t1_cipher_plain = high_resolution_clock::now();
+        #endif 
+
+        // cout << "[Server] debugging result size " << Cipher_plain_results.size() << endl;
+
+        // auto Cipher_plain_results = bert_efficient_online(cts, encoded_mat, encoded_mat, data, rotation_masks);
+        // auto Cipher_plain_results = bert_cipher_plain(cts, cross_mat.first, cross_mat.second, data);
+
+        search_inner_prod(cts, dbembedding_packing, mask_packing, data, Cipher_plain_results);
+
+        #ifdef HE_TIMING
+        auto t2_cipher_plain = high_resolution_clock::now();
+        interval = (t2_cipher_plain - t1_cipher_plain)/1e+9;
+        cout << "[Server] Cipher-Plaintext Inner Prod takes " << interval.count() << "sec" << endl;
+        #endif
+
+        send_encrypted_vector(io, Cipher_plain_results);
+
+        cout << "[Server] Result sent" << endl;
+        cout << "[Server] size of result (Bytes): " << io->counter - io_start << endl;
+
+        for (int i = 0; i < output_dim; i++) {
+            delete[] matrix_mod_p1[i];
+        }
 
         #ifdef HE_TIMING
         auto t2_total = high_resolution_clock::now();

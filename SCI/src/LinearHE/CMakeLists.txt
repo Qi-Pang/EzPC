@@ -48,6 +48,7 @@ add_library(SCI-LinearHE
     bert-layernorm.cpp
     # bert-att-output.cpp
     # utils-HE-openfhe.cpp
+    enc_search.cpp
 )
 
 # include_directories( ${OPENMP_INCLUDES} )
